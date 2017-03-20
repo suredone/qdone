@@ -1,0 +1,74 @@
+#!/usr/bin/env node
+
+const program = require('commander')
+const debug = require('debug')('qdone')
+const AWS = require('aws-sdk')
+
+function configureAWS (options) {
+  AWS.config.update({region: options.region || 'us-east-1'})
+}
+
+program
+  .version('0.0.1')
+  .option('-p, --prefix <prefix>', 'Prefex to place at the front of each SQS queue name [qdone_]', 'qdone_')
+  .option('--region <region>', 'AWS region for Queues')
+  .on('--help', function () {
+    console.log('  AWS SQS Authentication:')
+    console.log()
+    console.log('    You must provide one of:')
+    console.log('    1) On AWS instances: an IAM role that allows the appropriate SQS calls')
+    console.log('    2) A credentials file (~/.aws/credentials) containing a [default] section with appropriate keys')
+    console.log('    3) Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables')
+    console.log()
+    console.log('  Examples:')
+    console.log()
+    console.log('    $ qdone enqueue process-image "/usr/bin/php /var/myapp/process-image.php http://imgur.com/some-cool-cat.jpg"')
+    console.log('    $ qdone worker process-image')
+    console.log()
+  })
+
+program
+  .command('enqueue <queue> <command>')
+  .description('Enqueue command on the specified queue')
+  .action(function (queue, command, options) {
+    debug('queue', queue, 'command', command, 'options', options)
+    configureAWS(options)
+    const enqueue = require('./src/enqueue')
+    enqueue.enqueue(queue, command, program, function (err, result) {
+      debug('enqueue returned', err, result)
+      if (err) throw err
+    })
+  })
+
+program
+  .command('worker <queue...>')
+  .description('Listen for work on one or more queues')
+  .action(function (queue, otherQueues, options) {
+    debug('queue', queue, 'otherQueues', otherQueues, 'options', options)
+    configureAWS(options)
+    const worker = require('./src/worker')
+    worker.listen(queue)
+  })
+
+program
+  .command('status [queue...]')
+  .description('Report status of the overall system or the given queue(s)')
+  .action(function (queue, options) {
+    debug('queue', queue, 'options', options)
+    configureAWS(options)
+    debug('args', options.args)
+  })
+
+program.command('*')
+  .action(function () {
+    program.outputHelp()
+    process.exit(1)
+  })
+
+program.parse(process.argv)
+
+if (process.argv.length === 2) {
+  program.outputHelp()
+  process.exit(1)
+}
+

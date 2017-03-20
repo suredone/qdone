@@ -1,0 +1,17 @@
+{
+  "name": "qdone",
+  "version": "0.0.1",
+  "description": "Job scheduler and worker designed for SQS, inspired by RQ.",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "^2.28.0",
+    "commander": "^2.9.0",
+    "debug": "^2.6.3"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Ryan Witt <onecreativenerd@gmail.com>",
+  "license": "UNLICENSED"
+}
