@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
+const Q = require('q')
 const program = require('commander')
 const debug = require('debug')('qdone')
+const chalk = require('chalk')
 const AWS = require('aws-sdk')
+AWS.config.setPromisesDependency(require('q').Promise)
 
 function configureAWS (options) {
   AWS.config.update({region: options.region || 'us-east-1'})
@@ -12,6 +15,97 @@ program
   .version('0.0.1')
   .option('-p, --prefix <prefix>', 'Prefex to place at the front of each SQS queue name [qdone_]', 'qdone_')
   .option('--region <region>', 'AWS region for Queues')
+
+program
+  .command('enqueue <queue> <command>')
+  .description('Enqueue command on the specified queue')
+  .action(function (queue, command, options) {
+    configureAWS(program)
+    const enqueue = require('./src/enqueue')
+    enqueue
+      .enqueue(queue, command, options, program.prefix)
+      .then(function (result) {
+        debug('enqueue returned', result)
+        console.error(chalk.blue('Enqueued job ') + result.MessageId)
+      })
+      .fail(function (err) {
+        console.error(chalk.red(err))
+        process.exit(1)
+      })
+  })
+
+program
+  .command('worker <queue...>')
+  .description('Listen for work on one or more queues')
+  .option('-k, --kill-after <seconds>', 'Kill job after this many seconds [30]', function (value) {
+    const parsed = parseInt(value)
+    const killAfterMax = 12 * 60 * 60
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > killAfterMax) {
+      console.error(chalk.red('  error: --kill-after <seconds> should be a number from 0 to ' + killAfterMax))
+      process.exit(1)
+    }
+    return parsed
+  }, 30)
+  .option('-w, --wait-time <seconds>', 'Listen this long on each queue before moving to next [10]', function (value) {
+    const parsed = parseInt(value)
+    const waitTimeMax = 20
+    debug('parsed', parsed)
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > waitTimeMax) {
+      console.error(chalk.red('  error: --wait-time <seconds> should be a number from 0 to ' + waitTimeMax))
+      process.exit(1)
+    }
+    return parsed
+  }, 10)
+  .option('--always-resolve', 'Always resolve queue names that end in \'*\'. This can result\n                           in more SQS calls, but allows you to listen to queues that\n                           do not exist yet.', false)
+  .action(function (queue, options) {
+    configureAWS(program)
+    const worker = require('./src/worker')
+    options.killAfter = Number.isNaN(options.killAfter) ? 30 : options.killAfter
+    options.waitTime = Number.isNaN(options.waitTime) ? 10 : options.waitTime
+    debug('killAfter', options.killAfter, queue)
+    debug('waitTime', options.waitTime)
+    function workLoop () {
+      return worker
+        .listen(queue, options, program.prefix)
+        .then(function (result) {
+          debug('listen returned', result)
+          // Doing the work loop out here forces queue resolution to happen every time
+          if (options.alwaysResolve) return Q.delay(options.waitTime * 1000).then(workLoop)
+          process.exit(0)
+        })
+        .fail(function (err) {
+          console.error(chalk.red(err))
+          process.exit(1)
+        })
+    }
+    workLoop()
+  })
+  .on('--help', function () {
+    console.log('  Details:')
+    console.log()
+    console.log('    If a queue name ends with the * (wildcard) character, worker will listen on all')
+    console.log('    queues that match the name up-to the wildcard. Place arguments like this inside')
+    console.log('    quotes to keep the shell from globbing local files.')
+    console.log()
+    console.log('  Examples:')
+    console.log()
+    console.log('    $ qdone worker process-images     # listen on a single queue')
+    console.log('    $ qdone worker one two three      # listen on multiple queues')
+    console.log('    $ qdone worker "process-images-*" # listen to both process-images-png and')
+    console.log('                                      # process-images-jpeg if those queues exist')
+    console.log()
+  })
+
+program
+  .command('status [queue...]')
+  .description('Report status of the overall system or the given queue(s)')
+  .action(function (queue, options) {
+    debug('queue', queue)
+    configureAWS(options)
+    debug('args', options.args)
+  })
+
+program
   .on('--help', function () {
     console.log('  AWS SQS Authentication:')
     console.log()
@@ -25,38 +119,6 @@ program
     console.log('    $ qdone enqueue process-image "/usr/bin/php /var/myapp/process-image.php http://imgur.com/some-cool-cat.jpg"')
     console.log('    $ qdone worker process-image')
     console.log()
-  })
-
-program
-  .command('enqueue <queue> <command>')
-  .description('Enqueue command on the specified queue')
-  .action(function (queue, command, options) {
-    debug('queue', queue, 'command', command, 'options', options)
-    configureAWS(options)
-    const enqueue = require('./src/enqueue')
-    enqueue.enqueue(queue, command, program, function (err, result) {
-      debug('enqueue returned', err, result)
-      if (err) throw err
-    })
-  })
-
-program
-  .command('worker <queue...>')
-  .description('Listen for work on one or more queues')
-  .action(function (queue, otherQueues, options) {
-    debug('queue', queue, 'otherQueues', otherQueues, 'options', options)
-    configureAWS(options)
-    const worker = require('./src/worker')
-    worker.listen(queue)
-  })
-
-program
-  .command('status [queue...]')
-  .description('Report status of the overall system or the given queue(s)')
-  .action(function (queue, options) {
-    debug('queue', queue, 'options', options)
-    configureAWS(options)
-    debug('args', options.args)
   })
 
 program.command('*')
