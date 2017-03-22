@@ -121,15 +121,22 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
 //
 // Resolve queues for listening loop listen
 //
-exports.listen = function listen (queues, options, prefix) {
+exports.listen = function listen (queues, options, globalOptions) {
   console.error(chalk.blue('Resolving queues:'))
-  const qnames = queues.map(function (queue) { return prefix + queue })
+  const qnames = queues.map(function (queue) { return globalOptions.prefix + queue })
   return qrlCache
-    .getQnameUrlPairs(qnames, prefix)
+    .getQnameUrlPairs(qnames, globalOptions.prefix)
     .then(function (entries) {
       debug('qrlCache.getQnameUrlPairs.then')
       console.error(chalk.blue('  done'))
       console.error()
+
+      // Don't listen to fail queues... unless user wants to
+      entries = entries
+        .filter(function (entry) {
+          const suf = globalOptions.failSuffix
+          return options.includeFailed ? true : entry.qname.slice(-suf.length) !== suf
+        })
 
       // Listen sequentially
       function workLoop () {
@@ -140,12 +147,13 @@ exports.listen = function listen (queues, options, prefix) {
             debug('soFar', soFar)
             console.error(
               chalk.blue('Looking for work on ') +
-              entry.qname.slice(prefix.length) +
+              entry.qname.slice(globalOptions.prefix.length) +
               chalk.blue(' (' + entry.qrl + ')')
             )
             return pollForJobs(entry.qname, entry.qrl, options.waitTime, options.killAfter)
           })
         })
+
         return result.then(function (result) {
           // Do the work loop in here to NOT resolve queues every time
           debug(options.alwaysResolve)
@@ -157,7 +165,7 @@ exports.listen = function listen (queues, options, prefix) {
       if (entries.length) {
         console.error(chalk.blue('Listening to queues (in this order):'))
         console.error(entries.map(function (e) {
-          return '  ' + e.qname.slice(prefix.length) + chalk.blue(' - ' + e.qrl)
+          return '  ' + e.qname.slice(globalOptions.prefix.length) + chalk.blue(' - ' + e.qrl)
         }).join('\n'))
         console.error()
         return workLoop()

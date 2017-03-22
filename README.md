@@ -2,7 +2,7 @@
 
 Simple, scalable queueing system for SQS.
 
-  Usage: qdone [options] [command]
+    Usage: qdone [options] [command]
 
   Commands:
 
@@ -11,10 +11,11 @@ Simple, scalable queueing system for SQS.
 
   Options:
 
-    -h, --help             output usage information
-    -V, --version          output the version number
-    -p, --prefix <prefix>  Prefex to place at the front of each SQS queue name [qdone_]
-    --region <region>      AWS region for Queues
+    -h, --help              output usage information
+    -V, --version           output the version number
+    --prefix <prefix>       Prefex to place at the front of each SQS queue name [qdone_]
+    --fail-suffix <suffix>  Suffix to append to each queue to generate fail queue name [_failed]
+    --region <region>       AWS region for Queues
 
   AWS SQS Authentication:
 
@@ -30,7 +31,7 @@ Simple, scalable queueing system for SQS.
 
 ## Worker
 
-  Usage: worker [options] <queue...>
+    Usage: worker [options] <queue...>
 
   Listen for work on one or more queues
 
@@ -42,6 +43,7 @@ Simple, scalable queueing system for SQS.
     --always-resolve            Always resolve queue names that end in '*'. This can result
                                in more SQS calls, but allows you to listen to queues that
                                do not exist yet.
+    --include-failed            When using '*' do not ignore fail queues.
 
   Details:
 

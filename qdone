@@ -13,7 +13,8 @@ function configureAWS (options) {
 
 program
   .version('0.0.1')
-  .option('-p, --prefix <prefix>', 'Prefex to place at the front of each SQS queue name [qdone_]', 'qdone_')
+  .option('--prefix <prefix>', 'Prefex to place at the front of each SQS queue name [qdone_]', 'qdone_')
+  .option('--fail-suffix <suffix>', 'Suffix to append to each queue to generate fail queue name [_failed]', '_failed')
   .option('--region <region>', 'AWS region for Queues')
 
 program
@@ -23,7 +24,7 @@ program
     configureAWS(program)
     const enqueue = require('./src/enqueue')
     enqueue
-      .enqueue(queue, command, options, program.prefix)
+      .enqueue(queue, command, options, program)
       .then(function (result) {
         debug('enqueue returned', result)
         console.error(chalk.blue('Enqueued job ') + result.MessageId)
@@ -57,6 +58,7 @@ program
     return parsed
   }, 10)
   .option('--always-resolve', 'Always resolve queue names that end in \'*\'. This can result\n                           in more SQS calls, but allows you to listen to queues that\n                           do not exist yet.', false)
+  .option('--include-failed', 'When using \'*\' do not ignore fail queues.', false)
   .action(function (queue, options) {
     configureAWS(program)
     const worker = require('./src/worker')
@@ -66,7 +68,7 @@ program
     debug('waitTime', options.waitTime)
     function workLoop () {
       return worker
-        .listen(queue, options, program.prefix)
+        .listen(queue, options, program)
         .then(function (result) {
           debug('listen returned', result)
           // Doing the work loop out here forces queue resolution to happen every time
