@@ -1,6 +1,6 @@
 # qdone
 
-!(https://david-dm.org/suredone/qdone.svg)()
+![](https://img.shields.io/david/suredone/qdone.svg)
 
 Simple, scalable queueing system for SQS.
 
