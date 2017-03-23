@@ -1,5 +1,7 @@
 # qdone
 
+!(https://david-dm.org/suredone/qdone.svg)()
+
 Simple, scalable queueing system for SQS.
 
     Usage: qdone [options] [command]

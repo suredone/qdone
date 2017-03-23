@@ -11,9 +11,30 @@
     "q": "^1.4.1"
   },
   "devDependencies": {},
+  "bin" : "./qdone",
+  "preferGlobal": true,
+  "os": ["darwin", "linux"],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Ryan Witt <onecreativenerd@gmail.com>",
-  "license": "UNLICENSED"
+  "author": "Ryan Witt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suredone/qdone.git"
+  },
+  "keywords": [
+    "sqs",
+    "job",
+    "queue",
+    "producer",
+    "consumer",
+    "cli",
+    "aws",
+    "amazon"
+  ],
+  "bugs": {
+    "url": "https://github.com/suredone/qdone/issues"
+  },
+  "homepage": "https://github.com/suredone/qdone#readme"
 }
