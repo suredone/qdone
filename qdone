@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const Q = require('q')
+const fs = require('fs')
+const readline = require('readline')
 const program = require('commander')
 const debug = require('debug')('qdone')
 const chalk = require('chalk')
@@ -23,11 +25,14 @@ program
   .action(function (queue, command, options) {
     configureAWS(program)
     const enqueue = require('./src/enqueue')
+
+    // Normal (non batch) enqueue
     enqueue
       .enqueue(queue, command, options, program)
       .then(function (result) {
         debug('enqueue returned', result)
         console.error(chalk.blue('Enqueued job ') + result.MessageId)
+        process.exit(0)
       })
       .fail(function (err) {
         console.error(chalk.red(err))
@@ -36,9 +41,45 @@ program
   })
 
 program
+  .command('enqueue-batch [file]')
+  .description('Read a list of (queue, command) pairs, one per line, from [file...] or - for stdin.')
+  .action((file, options) => {
+    configureAWS(program)
+    const enqueue = require('./src/enqueue')
+    const pairs = []
+
+    // Construct (queue, command) pairs from input
+    const input = readline.createInterface({
+      input: file ? process.stdin : fs.createReadStream(file)
+    })
+
+    input.on('line', line => {
+      const parts = line.split(/\s+/)
+      const queue = parts[0]
+      const command = line.slice(queue.length).trim()
+      pairs.push({queue, command})
+    })
+
+    input.on('close', _ => {
+      debug(pairs)
+      enqueue
+        .enqueueBatch(pairs, options, program)
+        .then(function (result) {
+          debug('enqueueBatch returned', result)
+          console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
+          process.exit(0)
+        })
+        .fail(function (err) {
+          console.error(chalk.red(err))
+          throw err
+        })
+    })
+  })
+
+program
   .command('worker <queue...>')
   .description('Listen for work on one or more queues')
-  .option('-k, --kill-after <seconds>', 'Kill job after this many seconds [30]', function (value) {
+  .option('-k, --kill-after <seconds>', 'Kill job after this many seconds [30]', value => {
     const parsed = parseInt(value)
     const killAfterMax = 12 * 60 * 60
     if (Number.isNaN(parsed) || parsed < 0 || parsed > killAfterMax) {
@@ -47,7 +88,7 @@ program
     }
     return parsed
   }, 30)
-  .option('-w, --wait-time <seconds>', 'Listen this long on each queue before moving to next [10]', function (value) {
+  .option('-w, --wait-time <seconds>', 'Listen this long on each queue before moving to next [10]', value => {
     const parsed = parseInt(value)
     const waitTimeMax = 20
     debug('parsed', parsed)
