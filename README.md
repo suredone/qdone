@@ -1,6 +1,8 @@
-# qdone - language agnostic job queue for SQS
+# qdone - Language agnostic job queue for SQS
 
-![](https://img.shields.io/david/suredone/qdone.svg)
+[![](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
+[![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
+
 
 This system is inspired in part by experience running RQ in production.
 

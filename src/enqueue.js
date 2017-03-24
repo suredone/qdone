@@ -182,9 +182,7 @@ function getQrl (queue, qname, fqueue, fqname) {
         // Need to grab fail queue's ARN to create our queue
         return fqrl
           .then(getQueueAttributes)
-          .then(function (data) {
-            return createQueue(queue, qname, data.Attributes.QueueArn)
-          })
+          .then(data => createQueue(queue, qname, data.Attributes.QueueArn))
       }
       throw err // throw unhandled errors
     })
@@ -201,9 +199,7 @@ exports.enqueue = function enqueue (queue, command, options, globalOptions) {
 
   // Now that we have the queue, send our message
   return getQrl(queue, qname, fqueue, fqname)
-    .then(function (qrl) {
-      return sendMessage(qrl, command)
-    })
+    .then(qrl => sendMessage(qrl, command))
 }
 
 exports.enqueueBatch = function enqueueBatch (pairs, options, globalOptions) {
@@ -218,9 +214,7 @@ exports.enqueueBatch = function enqueueBatch (pairs, options, globalOptions) {
       const fqname = globalOptions.prefix + fqueue
       // Now that we have the queue, send our message
       return getQrl(queue, qname, fqueue, fqname)
-        .then(function (qrl) {
-          return addMessage(qrl, command, index)
-        })
+        .then(qrl => addMessage(qrl, command, index))
     })
   ).then(function (numsFlushed) {
     debug('numsFlushed', numsFlushed)

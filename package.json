@@ -1,7 +1,7 @@
 {
   "name": "qdone",
   "version": "0.0.1",
-  "description": "Job scheduler and worker designed for SQS, inspired by RQ.",
+  "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
     "aws-sdk": "^2.28.0",
@@ -10,12 +10,17 @@
     "debug": "^2.6.3",
     "q": "^1.4.1"
   },
-  "devDependencies": {},
-  "bin" : "./qdone",
+  "devDependencies": {
+    "standard": "*"
+  },
+  "bin": "./qdone",
   "preferGlobal": true,
-  "os": ["darwin", "linux"],
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "standard"
   },
   "author": "Ryan Witt",
   "license": "MIT",

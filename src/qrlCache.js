@@ -81,7 +81,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, prefix) {
   }))
   .then(function (results) {
     // flatten nested results
-    return ([].concat.apply([], results)).filter(function (r) { return r })
+    return ([].concat.apply([], results)).filter(r => r)
   })
 }
 
