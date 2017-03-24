@@ -217,6 +217,9 @@ You must provide one of:
                                 This can result in more SQS calls, but allows
                                 you to listen to queues that do not exist yet.
     --include-failed            When using '*' do not ignore fail queues.
+    --drain                     Run until no more work is found and quit.
+                                NOTE: if used with --wait-time 0, this option
+                                will not drain queues.
 
   Details:
 

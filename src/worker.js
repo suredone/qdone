@@ -122,7 +122,7 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
 // Resolve queues for listening loop listen
 //
 exports.listen = function listen (queues, options, globalOptions) {
-  console.error(chalk.blue('Resolving queues:'))
+  console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
   const qnames = queues.map(function (queue) { return globalOptions.prefix + queue })
   return qrlCache
     .getQnameUrlPairs(qnames, globalOptions.prefix)
@@ -154,11 +154,8 @@ exports.listen = function listen (queues, options, globalOptions) {
           })
         })
 
-        return result.then(function (result) {
-          // Do the work loop in here to NOT resolve queues every time
-          debug(options.alwaysResolve)
-          return options.alwaysResolve ? result : workLoop()
-        })
+        // Do the work loop in here to NOT resolve queues every time
+        return result.then(result => (options.alwaysResolve || options.drain) ? result : workLoop())
       }
 
       // But only if we have queues to listen on

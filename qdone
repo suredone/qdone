@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const Q = require('q')
 const fs = require('fs')
 const readline = require('readline')
 const program = require('commander')
@@ -11,6 +10,16 @@ AWS.config.setPromisesDependency(require('q').Promise)
 
 function configureAWS (options) {
   AWS.config.update({region: options.region || 'us-east-1'})
+}
+
+function awsDocs () {
+  console.error('  AWS SQS Authentication:')
+  console.error()
+  console.error('    You must provide ONE of:')
+  console.error('    1) On AWS instances: an IAM role that allows the appropriate SQS calls')
+  console.error('    2) A credentials file (~/.aws/credentials) containing a [default] section with appropriate keys')
+  console.error('    3) Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables')
+  console.error()
 }
 
 program
@@ -100,6 +109,7 @@ program
   }, 10)
   .option('--always-resolve', 'Always resolve queue names that end in \'*\'. This can result\n                           in more SQS calls, but allows you to listen to queues that\n                           do not exist yet.', false)
   .option('--include-failed', 'When using \'*\' do not ignore fail queues.', false)
+  .option('--drain', 'Run until no more work is found and quit. NOTE: if used with\n                           --wait-time 0, this option will not drain queues.', false)
   .action(function (queue, options) {
     configureAWS(program)
     const worker = require('./src/worker')
@@ -113,32 +123,35 @@ program
         .then(function (result) {
           debug('listen returned', result)
           // Doing the work loop out here forces queue resolution to happen every time
-          if (options.alwaysResolve) return Q.delay(options.waitTime * 1000).then(workLoop)
+          if (options.alwaysResolve && !options.drain) return workLoop()
           process.exit(0)
         })
-        .fail(function (err) {
+        .catch(function (err) {
           console.error(chalk.red(err))
+          console.error()
+          if (err.code === 'AccessDenied') awsDocs()
           process.exit(1)
         })
     }
     workLoop()
   })
   .on('--help', function () {
-    console.log('  Details:')
-    console.log()
-    console.log('    If a queue name ends with the * (wildcard) character, worker will listen on all')
-    console.log('    queues that match the name up-to the wildcard. Place arguments like this inside')
-    console.log('    quotes to keep the shell from globbing local files.')
-    console.log()
-    console.log('  Examples:')
-    console.log()
-    console.log('    $ qdone worker process-images     # listen on a single queue')
-    console.log('    $ qdone worker one two three      # listen on multiple queues')
-    console.log('    $ qdone worker "process-images-*" # listen to both process-images-png and')
-    console.log('                                      # process-images-jpeg if those queues exist')
-    console.log()
+    console.error('  Details:')
+    console.error()
+    console.error('    If a queue name ends with the * (wildcard) character, worker will listen on all')
+    console.error('    queues that match the name up-to the wildcard. Place arguments like this inside')
+    console.error('    quotes to keep the shell from globbing local files.')
+    console.error()
+    console.error('  Examples:')
+    console.error()
+    console.error('    $ qdone worker process-images     # listen on a single queue')
+    console.error('    $ qdone worker one two three      # listen on multiple queues')
+    console.error('    $ qdone worker "process-images-*" # listen to both process-images-png and')
+    console.error('                                      # process-images-jpeg if those queues exist')
+    console.error()
   })
 
+/*
 program
   .command('status [queue...]')
   .description('Report status of the overall system or the given queue(s)')
@@ -147,21 +160,16 @@ program
     configureAWS(options)
     debug('args', options.args)
   })
+*/
 
 program
   .on('--help', function () {
-    console.log('  AWS SQS Authentication:')
-    console.log()
-    console.log('    You must provide one of:')
-    console.log('    1) On AWS instances: an IAM role that allows the appropriate SQS calls')
-    console.log('    2) A credentials file (~/.aws/credentials) containing a [default] section with appropriate keys')
-    console.log('    3) Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables')
-    console.log()
-    console.log('  Examples:')
-    console.log()
-    console.log('    $ qdone enqueue process-image "/usr/bin/php /var/myapp/process-image.php http://imgur.com/some-cool-cat.jpg"')
-    console.log('    $ qdone worker process-image')
-    console.log()
+    awsDocs()
+    console.error('  Examples:')
+    console.error()
+    console.error('    $ qdone enqueue process-image "/usr/bin/php /var/myapp/process-image.php http://imgur.com/some-cool-cat.jpg"')
+    console.error('    $ qdone worker process-image')
+    console.error()
   })
 
 program.command('*')
