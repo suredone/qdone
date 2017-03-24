@@ -1,6 +1,6 @@
 # qdone
 
-Language agnostic job queue for SQS
+Command line job queue for SQS
 
 [![NPM Package](https://img.shields.io/npm/v/qdone.svg)](https://www.npmjs.com/package/qdone)
 [![Dependencies](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
