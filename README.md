@@ -1,13 +1,20 @@
-# qdone - Language agnostic job queue for SQS
+# qdone
 
-[![](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
+Language agnostic job queue for SQS
+
+[![NPM Package](https://img.shields.io/npm/v/qdone.svg)](https://www.npmjs.com/package/qdone)
+[![Dependencies](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
 [![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
 
 
-This system is inspired in part by experience running RQ in production.
+## Features
 
-Enqueuing a job creates an associated queue on SQS, along with a fail queue
-for jobs that don't return success, or run longer than the time you specify 
+  - Creates SQS queues (and failed job queues) on demand
+  - Minimizes SQS API calls
+  - Workers can listen to multiple queues, including wildcards
+  - Efficient batch enqueing of large numbers of jobs
+
+qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in production.
 
 ## Installing
 
@@ -15,51 +22,46 @@ for jobs that don't return success, or run longer than the time you specify
 
 ## Examples
 
-### Enqueue a job and run it on a worker
+### Enqueue a job and run it
 
-To enqueue a job, you just need a queue name and the text of a command to run:
+    $ qdone enqueue myQueue "echo hello world"
+    Enqueued job 030252de-8a3c-42c6-9278-c5a268660384
 
-    you@some-machine $ qdone enqueue example_queue "echo hi"
-    Creating fail queue queue_name_failed
-    Looking up attributes for https://sqs.us-east-1.amazonaws.com/405670151149/qdone_queue_name_failed
-    Creating queue queue_name
-    Enqueued job 2732eacd-15fd-44c4-8cc6-192b6a4dc7b4
-
-Notice that qdone created the queue and the fail queue for us.
-
-Run the job by starting a worker with the queue name you used in the previous step.
-
-    you@other-machine $ qdone worker example_queue
-    Resolving queues:
-      done
-
-    Listening to queues (in this order):
-      example_queue - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_example_queue
-
-    Looking for work on example_queue (https://sqs.us-east-1.amazonaws.com/405670151149/qdone_example_queue)
-      Found job 0066f8ad-8a90-4220-8c08-d01c2dd1d6d5
-      Executing job command: nice echo hi
+    $ qdone worker myQueue
+    ...
+    Looking for work on myQueue (https://sqs.us-east-1ld...)
+      Found job a23c71b3-b148-47b1-bfbb-f5dbb344ef97
+      Executing job command: nice echo hello world
       SUCCESS
-      stdout: hi
-      cleaning up (removing job) ...
-      done
+      stdout: hello world
 
-### Enqueue jobs in bulk
 
-You can batch up multiple jobs in a file or stdin using a queue
-name and command on each line:
+### Queues are automatically created when you use them
+
+    $ qdone enqueue myNewQueue "echo nice to meet you"
+    Creating fail queue myNewQueue_failed
+    Looking up attributes for https://sqs.us-east-1.../qdone_myNewQueue_failed
+    Creating queue myNewQueue
+    Enqueued job d0077713-11e1-4de6-8f26-49ad51e008b9
+
+Notice that qdone also created a failed queue. More on that later.
+
+
+### Enqueue many jobs at once
+
+Put a queue name and command on each line of stdin or a file:
   
-    you@some-machine $ qdone enqueue-batch -
-    queue_0 true
-    queue_1 true
-    queue_2 true
-    queue_3 true
-    queue_4 true
-    queue_5 true
-    queue_6 true
-    queue_7 true
-    queue_8 true
-    queue_9 true
+    $ qdone enqueue-batch -  # use stdin
+    queue_0 echo hi
+    queue_1 echo hi
+    queue_2 echo hi
+    queue_3 echo hi
+    queue_4 echo hi
+    queue_5 echo hi
+    queue_6 echo hi
+    queue_7 echo hi
+    queue_8 echo hi
+    queue_9 echo hi
     ^D
     Enqueued job 14fe4e30-bd4f-4415-b902-8df29cb73066 request 1
     Enqueued job 60e31392-9810-4770-bfad-6a8f44114287 request 2
@@ -76,98 +78,107 @@ name and command on each line:
 If you are using the same queue, requests to SQS will be batched:
 
     $ qdone enqueue-batch -
-    queue_one true
-    queue_one true
-    queue_one true
-    queue_one true
-    queue_two true
-    queue_two true
-    queue_two true
-    queue_two true
-    Enqueued job fb2fa6d1-a51d-4fbc-8284-b5da1ca97d05 request 1
-    Enqueued job 85bfbe92-cdbf-4fa1-908c-fe846fb508b6 request 1
-    Enqueued job cea6d180-5d67-436e-b9b5-ca3f1d874afa request 1
-    Enqueued job 9050fd34-2a76-4c39-94d7-cab060a219d1 request 1
-    Enqueued job 4e729c18-6181-4bde-ab4a-1ee872fb52cc request 2
-    Enqueued job 6dac2e4d-651f-4c7a-b09f-ad4ad1b0b1b1 request 2
-    Enqueued job 0252ae4b-89c4-4426-8ad5-b1480bfdb3a2 request 2
-    Enqueued job 95567365-12df-4322-b528-db0a641bf25c request 2
+    queue_one echo hi
+    queue_one echo hi
+    queue_one echo hi
+    queue_one echo hi
+    queue_two echo hi
+    queue_two echo hi
+    queue_two echo hi
+    queue_two echo hi
+    Enqueued job fb2fa6d1... request 1   # one
+    Enqueued job 85bfbe92... request 1   # request
+    Enqueued job cea6d180... request 1   # for queue_one
+    Enqueued job 9050fd34... request 1   #
+    Enqueued job 4e729c18... request 2      # another
+    Enqueued job 6dac2e4d... request 2      # request
+    Enqueued job 0252ae4b... request 2      # for queue_two
+    Enqueued job 95567365... request 2      #
     Enqueued 8 jobs
+
 
 ### Failed jobs
 
-If the command exists with a non-zero exit code, this is considered a failure, 
-and the job will be placed on the failed queue. There is a failed queue for
-each queue:
+A command fails if it finishes with a non-zero exit code:
 
-    $ qdone enqueue my_queue "false"
+    $ qdone enqueue myQueue "false"
     Enqueued job 0e5957de-1e13-4633-a2ed-d3b424aa53fb;
 
-    $ qdone worker my_queue
-    Resolving queues:
-      done
-
-    Listening to queues (in this order):
-      my_queue - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_my_queue
-
-    Looking for work on my_queue (https://sqs.us-east-1.amazonaws.com/405670151149/qdone_my_queue)
+    $ qdone worker myQueue
+    ...
+    Looking for work on myQueue (https://sqs.us-east-1....)
       Found job 0e5957de-1e13-4633-a2ed-d3b424aa53fb
       Executing job command: nice false
       FAILED
       code  : 1
       error : Error: Command failed: nice false
 
-To retry failed jobs, listen on the corresponding fail queue:
+The failed command will be placed on the failed queue.
 
-    $ qdone worker my_queue_failed --include-failed
-    Resolving queues:
-      done
 
-    Listening to queues (in this order):
-      my_queue_failed - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_my_queue_failed
+### Retrying failed jobs
 
-    Looking for work on my_queue_failed (https://sqs.us-east-1.amazonaws.com/405670151149/qdone_my_queue_failed)
+Wait 30 seconds, then listen to the corresponding failed queue:
+
+    $ qdone worker myQueue_failed --include-failed
+    ...
+    Looking for work on myQueue_failed (https://sqs.us-east-1.../qdone_myQueue_failed)
       Found job 0e5957de-1e13-4633-a2ed-d3b424aa53fb
       Executing job command: nice false
       FAILED
       code  : 1
       error : Error: Command failed: nice false
+
+It failed again. It will go back on the failed queue.
+
 
 ### Listening to multiple queues
 
-It's a common use case to listen to a set of queues matching a given prefix:
+It's nice sometimes to listen to a set of queues matching a prefix:
 
     $ qdone worker test*
-    Resolving queues:
-      done
-
+    ...
     Listening to queues (in this order):
-      test - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test
-      test1 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test1
-      test2 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test2
-      test3 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test3
-      test4 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test4
-      test5 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test5
-      test6 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test6
-      test7 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test7
-      test8 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test8
-      test9 - https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test9
+      test - https://sqs.us-east-1.../qdone_test
+      test1 - https://sqs.us-east-1.../qdone_test1
+      test2 - https://sqs.us-east-1.../qdone_test2
+      test3 - https://sqs.us-east-1.../qdone_test3
+      test4 - https://sqs.us-east-1.../qdone_test4
+      test5 - https://sqs.us-east-1.../qdone_test5
+      test6 - https://sqs.us-east-1.../qdone_test6
+      test7 - https://sqs.us-east-1.../qdone_test7
+      test8 - https://sqs.us-east-1.../qdone_test8
+      test9 - https://sqs.us-east-1.../qdone_test9
 
-    Looking for work on test (https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test)
+    Looking for work on test (https://sqs.us-east-1.../qdone_test)
       Found job 2486f4b5-57ef-4290-987c-7b1140409cc6
     ...
-    Looking for work on test1 (https://sqs.us-east-1.amazonaws.com/405670151149/qdone_test1)
+    Looking for work on test1 (https://sqs.us-east-1.../qdone_test1)
       Found job 0252ae4b-89c4-4426-8ad5-b1480bfdb3a2
     ...
 
 The worker will listen to each queue for the `--wait-time` period, then start
 over from the beginning.
 
-If you need the worker to listen to queues created after it starts running, use
-the `--always-resolve` option at the cost of and extra API call every round
+If you need to listen to queues *created after* the worker starts running, 
+use the `--always-resolve` option. This costs an extra API call every round
 through the queues.
 
-## Usage
+
+
+## AWS Authentication
+
+You must provide one of:
+
+  1) On AWS instances, the instance may have an IAM role that allows
+     the appropriate SQS calls. No further configuration necessary.
+  2) A credentials file (~/.aws/credentials) containing a [default]
+     section with appropriate keys.
+  3) Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment
+     variables
+
+
+## Command Line Usage
 
     Usage: qdone [options] [command]
 
@@ -188,22 +199,8 @@ through the queues.
                             queue name [_failed]
     --region <region>       AWS region for Queues
 
-  AWS SQS Authentication:
 
-    You must provide one of:
-    1) On AWS instances: an IAM role that allows the appropriate SQS calls
-    2) A credentials file (~/.aws/credentials) containing a [default]
-       section with appropriate keys
-    3) Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment
-       variables
-
-  Examples:
-
-    $ qdone enqueue process-image "/usr/bin/php /var/myapp/process-image.php http://imgur.com/some-cool-cat.jpg"
-    $ qdone worker process-image
-
-
-## Worker usage
+## Worker Usage
 
     Usage: worker [options] <queue...>
 
@@ -213,17 +210,18 @@ through the queues.
 
     -h, --help                  output usage information
     -k, --kill-after <seconds>  Kill job after this many seconds [30]
-    -w, --wait-time <seconds>   Listen this long on each queue before moving to next [10]
-    --always-resolve            Always resolve queue names that end in '*'. This can result
-                                in more SQS calls, but allows you to listen to queues that
-                                do not exist yet.
+    -w, --wait-time <seconds>   Listen this long on each queue before moving
+                                to next [10]
+    --always-resolve            Always resolve queue names that end in '*'.
+                                This can result in more SQS calls, but allows
+                                you to listen to queues that do not exist yet.
     --include-failed            When using '*' do not ignore fail queues.
 
   Details:
 
-    If a queue name ends with the * (wildcard) character, worker will listen on all
-    queues that match the name up-to the wildcard. Place arguments like this inside
-    quotes to keep the shell from globbing local files.
+    If a queue name ends with the * (wildcard) character, worker will listen
+    on all queues that match the name up-to the wildcard. Place arguments
+    like this inside quotes to keep the shell from globbing local files.
 
   Examples:
 
@@ -231,4 +229,3 @@ through the queues.
     $ qdone worker one two three      # listen on multiple queues
     $ qdone worker "process-images-*" # listen to both process-images-png and
                                       # process-images-jpeg if those queues exist
-
