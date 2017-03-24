@@ -13,6 +13,7 @@
   "devDependencies": {
     "aws-sdk-mock": "^1.6.1",
     "chai": "^3.5.0",
+    "coveralls": "^2.12.0",
     "mocha": "^3.2.0",
     "nyc": "^10.1.2",
     "sinon": "^2.1.0",
@@ -25,7 +26,8 @@
     "linux"
   ],
   "scripts": {
-    "test": "standard && nyc mocha"
+    "test": "standard && nyc mocha",
+    "coverage": "nyc report --reporter=text-lcov | coveralls"
   },
   "author": "Ryan Witt",
   "license": "MIT",
