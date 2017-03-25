@@ -100,6 +100,7 @@ var requestCount = 0
 // Returns number of messages flushed.
 //
 function flushMessages (qrl) {
+  debug('flushMessages', qrl)
   // Flush until empty
   var numFlushed = 0
   var batchMax = 10
@@ -148,8 +149,9 @@ function flushMessages (qrl) {
 // Automaticaly flushes if queue has >= 10 messages.
 // Returns number of messages flushed.
 //
-function addMessage (qrl, command, index) {
-  const message = formatMessage(command, index)
+var messageIndex = 0
+function addMessage (qrl, command) {
+  const message = formatMessage(command, messageIndex++)
   messages[qrl] = messages[qrl] || []
   messages[qrl].push(message)
   if (messages[qrl].length > 10) {
@@ -204,25 +206,43 @@ exports.enqueue = function enqueue (queue, command, options, globalOptions) {
 
 exports.enqueueBatch = function enqueueBatch (pairs, options, globalOptions) {
   debug('enqueueBatch(', pairs, ')')
+
+  function unpackPair (pair) {
+    const queue = pair.queue
+    const command = pair.command
+    const qname = globalOptions.prefix + queue
+    const fqueue = queue + globalOptions.failSuffix
+    const fqname = globalOptions.prefix + fqueue
+    return { queue, qname, fqueue, fqname, command }
+  }
+
+  // Prefetch unique qrls in parallel (creating as needed)
+  const qrls = {}
   return Q.all(
-    // Add every individual command, flushing as we go
-    pairs.map((pair, index) => {
-      const queue = pair.queue
-      const command = pair.command
-      const qname = globalOptions.prefix + queue
-      const fqueue = queue + globalOptions.failSuffix
-      const fqname = globalOptions.prefix + fqueue
-      // Now that we have the queue, send our message
-      return getQrl(queue, qname, fqueue, fqname)
-        .then(qrl => addMessage(qrl, command, index))
+    pairs
+      .filter(pair => qrls[pair.queue] ? false : (qrls[pair.queue] = true)) // filter duplicates
+      .map(unpackPair)
+      .map(u => getQrl(u.queue, u.qname, u.fqueue, u.fqname))
+  ).then(function () {
+    // After we've prefetched, all qrls are in cache
+    // so go back through the list of pairs and fire off messages
+    return Q.all(
+      // Add every individual command, flushing as we go
+      pairs
+        .map(unpackPair)
+        .map(u =>
+          getQrl(u.queue, u.qname, u.fqueue, u.fqname)
+            .then(qrl => addMessage(qrl, u.command))
+        )
+    ).then(function (flushCounts) {
+      // Count up how many were flushed during add
+      debug('flushCounts', flushCounts)
+      const totalFlushed = flushCounts.reduce((a, b) => a + b, 0)
+      // And flush any remaining messages
+      return Q
+        .all(Object.keys(messages).map(flushMessages)) // messages is the global flush buffer
+        .then(flushCounts => flushCounts.reduce((a, b) => a + b, totalFlushed))
     })
-  ).then(function (numsFlushed) {
-    debug('numsFlushed', numsFlushed)
-    const numFlushed = numsFlushed.reduce((a, b) => a + b, 0)
-    // Flush any remaining messages at the end
-    return Q
-      .all(Object.keys(messages).map(qrl => flushMessages(qrl)))
-      .then(numsFlushed => numsFlushed.reduce((a, b) => a + b, numFlushed))
   })
 }
 

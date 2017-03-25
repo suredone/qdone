@@ -65,8 +65,8 @@ function executeJob (job, qname, qrl, killAfter) {
       debug('childProcess.exec.then')
       clearTimeout(timeoutExtender)
       console.error(chalk.green('  SUCCESS'))
-      stdout && console.error(chalk.blue('  stdout: ') + stdout)
-      stderr && console.error(chalk.blue('  stderr: ') + stderr)
+      if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
+      if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
       console.error(chalk.blue('  cleaning up (removing job) ...'))
       return sqs
         .deleteMessage({
@@ -83,10 +83,10 @@ function executeJob (job, qname, qrl, killAfter) {
       debug('childProcess.exec.fail')
       clearTimeout(timeoutExtender)
       console.error(chalk.red('  FAILED'))
-      err.code && console.error(chalk.blue('  code  : ') + err.code)
-      err.signal && console.error(chalk.blue('  signal: ') + err.signal)
-      stdout && console.error(chalk.blue('  stdout: ') + stdout)
-      stderr && console.error(chalk.blue('  stderr: ') + stderr)
+      if (err.code) console.error(chalk.blue('  code  : ') + err.code)
+      if (err.signal) console.error(chalk.blue('  signal: ') + err.signal)
+      if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
+      if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
       console.error(chalk.blue('  error : ') + err)
     })
 }

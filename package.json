@@ -39,10 +39,11 @@
     "sqs",
     "job",
     "queue",
+    "cli",
+    "command line",
+    "aws",
     "producer",
     "consumer",
-    "cli",
-    "aws",
     "amazon"
   ],
   "bugs": {

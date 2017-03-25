@@ -49,15 +49,16 @@ program
 
 program
   .command('enqueue-batch [file]')
-  .description('Read a list of (queue, command) pairs, one per line, from [file...] or - for stdin.')
+  .description('Read a list of (queue, command) pairs, one per line, from [file...] or stdin.')
   .action((file, options) => {
     configureAWS(program)
     const enqueue = require('./enqueue')
     const pairs = []
 
     // Construct (queue, command) pairs from input
+    debug('file', file)
     const input = readline.createInterface({
-      input: file ? process.stdin : fs.createReadStream(file)
+      input: (file && file !== '-') ? fs.createReadStream(file) : process.stdin
     })
 
     input.on('line', line => {

@@ -53,7 +53,7 @@ Notice that qdone also created a failed queue. More on that later.
 
 Put a queue name and command on each line of stdin or a file:
   
-    $ qdone enqueue-batch -  # use stdin
+    $ qdone enqueue-batch      # no file or '-' == use stdin
     queue_0 echo hi
     queue_1 echo hi
     queue_2 echo hi
