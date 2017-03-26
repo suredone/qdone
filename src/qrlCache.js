@@ -4,8 +4,7 @@ const debug = require('debug')('qdone:qrlCache')
 const chalk = require('chalk')
 const url = require('url')
 const path = require('path')
-const SQS = require('aws-sdk/clients/sqs')
-const sqs = new SQS()
+const AWS = require('aws-sdk')
 
 const qcache = {}
 
@@ -14,10 +13,20 @@ function _get (qname) {
 }
 
 //
+// Clear cache
+//
+exports.clear = function clear () {
+  Object.keys(qcache).forEach(function (key) {
+    delete qcache[key]
+  })
+}
+
+//
 // Get QRL (Queue URL)
 // Returns a promise for the queue name
 //
 exports.get = function get (qname) {
+  const sqs = new AWS.SQS()
   if (qcache.hasOwnProperty(qname)) return Q.fcall(_get, qname)
   return sqs
     .getQueueUrl({QueueName: qname})
@@ -59,6 +68,7 @@ function ingestQRLs (qrls) {
 // Resolves into a flattened aray of {qname: ..., qrl: ...} objects.
 //
 exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, prefix) {
+  const sqs = new AWS.SQS()
   return Q.all(qnames.map(function (qname) {
     return qname.slice(-1) === '*'  // wildcard queues support
       ? sqs

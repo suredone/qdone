@@ -121,11 +121,11 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
 //
 // Resolve queues for listening loop listen
 //
-exports.listen = function listen (queues, options, globalOptions) {
+exports.listen = function listen (queues, options) {
   console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(function (queue) { return globalOptions.prefix + queue })
+  const qnames = queues.map(function (queue) { return options.prefix + queue })
   return qrlCache
-    .getQnameUrlPairs(qnames, globalOptions.prefix)
+    .getQnameUrlPairs(qnames, options.prefix)
     .then(function (entries) {
       debug('qrlCache.getQnameUrlPairs.then')
       console.error(chalk.blue('  done'))
@@ -134,7 +134,7 @@ exports.listen = function listen (queues, options, globalOptions) {
       // Don't listen to fail queues... unless user wants to
       entries = entries
         .filter(function (entry) {
-          const suf = globalOptions.failSuffix
+          const suf = options['fail-suffix']
           return options.includeFailed ? true : entry.qname.slice(-suf.length) !== suf
         })
 
@@ -147,7 +147,7 @@ exports.listen = function listen (queues, options, globalOptions) {
             debug('soFar', soFar)
             console.error(
               chalk.blue('Looking for work on ') +
-              entry.qname.slice(globalOptions.prefix.length) +
+              entry.qname.slice(options.prefix.length) +
               chalk.blue(' (' + entry.qrl + ')')
             )
             return pollForJobs(entry.qname, entry.qrl, options.waitTime, options.killAfter)
@@ -162,7 +162,7 @@ exports.listen = function listen (queues, options, globalOptions) {
       if (entries.length) {
         console.error(chalk.blue('Listening to queues (in this order):'))
         console.error(entries.map(function (e) {
-          return '  ' + e.qname.slice(globalOptions.prefix.length) + chalk.blue(' - ' + e.qrl)
+          return '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)
         }).join('\n'))
         console.error()
         return workLoop()

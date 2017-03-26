@@ -1,13 +1,12 @@
+[![NPM Package](https://img.shields.io/npm/v/qdone.svg)](https://www.npmjs.com/package/qdone)
+[![Build Status](https://travis-ci.org/suredone/qdone.svg?branch=master)](https://travis-ci.org/suredone/qdone)
+[![Coverage Status](https://coveralls.io/repos/github/suredone/qdone/badge.svg)](https://coveralls.io/github/suredone/qdone)
+[![Dependencies](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
+[![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
+
 # qdone
 
 Command line job queue for SQS
-
-[![NPM Package](https://img.shields.io/npm/v/qdone.svg)](https://www.npmjs.com/package/qdone)
-[![Build Status](https://travis-ci.org/suredone/qdone.svg?branch=master)](https://travis-ci.org/suredone/qdone)
-[![Dependencies](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
-[![Coverage Status](https://coveralls.io/repos/github/suredone/qdone/badge.svg)](https://coveralls.io/github/suredone/qdone)
-[![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
-
 
 ## Features
 
@@ -24,7 +23,7 @@ qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in p
 
 ## Examples
 
-### Enqueue a job and run it
+Enqueue a job and run it:
 
     $ qdone enqueue myQueue "echo hello world"
     Enqueued job 030252de-8a3c-42c6-9278-c5a268660384
@@ -38,7 +37,7 @@ qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in p
       stdout: hello world
 
 
-### Queues are automatically created when you use them
+Queues are automatically created when you use them:
 
     $ qdone enqueue myNewQueue "echo nice to meet you"
     Creating fail queue myNewQueue_failed
@@ -49,11 +48,10 @@ qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in p
 Notice that qdone also created a failed queue. More on that later.
 
 
-### Enqueue many jobs at once
-
-Put a queue name and command on each line of stdin or a file:
+To queue many jobs at once, put a queue name and command on each line of
+stdin or a file:
   
-    $ qdone enqueue-batch      # no file or '-' == use stdin
+    $ qdone enqueue-batch      # use stdin
     queue_0 echo hi
     queue_1 echo hi
     queue_2 echo hi
@@ -79,7 +77,7 @@ Put a queue name and command on each line of stdin or a file:
 
 If you are using the same queue, requests to SQS will be batched:
 
-    $ qdone enqueue-batch -
+    $ qdone enqueue-batch -    # use stdin (using filename '-')
     queue_one echo hi
     queue_one echo hi
     queue_one echo hi
@@ -88,6 +86,7 @@ If you are using the same queue, requests to SQS will be batched:
     queue_two echo hi
     queue_two echo hi
     queue_two echo hi
+    ^D
     Enqueued job fb2fa6d1... request 1   # one
     Enqueued job 85bfbe92... request 1   # request
     Enqueued job cea6d180... request 1   # for queue_one
@@ -118,9 +117,8 @@ A command fails if it finishes with a non-zero exit code:
 The failed command will be placed on the failed queue.
 
 
-### Retrying failed jobs
-
-Wait 30 seconds, then listen to the corresponding failed queue:
+To retry failed jobs, wait 30 seconds, then listen to the corresponding
+failed queue:
 
     $ qdone worker myQueue_failed --include-failed
     ...
