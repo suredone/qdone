@@ -3,12 +3,12 @@ const Q = require('q')
 const debug = require('debug')('qdone:enqueue')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
-const SQS = require('aws-sdk/clients/sqs')
-const sqs = new SQS()
+const AWS = require('aws-sdk')
 
 function createFailQueue (fqueue, fqname) {
   debug('createFailQueue(', fqueue, fqname, ')')
   console.error(chalk.blue('Creating fail queue ') + fqueue)
+  const sqs = new AWS.SQS()
   return sqs
     .createQueue({/* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
       QueueName: fqname
@@ -23,6 +23,7 @@ function createFailQueue (fqueue, fqname) {
 function createQueue (queue, qname, deadLetterTargetArn) {
   debug('createQueue(', queue, qname, ')')
   console.error(chalk.blue('Creating queue ') + queue)
+  const sqs = new AWS.SQS()
   return sqs
     .createQueue({
       Attributes: {
@@ -41,6 +42,7 @@ function createQueue (queue, qname, deadLetterTargetArn) {
 function getQueueAttributes (qrl) {
   debug('getQueueAttributes(', qrl, ')')
   console.error(chalk.blue('Looking up attributes for ') + qrl)
+  const sqs = new AWS.SQS()
   return sqs
     .getQueueAttributes({
       AttributeNames: ['All'],
@@ -70,6 +72,7 @@ function formatMessage (command, id) {
 function sendMessage (qrl, command) {
   debug('sendMessage(', qrl, command, ')')
   const message = Object.assign({QueueUrl: qrl}, formatMessage(command))
+  const sqs = new AWS.SQS()
   return sqs
     .sendMessage(message)
     .promise()
@@ -82,6 +85,7 @@ function sendMessage (qrl, command) {
 function sendMessageBatch (qrl, messages) {
   debug('sendMessageBatch(', qrl, messages, ')')
   const params = { Entries: messages, QueueUrl: qrl }
+  const sqs = new AWS.SQS()
   return sqs
     .sendMessageBatch(params)
     .promise()
@@ -192,27 +196,35 @@ function getQrl (queue, qname, fqueue, fqname) {
   return qrl
 }
 
-exports.enqueue = function enqueue (queue, command, options, globalOptions) {
+//
+// Enqueue a single command
+// Returns a promise for the SQS API response.
+//
+exports.enqueue = function enqueue (queue, command, options) {
   debug('enqueue(', queue, command, ')')
 
-  const qname = globalOptions.prefix + queue
-  const fqueue = queue + globalOptions.failSuffix
-  const fqname = globalOptions.prefix + fqueue
+  const qname = options.prefix + queue
+  const fqueue = queue + options['fail-suffix']
+  const fqname = options.prefix + fqueue
 
   // Now that we have the queue, send our message
   return getQrl(queue, qname, fqueue, fqname)
     .then(qrl => sendMessage(qrl, command))
 }
 
-exports.enqueueBatch = function enqueueBatch (pairs, options, globalOptions) {
+//
+// Enqueue many commands formatted as an array of {queue: ..., command: ...} pairs.
+// Returns a promise for the total number of messages enqueued.
+//
+exports.enqueueBatch = function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
 
   function unpackPair (pair) {
     const queue = pair.queue
     const command = pair.command
-    const qname = globalOptions.prefix + queue
-    const fqueue = queue + globalOptions.failSuffix
-    const fqname = globalOptions.prefix + fqueue
+    const qname = options.prefix + queue
+    const fqueue = queue + options['fail-suffix']
+    const fqname = options.prefix + fqueue
     return { queue, qname, fqueue, fqname, command }
   }
 

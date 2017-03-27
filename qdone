@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require('./src/cli.js').run(process.argv)
+require('./src/cli.js').run(process.argv.slice(2)).catch(_ => process.exit(1))
