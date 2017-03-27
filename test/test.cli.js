@@ -6,6 +6,7 @@ const packageJson = require('../package.json')
 const sinon = require('sinon')
 const chalk = require('chalk')
 const AWS = require('aws-sdk-mock')
+// const mockStdin = require('mock-stdin')
 
 const expect = chai.expect
 chai.should()
@@ -26,7 +27,7 @@ afterEach(function () {
 })
 
 function cliTest (command, success, failure) {
-  const cli = require('../src/cli2')
+  const cli = require('../src/cli')
   const qrlCache = require('../src/qrlCache')
   function sandboxRestore (value) {
     sandbox.restore()
@@ -202,6 +203,124 @@ describe('cli', function () {
         expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
       }))
   })
+
+  // Enqueue batch
+  describe('qdone enqueue-batch', function () {
+    it('should print usage and exit 1 with error',
+      cliTest(['enqueue-batch'], null, function (err, stdout, stderr) {
+        expect(stdout).to.contain('usage: ')
+        expect(stderr).to.contain('<file>')
+        expect(err).to.be.an('error')
+      }))
+  })
+
+  describe('qdone enqueue-batch --help', function () {
+    it('should print usage and exit 0',
+      cliTest(['enqueue-batch', '--help'], function (result, stdout, stderr) {
+        expect(stdout).to.contain('usage: ')
+        expect(stdout).to.contain('enqueue-batch')
+      }))
+  })
+
+  describe('qdone enqueue-batch some_non_existant_file', function () {
+    it('should exit 1 with error',
+      cliTest(['enqueue-batch', 'some_non_existant_file'], null, function (err, stdout, stderr) {
+        expect(stderr).to.contain('no such file or directory')
+        expect(err).to.be.an('error')
+      }))
+  })
+
+/*
+  describe('qdone enqueue-batch - # (with no credentials)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
+        err.code = 'AccessDenied'
+        callback(err)
+      })
+    })
+    it('should print usage and exit 1 with error',
+      cliTest(['enqueue-batch', '-'], null, function (err, stdout, stderr) {
+        expect(stdout).to.contain('You must provide')
+        expect(stderr).to.contain('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
+        expect(err).to.be.an('error')
+      }))
+  })
+
+  describe('qdone enqueue testQueue true # (queue exists)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        if (params.QueueName === 'qdone_testQueue') {
+          callback(null, {QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue'})
+        } else if (params.QueueName === 'qdone_testQueue_failed') {
+          callback(null, {QueueUrl: 'https://q.amazonaws.com/123456789102/qdone_testQueue_failed'})
+        }
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should print id of enqueued message and exit 0',
+      cliTest(['enqueue', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+      }))
+  })
+
+  describe('qdone enqueue testQueue true # (queue does not exist)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+        callback(err)
+      })
+      AWS.mock('SQS', 'createQueue', function (params, callback) {
+        if (params.QueueName === 'qdone_testQueue') {
+          callback(null, {QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue'})
+        } else if (params.QueueName === 'qdone_testQueue_failed') {
+          callback(null, {QueueUrl: 'https://q.amazonaws.com/123456789102/qdone_testQueue_failed'})
+        }
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        if (params.QueueUrl === 'https://q.amazonaws.com/123456789102/qdone_testQueue_failed') {
+          callback(null, {
+            Attributes: {
+              ApproximateNumberOfMessages: '0',
+              ApproximateNumberOfMessagesDelayed: '0',
+              ApproximateNumberOfMessagesNotVisible: '0',
+              CreatedTimestamp: '1442426968',
+              DelaySeconds: '0',
+              LastModifiedTimestamp: '1442426968',
+              MaximumMessageSize: '262144',
+              MessageRetentionPeriod: '345600',
+              QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+              ReceiveMessageWaitTimeSeconds: '0',
+              RedrivePolicy: '{\'deadLetterTargetArn\':\'arn:aws:sqs:us-east-1:80398EXAMPLE:qdone_testQueue_failed\',\'maxReceiveCount\':1000}',
+              VisibilityTimeout: '30'
+            }
+          })
+        }
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should create queues, print the id of enqueued message and exit 0',
+      cliTest(['enqueue', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Creating fail queue testQueue_failed')
+        expect(stderr).to.contain('Looking up attributes for https://q.amazonaws.com/123456789102/qdone_testQueue_failed')
+        expect(stderr).to.contain('Creating queue testQueue')
+        expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+      }))
+  })
+*/
 })
 
 /*
