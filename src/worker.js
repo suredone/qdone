@@ -137,7 +137,7 @@ exports.listen = function listen (queues, options) {
       entries = entries
         .filter(function (entry) {
           const suf = options['fail-suffix']
-          return options.includeFailed ? true : entry.qname.slice(-suf.length) !== suf
+          return options['include-failed'] ? true : entry.qname.slice(-suf.length) !== suf
         })
 
       // Listen sequentially
