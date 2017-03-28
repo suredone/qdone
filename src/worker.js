@@ -9,7 +9,7 @@ const AWS = require('aws-sdk')
 //
 // Actually run the subprocess job
 //
-function executeJob (job, qname, qrl, killAfter) {
+function executeJob (job, qname, qrl, options) {
   debug('executeJob')
   const cmd = 'nice ' + job.Body
   console.error(chalk.blue('  Executing job command:'), cmd)
@@ -23,7 +23,7 @@ function executeJob (job, qname, qrl, killAfter) {
     const maxJobRun = 12 * 60 * 60
     const jobRunTime = ((new Date()) - jobStart) / 1000
     // Double every time, up to max
-    visibilityTimeout = Math.min(visibilityTimeout * 2, maxJobRun - jobRunTime, killAfter - jobRunTime)
+    visibilityTimeout = Math.min(visibilityTimeout * 2, maxJobRun - jobRunTime, options['kill-after'] - jobRunTime)
     console.error(
       chalk.blue('  Ran for ') + jobRunTime +
       chalk.blue(' seconds, requesting another ') + visibilityTimeout +
@@ -41,7 +41,7 @@ function executeJob (job, qname, qrl, killAfter) {
         debug('changeMessageVisibility.then returned', result)
         if (
           jobRunTime + visibilityTimeout >= maxJobRun ||
-          jobRunTime + visibilityTimeout >= killAfter
+          jobRunTime + visibilityTimeout >= options['kill-after']
         ) {
           console.error(chalk.yellow('  warning: this is our last time extension'))
         } else {
@@ -60,7 +60,7 @@ function executeJob (job, qname, qrl, killAfter) {
   timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
 
   return Q
-    .nfcall(childProcess.exec, cmd, {timeout: killAfter * 1000})
+    .nfcall(childProcess.exec, cmd, {timeout: options['kill-after'] * 1000})
     .then(function (stdout, stderr) {
       debug('childProcess.exec.then')
       clearTimeout(timeoutExtender)
@@ -95,7 +95,7 @@ function executeJob (job, qname, qrl, killAfter) {
 //
 // Pull work off of a single queue
 //
-function pollForJobs (qname, qrl, waitTime, killAfter) {
+function pollForJobs (qname, qrl, options) {
   debug('pollForJobs')
   const params = {
     AttributeNames: ['All'],
@@ -103,7 +103,7 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
     MessageAttributeNames: ['All'],
     QueueUrl: qrl,
     VisibilityTimeout: 30,
-    WaitTimeSeconds: waitTime
+    WaitTimeSeconds: options['wait-time']
   }
   const sqs = new AWS.SQS()
   return sqs
@@ -115,7 +115,7 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
       if (response.Messages) {
         const job = response.Messages[0]
         console.error(chalk.blue('  Found job ' + job.MessageId))
-        return executeJob(job, qname, qrl, killAfter)
+        return executeJob(job, qname, qrl, options)
       }
     })
 }
@@ -152,12 +152,12 @@ exports.listen = function listen (queues, options) {
               entry.qname.slice(options.prefix.length) +
               chalk.blue(' (' + entry.qrl + ')')
             )
-            return pollForJobs(entry.qname, entry.qrl, options.waitTime, options.killAfter)
+            return pollForJobs(entry.qname, entry.qrl, options)
           })
         })
 
         // Do the work loop in here to NOT resolve queues every time
-        return result.then(result => (options.alwaysResolve || options.drain) ? result : workLoop())
+        return result.then(result => (options['always-resolve'] || options.drain) ? result : workLoop())
       }
 
       // But only if we have queues to listen on

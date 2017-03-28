@@ -202,7 +202,7 @@ exports.worker = function worker (argv, globalOptions) {
         debug('listen returned', result)
         jobCount += result
         // Doing the work loop out here forces queue resolution to happen every time
-        if (options.alwaysResolve && !options.drain) return workLoop()
+        if (options['always-resolve'] && !options.drain) return workLoop()
         console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs'))
         return Promise.resolve(jobCount)
       })

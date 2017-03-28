@@ -412,4 +412,15 @@ describe('cli', function () {
         expect(stderr).to.contain('SUCCESS')
       }))
   })
+
+  describe('qdone worker test --wait-time 15', function () {
+    it('should call worker listen loop with a wait time of 15', function () {
+      const cli = require('../src/cli')
+      const worker = require('../src/worker')
+      sandbox.stub(worker, 'listen', _ => Promise.resolve())
+      const result = cli.run(['worker', 'test', '--wait-time', '15'])
+      expect(worker.listen.calledWithMatch('testy', sinon.match.has('wait-time', 15)))
+      return result.then(_ => sandbox.restore())
+    })
+  })
 })
