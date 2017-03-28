@@ -168,6 +168,7 @@ function addMessage (qrl, command) {
 // Fetches (or returns cached) the qrl
 //
 function getQrl (queue, qname, fqueue, fqname) {
+  debug('getQrl', queue, qname, fqueue, fqname)
   // Normal queue
   const qrl = qrlCache
     .get(qname)
@@ -230,6 +231,7 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
 
   // Prefetch unique qrls in parallel (creating as needed)
   const qrls = {}
+  requestCount = 0
   return Q.all(
     pairs
       .filter(pair => qrls[pair.queue] ? false : (qrls[pair.queue] = true)) // filter duplicates

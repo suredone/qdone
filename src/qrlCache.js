@@ -26,6 +26,7 @@ exports.clear = function clear () {
 // Returns a promise for the queue name
 //
 exports.get = function get (qname) {
+  debug('get', qname, qcache)
   const sqs = new AWS.SQS()
   if (qcache.hasOwnProperty(qname)) return Q.fcall(_get, qname)
   return sqs

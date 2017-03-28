@@ -4,8 +4,7 @@ const childProcess = require('child_process')
 const debug = require('debug')('qdone:worker')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
-const SQS = require('aws-sdk/clients/sqs')
-const sqs = new SQS()
+const AWS = require('aws-sdk')
 
 //
 // Actually run the subprocess job
@@ -30,6 +29,7 @@ function executeJob (job, qname, qrl, killAfter) {
       chalk.blue(' seconds, requesting another ') + visibilityTimeout +
       chalk.blue(' seconds')
     )
+    const sqs = new AWS.SQS()
     sqs
       .changeMessageVisibility({
         QueueUrl: qrl,
@@ -68,6 +68,7 @@ function executeJob (job, qname, qrl, killAfter) {
       if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
       if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
       console.error(chalk.blue('  cleaning up (removing job) ...'))
+      const sqs = new AWS.SQS()
       return sqs
         .deleteMessage({
           QueueUrl: qrl,
@@ -104,6 +105,7 @@ function pollForJobs (qname, qrl, waitTime, killAfter) {
     VisibilityTimeout: 30,
     WaitTimeSeconds: waitTime
   }
+  const sqs = new AWS.SQS()
   return sqs
     // .receiveMessage(params, function (err, response) { if (err) throw err })
     .receiveMessage(params)
