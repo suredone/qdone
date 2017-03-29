@@ -148,7 +148,7 @@ It failed again. It will go back on the failed queue.
 It's nice sometimes to listen to a set of queues matching a prefix:
 
 ```bash
-$ qdone worker test*
+$ qdone worker 'test*'  # use single quotes to keep shell from globbing
 ...
 Listening to queues (in this order):
   test - https://sqs.us-east-1.../qdone_test
@@ -182,11 +182,11 @@ through the queues.
 
 | Context | Calls | Details |
 | -- | -- | -- |
-| `qdone enqueue` |  2 [+3] | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
-| `qdone enqueue-batch` |  **q** + ceil(**c**/10) + 3**n** | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
-| `qdone worker` (while listening) |  <nobr>1 + (1&nbsp;per&nbsp;**w**)</nobr> | **w**: `--wait-time` in seconds |
+| `qdone enqueue` |  2&nbsp;[+3] | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
+| `qdone enqueue-batch` |  **q**&nbsp;+&nbsp;ceil(**c**/10)&nbsp;+&nbsp;3**n** | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
+| `qdone worker` (while listening) |  <nobr>1&nbsp;+&nbsp;(1&nbsp;per&nbsp;**w**)</nobr> | **w**: `--wait-time` in seconds |
 | `qdone worker --always-resolve` (while listening) |  <nobr>(1&nbsp;per&nbsp;**w**) + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
-| `qdone worker` (while job running) |  <nobr>log(**t**/30) + 1</nobr> | **t**: total job run time in seconds |
+| `qdone worker` (while job running) |  <nobr>log(**t**/30)&nbsp;+&nbsp;1</nobr> | **t**: total job run time in seconds |
 
 ## AWS Authentication
 
