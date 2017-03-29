@@ -41,7 +41,7 @@ function setupAWS (options) {
 exports.enqueue = function enqueue (argv) {
   const optionDefinitions = [].concat(globalOptionDefinitions)
   const usageSections = [
-    { content: 'usage: qdone [options] enqueue <queue> <command>', raw: true },
+    { content: 'usage: qdone enqueue [options] <queue> <command>', raw: true },
     { content: 'Options', raw: true },
     { optionList: optionDefinitions },
     { content: 'SQS API Call Complexity', raw: true, long: true },
@@ -85,7 +85,7 @@ exports.enqueue = function enqueue (argv) {
 exports.enqueueBatch = function enqueueBatch (argv) {
   const optionDefinitions = [].concat(globalOptionDefinitions)
   const usageSections = [
-    { content: 'usage: qdone [options] enqueue-batch <file...>', raw: true },
+    { content: 'usage: qdone enqueue-batch [options] <file...>', raw: true },
     { content: '<file...> can be one ore more filenames or - for stdin' },
     { content: 'Options', raw: true },
     { optionList: optionDefinitions },
@@ -158,7 +158,7 @@ exports.worker = function worker (argv, globalOptions) {
   ].concat(globalOptionDefinitions)
 
   const usageSections = [
-    { content: 'usage: qdone [options] worker <queue...>', raw: true },
+    { content: 'usage: qdone worker [options] <queue...>', raw: true },
     { content: '<queue...> one or more queue names to listen on for jobs' },
     { content: 'If a queue name ends with the * (wildcard) character, worker will listen on all queues that match the name up-to the wildcard. Place arguments like this inside quotes to keep the shell from globbing local files.' },
     { content: 'Options', raw: true },
@@ -214,7 +214,7 @@ exports.root = function root (originalArgv) {
   const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker' ]
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
-    { content: 'usage: qdone <options> <command>', raw: true },
+    { content: 'usage: qdone [options] <command>', raw: true },
     { content: 'Commands', raw: true },
     { content: [
         { name: 'enqueue', summary: 'Enqueue a single command' },
