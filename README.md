@@ -182,10 +182,10 @@ through the queues.
 
 | Context | Calls | Details |
 | -- | -- | -- |
-| `qdone enqueue` |  <nobr>2 [ + 3 ]</nobr> | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
-| `qdone enqueue-batch` |  <nobr>**q** + ceil(**c**/10) [ + 3**n** ]</nobr> | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
-| `qdone worker` (while listening) |  <nobr>1 + (1 per **w**)</nobr> | **w**: `--wait-time` in seconds |
-| `qdone worker --always-resolve` (while listening) |  <nobr>(1 per **w**) + (1 per **n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
+| `qdone enqueue` |  2 [+3] | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
+| `qdone enqueue-batch` |  **q** + ceil(**c**/10) + 3**n** | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
+| `qdone worker` (while listening) |  <nobr>1 + (1&nbsp;per&nbsp;**w**)</nobr> | **w**: `--wait-time` in seconds |
+| `qdone worker --always-resolve` (while listening) |  <nobr>(1&nbsp;per&nbsp;**w**) + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
 | `qdone worker` (while job running) |  <nobr>log(**t**/30) + 1</nobr> | **t**: total job run time in seconds |
 
 ## AWS Authentication
@@ -196,6 +196,35 @@ You must provide **ONE** of:
 - A credentials file (~/.aws/credentials) containing a [default] section with appropriate keys.
 - Both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as environment variables
 
+Example IAM policy allowing qdone to use queues with its prefix in any region:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "sqs:GetQueueAttributes",
+                "sqs:GetQueueUrl",
+                "sqs:SendMessage",
+                "sqs:SendMessageBatch",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:CreateQueue"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:sqs:*:YOUR_ACCOUNT_ID:qdone_*"
+        },
+        {
+            "Action": [
+                "sqs:ListQueues"
+            ],
+            "Effect": "Allow",
+            "Resource": "arn:aws:sqs:*:YOUR_ACCOUNT_ID"
+        }
+    ]
+}
+```
 
 ## Command Line Usage
 
