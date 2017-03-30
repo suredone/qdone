@@ -25,10 +25,7 @@
   },
   "bin": "./qdone",
   "preferGlobal": true,
-  "os": [
-    "darwin",
-    "linux"
-  ],
+  "engines" : { "node" : ">=6" },
   "scripts": {
     "test": "standard && nyc mocha",
     "coverage": "nyc report --reporter=text-lcov | coveralls"
