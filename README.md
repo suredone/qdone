@@ -178,6 +178,30 @@ use the `--always-resolve` option. This costs an extra API call every round
 through the queues.
 
 
+### Long running jobs
+
+Workers prevent others from processing their job by automatically extending the
+default SQS visibility timeout (30 seconds) as long as the job is still
+running. You can see this when running a long job:
+
+```bash
+$ qdone enqueue test "sleep 35"
+Enqueued job d8e8927f-5e42-48ae-a1a8-b91e42700942
+
+$ qdone worker test --kill-after 300
+...
+  Found job d8e8927f-5e42-48ae-a1a8-b91e42700942
+  Executing job command: nice sleep 35
+  Ran for 15.009 seconds, requesting another 60 seconds
+  SUCCESS
+...
+```
+
+The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
+at the halfway point before the message becomes visible again. The tiemout
+doubles in length every subsequent call, but never exceeding `--kill-after`.
+
+
 ## SQS API Call Complexity
 
 | Context | Calls | Details |
