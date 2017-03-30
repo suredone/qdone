@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
@@ -25,7 +25,9 @@
   },
   "bin": "./qdone",
   "preferGlobal": true,
-  "engines" : { "node" : ">=6" },
+  "engines": {
+    "node": ">=6"
+  },
   "scripts": {
     "test": "standard && nyc mocha",
     "coverage": "nyc report --reporter=text-lcov | coveralls"
