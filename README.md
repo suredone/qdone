@@ -234,7 +234,8 @@ Example IAM policy allowing qdone to use queues with its prefix in any region:
                 "sqs:SendMessageBatch",
                 "sqs:ReceiveMessage",
                 "sqs:DeleteMessage",
-                "sqs:CreateQueue"
+                "sqs:CreateQueue",
+                "sqs:ChangeMessageVisibility"
             ],
             "Effect": "Allow",
             "Resource": "arn:aws:sqs:*:YOUR_ACCOUNT_ID:qdone_*"
