@@ -188,7 +188,6 @@ describe('cli', function () {
     it('should create queues, print the id of enqueued message and exit 0',
       cliTest(['enqueue', 'testQueue', 'true'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Creating fail queue testQueue_failed')
-        expect(stderr).to.contain('Looking up attributes for https://q.amazonaws.com/123456789101/qdone_testQueue_failed')
         expect(stderr).to.contain('Creating queue testQueue')
         expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
       }))
@@ -308,7 +307,6 @@ describe('cli', function () {
     it('should create queues, print ids of enqueued messages, use 3 requests, print total count and exit 0',
       cliTest(['enqueue-batch', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Creating fail queue test_failed')
-        expect(stderr).to.contain('Looking up attributes for https://q.amazonaws.com/123456789101/qdone_test_failed')
         expect(stderr).to.contain('Creating queue test')
         for (var messageId = 0; messageId < 24; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
