@@ -50,6 +50,14 @@ exports.set = function set (qname, qrl) {
 }
 
 //
+// Invalidate cache for given qname
+//
+exports.invalidate = function invalidate (qname) {
+  debug('qcache', Object.keys(qcache), 'delete', qname, ' (was ', qcache[qname], ')')
+  delete qcache[qname]
+}
+
+//
 // Ingets multiple QRLs
 // Extracts queue names from an array of QRLs and immediately updates the cache.
 //
@@ -68,7 +76,7 @@ function ingestQRLs (qrls) {
 //
 // Resolves into a flattened aray of {qname: ..., qrl: ...} objects.
 //
-exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, prefix) {
+exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
   const sqs = new AWS.SQS()
   return Q.all(qnames.map(function (qname) {
     return qname.slice(-1) === '*'  // wildcard queues support
@@ -87,7 +95,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, prefix) {
         })
         .fail(function (err) {
           debug('qrlCache.get failed', err)
-          console.error('  ' + chalk.red(qname.slice(prefix.length) + ' - ' + err))
+          if (!options.quiet) console.error('  ' + chalk.red(qname.slice(options.prefix.length) + ' - ' + err))
         })
   }))
   .then(function (results) {

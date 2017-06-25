@@ -7,7 +7,6 @@ const AWS = require('aws-sdk')
 
 function createFailQueue (fqueue, fqname) {
   debug('createFailQueue(', fqueue, fqname, ')')
-  console.error(chalk.blue('Creating fail queue ') + fqueue)
   const sqs = new AWS.SQS()
   return sqs
     .createQueue({/* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
@@ -22,7 +21,6 @@ function createFailQueue (fqueue, fqname) {
 
 function createQueue (queue, qname, deadLetterTargetArn) {
   debug('createQueue(', queue, qname, ')')
-  console.error(chalk.blue('Creating queue ') + queue)
   const sqs = new AWS.SQS()
   return sqs
     .createQueue({
@@ -41,7 +39,6 @@ function createQueue (queue, qname, deadLetterTargetArn) {
 
 function getQueueAttributes (qrl) {
   debug('getQueueAttributes(', qrl, ')')
-  console.error(chalk.blue('Looking up attributes for ') + qrl)
   const sqs = new AWS.SQS()
   return sqs
     .getQueueAttributes({
@@ -103,7 +100,7 @@ var requestCount = 0
 // If the message is too large, batch is retried with half the messages.
 // Returns number of messages flushed.
 //
-function flushMessages (qrl) {
+function flushMessages (qrl, options) {
   debug('flushMessages', qrl)
   // Flush until empty
   var numFlushed = 0
@@ -137,7 +134,7 @@ function flushMessages (qrl) {
         if (batch.length) {
           requestCount += 1
           data.Successful.forEach(message => {
-            console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
+            if (!options.quiet) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
           })
           numFlushed += batch.length
           batchMax = 10
@@ -154,12 +151,12 @@ function flushMessages (qrl) {
 // Returns number of messages flushed.
 //
 var messageIndex = 0
-function addMessage (qrl, command) {
+function addMessage (qrl, command, options) {
   const message = formatMessage(command, messageIndex++)
   messages[qrl] = messages[qrl] || []
   messages[qrl].push(message)
   if (messages[qrl].length > 10) {
-    return flushMessages(qrl)
+    return flushMessages(qrl, options)
   }
   return 0
 }
@@ -167,7 +164,7 @@ function addMessage (qrl, command) {
 //
 // Fetches (or returns cached) the qrl
 //
-function getQrl (queue, qname, fqueue, fqname) {
+function getQrl (queue, qname, fqueue, fqname, options) {
   debug('getQrl', queue, qname, fqueue, fqname)
   // Normal queue
   const qrl = qrlCache
@@ -181,6 +178,7 @@ function getQrl (queue, qname, fqueue, fqname) {
           .catch(function (err) {
             // Create fail queue if it doesn't exist
             if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
+              if (!options.quiet) console.error(chalk.blue('Creating fail queue ') + fqueue)
               return createFailQueue(fqueue, fqname)
             }
             throw err // throw unhandled errors
@@ -189,7 +187,10 @@ function getQrl (queue, qname, fqueue, fqname) {
         // Need to grab fail queue's ARN to create our queue
         return fqrl
           .then(getQueueAttributes)
-          .then(data => createQueue(queue, qname, data.Attributes.QueueArn))
+          .then(data => {
+            if (!options.quiet) console.error(chalk.blue('Creating queue ') + queue)
+            return createQueue(queue, qname, data.Attributes.QueueArn)
+          })
       }
       throw err // throw unhandled errors
     })
@@ -209,7 +210,7 @@ exports.enqueue = function enqueue (queue, command, options) {
   const fqname = options.prefix + fqueue
 
   // Now that we have the queue, send our message
-  return getQrl(queue, qname, fqueue, fqname)
+  return getQrl(queue, qname, fqueue, fqname, options)
     .then(qrl => sendMessage(qrl, command))
 }
 
@@ -236,7 +237,7 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
     pairs
       .filter(pair => qrls[pair.queue] ? false : (qrls[pair.queue] = true)) // filter duplicates
       .map(unpackPair)
-      .map(u => getQrl(u.queue, u.qname, u.fqueue, u.fqname))
+      .map(u => getQrl(u.queue, u.qname, u.fqueue, u.fqname, options))
   ).then(function () {
     // After we've prefetched, all qrls are in cache
     // so go back through the list of pairs and fire off messages
@@ -245,8 +246,8 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
       pairs
         .map(unpackPair)
         .map(u =>
-          getQrl(u.queue, u.qname, u.fqueue, u.fqname)
-            .then(qrl => addMessage(qrl, u.command))
+          getQrl(u.queue, u.qname, u.fqueue, u.fqname, options)
+            .then(qrl => addMessage(qrl, u.command, options))
         )
     ).then(function (flushCounts) {
       // Count up how many were flushed during add
@@ -254,7 +255,7 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
       const totalFlushed = flushCounts.reduce((a, b) => a + b, 0)
       // And flush any remaining messages
       return Q
-        .all(Object.keys(messages).map(flushMessages)) // messages is the global flush buffer
+        .all(Object.keys(messages).map(key => flushMessages(key, options))) // messages is the global flush buffer
         .then(flushCounts => flushCounts.reduce((a, b) => a + b, totalFlushed))
     })
   })

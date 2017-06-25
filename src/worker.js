@@ -10,9 +10,9 @@ const AWS = require('aws-sdk')
 // Actually run the subprocess job
 //
 function executeJob (job, qname, qrl, options) {
-  debug('executeJob')
+  debug('executeJob', job)
   const cmd = 'nice ' + job.Body
-  console.error(chalk.blue('  Executing job command:'), cmd)
+  if (!options.quiet) console.error(chalk.blue('  Executing job command:'), cmd)
 
   var jobStart = new Date()
   var visibilityTimeout = 30 // this should be the queue timeout
@@ -24,11 +24,13 @@ function executeJob (job, qname, qrl, options) {
     const jobRunTime = ((new Date()) - jobStart) / 1000
     // Double every time, up to max
     visibilityTimeout = Math.min(visibilityTimeout * 2, maxJobRun - jobRunTime, options['kill-after'] - jobRunTime)
-    console.error(
-      chalk.blue('  Ran for ') + jobRunTime +
-      chalk.blue(' seconds, requesting another ') + visibilityTimeout +
-      chalk.blue(' seconds')
-    )
+    if (!options.quiet) {
+      console.error(
+        chalk.blue('  Ran for ') + jobRunTime +
+        chalk.blue(' seconds, requesting another ') + visibilityTimeout +
+        chalk.blue(' seconds')
+      )
+    }
     const sqs = new AWS.SQS()
     sqs
       .changeMessageVisibility({
@@ -43,7 +45,7 @@ function executeJob (job, qname, qrl, options) {
           jobRunTime + visibilityTimeout >= maxJobRun ||
           jobRunTime + visibilityTimeout >= options['kill-after']
         ) {
-          console.error(chalk.yellow('  warning: this is our last time extension'))
+          if (!options.quiet) console.error(chalk.yellow('  warning: this is our last time extension'))
         } else {
           // Extend when we get 50% of the way to timeout
           timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
@@ -52,7 +54,7 @@ function executeJob (job, qname, qrl, options) {
       .fail(function (err) {
         debug('changeMessageVisibility.fail returned', err)
         // Rejection means we're ouuta time, whatever, let the job die
-        console.error(chalk.red('  failed to extend job: ') + err)
+        if (!options.quiet) console.error(chalk.red('  failed to extend job: ') + err)
       })
   }
 
@@ -64,10 +66,12 @@ function executeJob (job, qname, qrl, options) {
     .then(function (stdout, stderr) {
       debug('childProcess.exec.then')
       clearTimeout(timeoutExtender)
-      console.error(chalk.green('  SUCCESS'))
-      if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
-      if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
-      console.error(chalk.blue('  cleaning up (removing job) ...'))
+      if (!options.quiet) {
+        console.error(chalk.green('  SUCCESS'))
+        if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
+        if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
+        console.error(chalk.blue('  cleaning up (removing job) ...'))
+      }
       const sqs = new AWS.SQS()
       return sqs
         .deleteMessage({
@@ -76,19 +80,35 @@ function executeJob (job, qname, qrl, options) {
         })
         .promise()
         .then(function () {
-          console.error(chalk.blue('  done'))
-          console.error()
+          if (!options.quiet) {
+            console.error(chalk.blue('  done'))
+            console.error()
+          }
         })
     })
-    .fail(function (err, stdout, stderr) {
+    .fail((err, stdout, stderr) => {
       debug('childProcess.exec.fail')
       clearTimeout(timeoutExtender)
-      console.error(chalk.red('  FAILED'))
-      if (err.code) console.error(chalk.blue('  code  : ') + err.code)
-      if (err.signal) console.error(chalk.blue('  signal: ') + err.signal)
-      if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
-      if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
-      console.error(chalk.blue('  error : ') + err)
+      if (!options.quiet) {
+        console.error(chalk.red('  FAILED'))
+        if (err.code) console.error(chalk.blue('  code  : ') + err.code)
+        if (err.signal) console.error(chalk.blue('  signal: ') + err.signal)
+        if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
+        if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
+        console.error(chalk.blue('  error : ') + err)
+      } else {
+        // Production error logging
+        console.error(JSON.stringify({
+          status: 'FAILED',
+          job: job.MessageId,
+          command: job.Body,
+          exitCode: err.code || undefined,
+          killSignal: err.signal || undefined,
+          stderr,
+          stdout,
+          errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined
+        }))
+      }
     })
 }
 
@@ -114,7 +134,7 @@ function pollForJobs (qname, qrl, options) {
       debug('sqs.receiveMessage.then', response)
       if (response.Messages) {
         const job = response.Messages[0]
-        console.error(chalk.blue('  Found job ' + job.MessageId))
+        if (!options.quiet) console.error(chalk.blue('  Found job ' + job.MessageId))
         return executeJob(job, qname, qrl, options)
       }
     })
@@ -124,14 +144,16 @@ function pollForJobs (qname, qrl, options) {
 // Resolve queues for listening loop listen
 //
 exports.listen = function listen (queues, options) {
-  console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
+  if (!options.quiet) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
   const qnames = queues.map(function (queue) { return options.prefix + queue })
   return qrlCache
-    .getQnameUrlPairs(qnames, options.prefix)
+    .getQnameUrlPairs(qnames, options)
     .then(function (entries) {
       debug('qrlCache.getQnameUrlPairs.then')
-      console.error(chalk.blue('  done'))
-      console.error()
+      if (!options.quiet) {
+        console.error(chalk.blue('  done'))
+        console.error()
+      }
 
       // Don't listen to fail queues... unless user wants to
       entries = entries
@@ -147,11 +169,13 @@ exports.listen = function listen (queues, options) {
           debug('entries.forEach.funtion')
           result = result.then(function (soFar) {
             debug('soFar', soFar)
-            console.error(
-              chalk.blue('Looking for work on ') +
-              entry.qname.slice(options.prefix.length) +
-              chalk.blue(' (' + entry.qrl + ')')
-            )
+            if (!options.quiet) {
+              console.error(
+                chalk.blue('Looking for work on ') +
+                entry.qname.slice(options.prefix.length) +
+                chalk.blue(' (' + entry.qrl + ')')
+              )
+            }
             return pollForJobs(entry.qname, entry.qrl, options)
           })
         })
@@ -162,11 +186,13 @@ exports.listen = function listen (queues, options) {
 
       // But only if we have queues to listen on
       if (entries.length) {
-        console.error(chalk.blue('Listening to queues (in this order):'))
-        console.error(entries.map(function (e) {
-          return '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)
-        }).join('\n'))
-        console.error()
+        if (!options.quiet) {
+          console.error(chalk.blue('Listening to queues (in this order):'))
+          console.error(entries.map(function (e) {
+            return '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)
+          }).join('\n'))
+          console.error()
+        }
         return workLoop()
       }
     })

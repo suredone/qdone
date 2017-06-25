@@ -26,6 +26,7 @@ const globalOptionDefinitions = [
   { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefex to place at the front of each SQS queue name [default: qdone_]' },
   { name: 'fail-suffix', type: String, defaultValue: '_failed', description: 'Suffix to append to each queue to generate fail queue name [default: _failed]' },
   { name: 'region', type: String, defaultValue: 'us-east-1', description: 'AWS region for Queues [default: us-east-1]' },
+  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: !process.stdout.isTTY, description: 'Less verbose output suitible for production logging. Automatically set if stdout is not a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
@@ -77,7 +78,7 @@ exports.enqueue = function enqueue (argv) {
     .enqueue(queue, command, options)
     .then(function (result) {
       debug('enqueue returned', result)
-      console.error(chalk.blue('Enqueued job ') + result.MessageId)
+      if (!options.quiet) console.error(chalk.blue('Enqueued job ') + result.MessageId)
       return result
     })
 }
@@ -143,12 +144,12 @@ exports.enqueueBatch = function enqueueBatch (argv) {
       .enqueueBatch(pairs, options)
       .then(function (result) {
         debug('enqueueBatch returned', result)
-        console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
+        if (!options.quiet) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
       })
   })
 }
 
-exports.worker = function worker (argv, globalOptions) {
+exports.worker = function worker (argv) {
   const optionDefinitions = [
     { name: 'kill-after', alias: 'k', type: Number, defaultValue: 30, description: 'Kill job after this many seconds [default: 30]' },
     { name: 'wait-time', alias: 'w', type: Number, defaultValue: 20, description: 'Listen at most this long on each queue [default: 20]' },
@@ -203,7 +204,7 @@ exports.worker = function worker (argv, globalOptions) {
         jobCount += result
         // Doing the work loop out here forces queue resolution to happen every time
         if (options['always-resolve'] && !options.drain) return workLoop()
-        console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs'))
+        if (!options.quiet) console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs'))
         return Promise.resolve(jobCount)
       })
   }
