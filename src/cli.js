@@ -23,7 +23,7 @@ const awsUsageBody = {
 }
 
 const globalOptionDefinitions = [
-  { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefex to place at the front of each SQS queue name [default: qdone_]' },
+  { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefix to place at the front of each SQS queue name [default: qdone_]' },
   { name: 'fail-suffix', type: String, defaultValue: '_failed', description: 'Suffix to append to each queue to generate fail queue name [default: _failed]' },
   { name: 'region', type: String, defaultValue: 'us-east-1', description: 'AWS region for Queues [default: us-east-1]' },
   { name: 'quiet', alias: 'q', type: Boolean, defaultValue: !process.stdout.isTTY, description: 'Less verbose output suitible for production logging. Automatically set if stdout is not a tty.' },

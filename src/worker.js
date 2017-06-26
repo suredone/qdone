@@ -98,8 +98,9 @@ function executeJob (job, qname, qrl, options) {
         console.error(chalk.blue('  error : ') + err)
       } else {
         // Production error logging
-        console.error(JSON.stringify({
-          status: 'FAILED',
+        console.log(JSON.stringify({
+          event: 'JOB_FAILED',
+          timestamp: new Date(),
           job: job.MessageId,
           command: job.Body,
           exitCode: err.code || undefined,

@@ -45,7 +45,6 @@ Queues are automatically created when you use them:
 ```bash
 $ qdone enqueue myNewQueue "echo nice to meet you"
 Creating fail queue myNewQueue_failed
-Looking up attributes for https://sqs.us-east-1.../qdone_myNewQueue_failed
 Creating queue myNewQueue
 Enqueued job d0077713-11e1-4de6-8f26-49ad51e008b9
 ```
@@ -142,6 +141,9 @@ Looking for work on myQueue_failed (https://sqs.us-east-1.../qdone_myQueue_faile
 
 It failed again. It will go back on the failed queue.
 
+In production you will either want to set alarms on the failed queue to make
+sure that it doesn't grow to large, or set all your failed queues to drain to
+a failed job queue after some number of attempts, which you also check.
 
 ### Listening to multiple queues
 
@@ -200,6 +202,26 @@ $ qdone worker test --kill-after 300
 The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The tiemout
 doubles in length every subsequent call, but never exceeding `--kill-after`.
+
+## Production Logging
+
+The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stdout is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:
+
+```javascript
+{
+  "event": "JOB_FAILED",
+  "timestamp": "2017-06-25T20:21:19.744Z",
+  "job": "0252ae4b-89c4-4426-8ad5-b1480bfdb3a2",
+  "command": "python /opt/myapp/jobs/reticulate_splines.py 42",
+  "exitCode": "1",
+  "killSignal": "SIGTERM",
+  "stderr": "...",
+  "stdout": "reticulating splines...",
+  "errorMessage": "You can't kill me using SIGTERM, muwahahahahaha! Oh wait..."
+}
+```
+
+Each field in the above JSON except `event` and `timestamp` is optional, and only appears when it contains data. Note that log events other than `JOB_FAILED` may be added in the future. Also note that warnings and errors not in the above JSON format will appear on stderr.
 
 
 ## SQS API Call Complexity
@@ -263,11 +285,13 @@ Commands
 
 Global Options
 
-    --prefix string        Prefex to place at the front of each SQS queue name [default: qdone_]         
-    --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed] 
-    --region string        AWS region for Queues [default: us-east-1]                                    
-    -V, --version          Show version number                                                           
-    --help                 Print full help message.    
+    --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
+    --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
+    --region string        AWS region for Queues [default: us-east-1]
+    -q, --quiet            Less verbose output suitible for production logging. Automatically
+                           set if stdout is not a tty.
+    -V, --version          Show version number
+    --help                 Print full help message.
 
 ### Enqueue Usage
 
@@ -278,7 +302,7 @@ Global Options
 
 Options
 
-    --prefix string        Prefex to place at the front of each SQS queue name [default: qdone_]
+    --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string        AWS region for Queues [default: us-east-1]
     -V, --version          Show version number
@@ -301,7 +325,7 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     --include-failed          When using '*' do not ignore fail queues.
     --drain                   Run until no more work is found and quit. NOTE: if used with  --wait-time 0,
                               this option will not drain queues.
-    --prefix string           Prefex to place at the front of each SQS queue name [default: qdone_]
+    --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]
     -V, --version             Show version number
