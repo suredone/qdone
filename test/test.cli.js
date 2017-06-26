@@ -15,14 +15,18 @@ delete process.env.AWS_ACCESS_KEY_ID
 delete process.env.AWS_SECRET_ACCESS_KEY
 
 var sandbox
+var clock
+
 beforeEach(function () {
   sandbox = sinon.sandbox.create()
   sandbox.stub(process.stdout, 'write')
   sandbox.stub(process.stderr, 'write')
+  clock = sandbox.useFakeTimers()
 })
 
 afterEach(function () {
   sandbox.restore()
+  clock.restore()
   AWS.restore()
 })
 
@@ -371,7 +375,7 @@ describe('cli', function () {
       }))
   })
 
-  describe('qdone worker some_non_existant_queue', function () {
+  describe('qdone worker some_non_existant_queue --drain', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         const err = new Error('Queue does not exist.')
@@ -379,14 +383,35 @@ describe('cli', function () {
         callback(err)
       })
     })
-    it('should exit 1 with error',
-      cliTest(['worker', 'some_non_existant_queue'], null, function (err, stdout, stderr) {
+    it('should complain and exit 0',
+      cliTest(['worker', 'some_non_existant_queue', '--drain'], null, function (result, stdout, stderr) {
         expect(stderr).to.contain('AWS.SimpleQueueService.NonExistentQueue')
-        expect(err).to.be.an('error')
       }))
   })
 
-  describe('qdone worker test --drain', function () {
+  describe('qdone worker test --drain # (no jobs)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, {})
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test', '--drain'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Looking for work on test')
+        expect(stderr).to.contain('Ran 0 jobs: 0 succeeded 0 failed')
+      }))
+  })
+
+  describe('qdone worker test --drain # (1 successful job)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
@@ -398,6 +423,11 @@ describe('cli', function () {
         callback(null, { Messages: [
           { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
         ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
       })
       AWS.mock('SQS', 'deleteMessage', function (params, callback) {
         callback(null, {})
@@ -408,9 +438,125 @@ describe('cli', function () {
         expect(stderr).to.contain('Looking for work on test')
         expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
         expect(stderr).to.contain('SUCCESS')
+        expect(stderr).to.contain('Ran 1 jobs: 1 succeeded 0 failed')
       }))
   })
 
+  describe('qdone worker test --drain --quiet # (1 failed job)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'false', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test', '--drain', '--quiet'], function (result, stdout, stderr) {
+        expect(stdout).to.contain('"event":"JOB_FAILED"')
+        expect(stdout).to.contain('"command":"false"')
+        expect(stdout).to.contain('"timestamp"')
+        expect(stdout).to.contain('"job"')
+        expect(stdout).to.contain('"exitCode"')
+      }))
+  })
+
+  describe('qdone worker "test*" --drain # (9 queues, 1 successful job per queue)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}4`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}5`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}6`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}7`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}8`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}9`
+        ]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        if (params.QueueUrl === params.QueueUrl.slice(0, -1) + '9') {
+          AWS.restore('SQS', 'receiveMessage')
+          // Subsequent calls return no message
+          AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+            callback(null, {})
+          })
+        }
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test*', '--drain'], function (result, stdout, stderr) {
+        [1, 2, 3, 4, 5, 5, 6, 7, 8, 9].forEach(index => {
+          expect(stderr).to.contain('Looking for work on test' + index)
+          expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + index)
+        })
+        expect(stderr).to.contain('Ran 9 jobs: 9 succeeded 0 failed')
+      }))
+  })
+
+  describe('qdone worker test --drain # (1 successful job, time extended)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'changeMessageVisibility', function (params, callback) {
+        callback(null, {})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
+        process.nextTick(function () {
+          clock.tick(15000)
+        })
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test', '--drain'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Looking for work on test')
+        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+        expect(stderr).to.contain('seconds, requesting another')
+        expect(stderr).to.contain('SUCCESS')
+        expect(stderr).to.contain('Ran 1 jobs: 1 succeeded 0 failed')
+      }))
+  })
+
+/*
   describe('qdone worker test --wait-time 15', function () {
     it('should call worker listen loop with a wait time of 15', function () {
       const cli = require('../src/cli')
@@ -421,4 +567,30 @@ describe('cli', function () {
       return result.then(_ => sandbox.restore())
     })
   })
+
+  describe('qdone worker test --drain # (test extension of message visibility timeout)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 35', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully, extend once and exit 0',
+      cliTest(['worker', 'test', '--drain'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Looking for work on test')
+        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+        expect(stderr).to.contain('SUCCESS')
+      }))
+  })
+*/
 })

@@ -175,11 +175,6 @@ Looking for work on test1 (https://sqs.us-east-1.../qdone_test1)
 The worker will listen to each queue for the `--wait-time` period, then start
 over from the beginning.
 
-If you need to listen to queues *created after* the worker starts running, 
-use the `--always-resolve` option. This costs an extra API call every round
-through the queues.
-
-
 ### Long running jobs
 
 Workers prevent others from processing their job by automatically extending the
@@ -230,8 +225,7 @@ Each field in the above JSON except `event` and `timestamp` is optional, and onl
 | -- | -- | -- |
 | `qdone enqueue` |  2&nbsp;[+3] | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
 | `qdone enqueue-batch` |  **q**&nbsp;+&nbsp;ceil(**c**/10)&nbsp;+&nbsp;3**n** | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
-| `qdone worker` (while listening) |  <nobr>1&nbsp;+&nbsp;(1&nbsp;per&nbsp;**w**)</nobr> | **w**: `--wait-time` in seconds |
-| `qdone worker --always-resolve` (while listening) |  <nobr>(1&nbsp;per&nbsp;**w**) + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
+| `qdone worker` (while listening) |  <nobr>**n** + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
 | `qdone worker` (while job running) |  <nobr>log(**t**/30)&nbsp;+&nbsp;1</nobr> | **t**: total job run time in seconds |
 
 ## AWS Authentication
@@ -320,8 +314,6 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
 
     -k, --kill-after number   Kill job after this many seconds [default: 30]
     -w, --wait-time number    Listen at most this long on each queue [default: 20]
-    --always-resolve          Always resolve queue names that end in '*'. This can result in more SQS
-                              calls, but allows you to listen to queues that do not exist yet.
     --include-failed          When using '*' do not ignore fail queues.
     --drain                   Run until no more work is found and quit. NOTE: if used with  --wait-time 0,
                               this option will not drain queues.

@@ -60,6 +60,7 @@ function executeJob (job, qname, qrl, options) {
 
   // Extend when we get 50% of the way to timeout
   timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
+  debug('timeout', visibilityTimeout * 1000 * 0.5)
 
   return Q
     .nfcall(childProcess.exec, cmd, {timeout: options['kill-after'] * 1000})
@@ -84,6 +85,7 @@ function executeJob (job, qname, qrl, options) {
             console.error(chalk.blue('  done'))
             console.error()
           }
+          return Promise.resolve({noJobs: 0, jobsSucceeded: 1, jobsFailed: 0})
         })
     })
     .fail((err, stdout, stderr) => {
@@ -110,6 +112,7 @@ function executeJob (job, qname, qrl, options) {
           errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined
         }))
       }
+      return Promise.resolve({noJobs: 0, jobsSucceeded: 0, jobsFailed: 1})
     })
 }
 
@@ -137,6 +140,8 @@ function pollForJobs (qname, qrl, options) {
         const job = response.Messages[0]
         if (!options.quiet) console.error(chalk.blue('  Found job ' + job.MessageId))
         return executeJob(job, qname, qrl, options)
+      } else {
+        return Promise.resolve({noJobs: 1, jobsSucceeded: 0, jobsFailed: 0})
       }
     })
 }
@@ -163,12 +168,12 @@ exports.listen = function listen (queues, options) {
           return options['include-failed'] ? true : entry.qname.slice(-suf.length) !== suf
         })
 
-      // Listen sequentially
-      function workLoop () {
+      // Listen to all queues once
+      function oneRound () {
         var result = Q()
         entries.forEach(function (entry) {
           debug('entries.forEach.funtion')
-          result = result.then(function (soFar) {
+          result = result.then((soFar = {noJobs: 0, jobsSucceeded: 0, jobsFailed: 0}) => {
             debug('soFar', soFar)
             if (!options.quiet) {
               console.error(
@@ -177,12 +182,16 @@ exports.listen = function listen (queues, options) {
                 chalk.blue(' (' + entry.qrl + ')')
               )
             }
+            // Aggregate the results
             return pollForJobs(entry.qname, entry.qrl, options)
+              .then(({noJobs, jobsSucceeded, jobsFailed}) => ({
+                noJobs: soFar.noJobs + noJobs,
+                jobsSucceeded: soFar.jobsSucceeded + jobsSucceeded,
+                jobsFailed: soFar.jobsFailed + jobsFailed
+              }))
           })
         })
-
-        // Do the work loop in here to NOT resolve queues every time
-        return result.then(result => (options['always-resolve'] || options.drain) ? result : workLoop())
+        return result
       }
 
       // But only if we have queues to listen on
@@ -194,8 +203,18 @@ exports.listen = function listen (queues, options) {
           }).join('\n'))
           console.error()
         }
-        return workLoop()
+        return oneRound()
       }
+
+      // Otherwise, if we are draining, we are done
+      if (options.drain) return Promise.resolve('noJobs')
+
+      // Otherwise, start the next round at a delay
+      const roundDelay = Math.max(1000, options['wait-time'] * 1000)
+      if (!options.quiet) {
+        console.error(chalk.yellow('No queues to listen on! Retrying in ' + (roundDelay / 1000) + 's'))
+      }
+      return Q.delay(roundDelay).then(oneRound)
     })
 }
 

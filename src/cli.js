@@ -153,7 +153,6 @@ exports.worker = function worker (argv) {
   const optionDefinitions = [
     { name: 'kill-after', alias: 'k', type: Number, defaultValue: 30, description: 'Kill job after this many seconds [default: 30]' },
     { name: 'wait-time', alias: 'w', type: Number, defaultValue: 20, description: 'Listen at most this long on each queue [default: 20]' },
-    { name: 'always-resolve', type: Boolean, description: 'Always resolve queue names that end in \'*\'. This can result in more SQS calls, but allows you to listen to queues that do not exist yet.' },
     { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues.' },
     { name: 'drain', type: Boolean, description: 'Run until no more work is found and quit. NOTE: if used with  --wait-time 0, this option will not drain queues.' }
   ].concat(globalOptionDefinitions)
@@ -167,8 +166,7 @@ exports.worker = function worker (argv) {
     { content: 'SQS API Call Complexity', raw: true, long: true },
     {
       content: [
-        { contex: 'while listening', count: '1 + (1 per w)', desc: 'w: --wait-time in seconds' },
-        { contex: 'while listening with --always-resolve', count: '(1 per w) + (1 per n*w)', desc: 'n: number of queues' },
+        { contex: 'while listening', count: 'n + (1 per n*w)', desc: 'w: --wait-time in seconds\nn: number of queues' },
         { contex: 'while job running', count: 'log(t/30) + 1', desc: 't: total job run time in seconds' }
       ],
       long: true
@@ -184,6 +182,7 @@ exports.worker = function worker (argv) {
     debug('worker options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('worker requres one or more <queue> arguments')
+    if (options.drain && options['wait-time'] === 0) throw new UsageError('cannot use --drain with --wait-time 0 (SQS limitation)')
     queues = options._unknown
     debug('queues', queues)
   } catch (err) {
@@ -196,16 +195,33 @@ exports.worker = function worker (argv) {
   const worker = require('./worker')
 
   var jobCount = 0
+  var jobsSucceeded = 0
+  var jobsFailed = 0
   function workLoop () {
     return worker
       .listen(queues, options)
       .then(function (result) {
         debug('listen returned', result)
-        jobCount += result
-        // Doing the work loop out here forces queue resolution to happen every time
-        if (options['always-resolve'] && !options.drain) return workLoop()
-        if (!options.quiet) console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs'))
-        return Promise.resolve(jobCount)
+        const ranJob = (result.jobsSucceeded + result.jobsFailed) > 0
+        jobCount += result.jobsSucceeded + result.jobsFailed
+        jobsFailed += result.jobsFailed
+        jobsSucceeded += result.jobsSucceeded
+        // Draining continues to listen as long as there is work
+        if (options.drain) {
+          if (ranJob) return workLoop()
+          if (!options.quiet) {
+            console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs: ') + jobsSucceeded + chalk.blue(' succeeded ') + jobsFailed + chalk.blue(' failed'))
+          }
+          // return Promise.resolve(jobCount)
+        } else {
+          // If we're not draining, loop forever
+          // We can go immediately if we just ran a job
+          if (ranJob) return workLoop()
+          // Otherwise, we could do backoff logic here to slow down requests when
+          // work is not happening (at the expense of latency)
+          // But we won't do that now.
+          return workLoop()
+        }
       })
   }
   return workLoop()
