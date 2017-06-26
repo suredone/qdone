@@ -153,6 +153,26 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone enqueue --quiet testQueue true # (queue exists)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should have no output and exit 0',
+      cliTest(['enqueue', '--quiet', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.equal('')
+        expect(stdout).to.equal('')
+      }))
+  })
+
   describe('qdone enqueue testQueue true # (queue does not exist)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
@@ -265,6 +285,30 @@ describe('cli', function () {
         expect(stderr).to.contain('request 1')
         expect(stderr).to.contain('request 2')
         expect(stderr).to.contain('request 3')
+      }))
+  })
+
+  describe('qdone enqueue-batch --quiet test/fixtures/test-unique01-x24.batch # (queue exists)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      var messageId = 0
+      AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
+        callback(null, {
+          Failed: [],
+          Successful: params.Entries.map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          }))
+        })
+      })
+    })
+    it('should have no output and exit 0',
+      cliTest(['enqueue-batch', '--quiet', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
+        expect(stderr).to.equal('')
+        expect(stdout).to.equal('')
       }))
   })
 
@@ -553,6 +597,41 @@ describe('cli', function () {
         expect(stderr).to.contain('seconds, requesting another')
         expect(stderr).to.contain('SUCCESS')
         expect(stderr).to.contain('Ran 1 jobs: 1 succeeded 0 failed')
+      }))
+  })
+
+  describe('qdone worker test --drain --quiet # (1 successful job, time extended)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'changeMessageVisibility', function (params, callback) {
+        callback(null, {})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
+        process.nextTick(function () {
+          clock.tick(15000)
+        })
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should have no output and exit 0',
+      cliTest(['worker', 'test', '--drain', '--quiet'], function (result, stdout, stderr) {
+        expect(stderr).to.equal('')
+        expect(stdout).to.equal('')
       }))
   })
 
