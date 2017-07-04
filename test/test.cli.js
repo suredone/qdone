@@ -235,9 +235,9 @@ describe('cli', function () {
       }))
   })
 
-  describe('qdone enqueue-batch some_non_existant_file', function () {
+  describe('qdone enqueue-batch some_non_existent_file', function () {
     it('should exit 1 with error',
-      cliTest(['enqueue-batch', 'some_non_existant_file'], null, function (err, stdout, stderr) {
+      cliTest(['enqueue-batch', 'some_non_existent_file'], null, function (err, stdout, stderr) {
         expect(stderr).to.contain('no such file or directory')
         expect(err).to.be.an('error')
       }))
@@ -419,7 +419,7 @@ describe('cli', function () {
       }))
   })
 
-  describe('qdone worker some_non_existant_queue --drain', function () {
+  describe('qdone worker some_non_existent_queue --drain', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         const err = new Error('Queue does not exist.')
@@ -428,7 +428,7 @@ describe('cli', function () {
       })
     })
     it('should complain and exit 0',
-      cliTest(['worker', 'some_non_existant_queue', '--drain'], null, function (result, stdout, stderr) {
+      cliTest(['worker', 'some_non_existent_queue', '--drain'], null, function (result, stdout, stderr) {
         expect(stderr).to.contain('AWS.SimpleQueueService.NonExistentQueue')
       }))
   })
@@ -635,4 +635,36 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone worker test # (1 successful job + SIGTERM)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
+        // And here we trigger a SIGTERM
+        process.kill(process.pid, 'SIGTERM')
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Looking for work on test')
+        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+        expect(stderr).to.contain('Shutdown requested')
+        expect(stderr).to.contain('SUCCESS')
+      }))
+  })
 })

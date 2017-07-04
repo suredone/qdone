@@ -229,9 +229,12 @@ exports.worker = function worker (argv) {
         // Handle delay in the case we don't have any queues
         if (result === 'noQueues') {
           const roundDelay = Math.max(1000, options['wait-time'] * 1000)
-          if (!options.quiet) {
-            console.error(chalk.yellow('No queues to listen on! Retrying in ' + (roundDelay / 1000) + 's'))
+          if (!options.quiet) console.error(chalk.yellow('No queues to listen on!'))
+          if (options.drain) {
+            console.error(chalk.blue('Shutting down because we are in drain mode and no work is available.'))
+            return Promise.resolve()
           }
+          console.error(chalk.yellow('Retrying in ' + (roundDelay / 1000) + 's'))
           return Q.delay(roundDelay).then(workLoop)
         }
 
