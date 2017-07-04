@@ -635,41 +635,4 @@ describe('cli', function () {
       }))
   })
 
-/*
-  describe('qdone worker test --wait-time 15', function () {
-    it('should call worker listen loop with a wait time of 15', function () {
-      const cli = require('../src/cli')
-      const worker = require('../src/worker')
-      sandbox.stub(worker, 'listen', _ => Promise.resolve())
-      const result = cli.run(['worker', 'test', '--wait-time', '15'])
-      expect(worker.listen.calledWithMatch('testy', sinon.match.has('wait-time', 15)))
-      return result.then(_ => sandbox.restore())
-    })
-  })
-
-  describe('qdone worker test --drain # (test extension of message visibility timeout)', function () {
-    before(function () {
-      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
-      })
-      AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
-      })
-      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 35', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
-      })
-      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
-        callback(null, {})
-      })
-    })
-    it('should execute the job successfully, extend once and exit 0',
-      cliTest(['worker', 'test', '--drain'], function (result, stdout, stderr) {
-        expect(stderr).to.contain('Looking for work on test')
-        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
-        expect(stderr).to.contain('SUCCESS')
-      }))
-  })
-*/
 })

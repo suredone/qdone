@@ -197,11 +197,44 @@ exports.worker = function worker (argv) {
   var jobCount = 0
   var jobsSucceeded = 0
   var jobsFailed = 0
+  var shutdownRequested = false
+
+  function handleShutdown () {
+    // Second signal forces shutdown
+    if (shutdownRequested) {
+      if (!options.quiet) console.error(chalk.red('Recieved multiple kill signals, shutting down immediately.'))
+      process.kill(-process.pid, 'SIGKILL')
+    }
+    shutdownRequested = true
+    if (!options.quiet) {
+      console.error(chalk.yellow('Shutdown requested. Will stop when current job is done or a second signal is recieved.'))
+      if (process.stdout.isTTY) {
+        console.error(chalk.yellow('NOTE: Interactive shells often signal whole process group so your child may exit.'))
+      }
+    }
+  }
+  process.on('SIGINT', handleShutdown)
+  process.on('SIGTERM', handleShutdown)
+
   function workLoop () {
+    if (shutdownRequested) {
+      if (!options.quiet) console.error(chalk.blue('Shutting down as requested.'))
+      return Promise.resolve()
+    }
     return worker
       .listen(queues, options)
       .then(function (result) {
         debug('listen returned', result)
+
+        // Handle delay in the case we don't have any queues
+        if (result === 'noQueues') {
+          const roundDelay = Math.max(1000, options['wait-time'] * 1000)
+          if (!options.quiet) {
+            console.error(chalk.yellow('No queues to listen on! Retrying in ' + (roundDelay / 1000) + 's'))
+          }
+          return Q.delay(roundDelay).then(workLoop)
+        }
+
         const ranJob = (result.jobsSucceeded + result.jobsFailed) > 0
         jobCount += result.jobsSucceeded + result.jobsFailed
         jobsFailed += result.jobsFailed

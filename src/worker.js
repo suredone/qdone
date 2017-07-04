@@ -206,15 +206,8 @@ exports.listen = function listen (queues, options) {
         return oneRound()
       }
 
-      // Otherwise, if we are draining, we are done
-      if (options.drain) return Promise.resolve('noJobs')
-
-      // Otherwise, start the next round at a delay
-      const roundDelay = Math.max(1000, options['wait-time'] * 1000)
-      if (!options.quiet) {
-        console.error(chalk.yellow('No queues to listen on! Retrying in ' + (roundDelay / 1000) + 's'))
-      }
-      return Q.delay(roundDelay).then(oneRound)
+      // Otherwise, let caller know
+      return Promise.resolve('noQueues')
     })
 }
 
