@@ -217,6 +217,7 @@ exports.worker = function worker (argv) {
       process.kill(-process.pid, 'SIGKILL')
     }
     shutdownRequested = true
+    worker.requestShutdown()
     if (options.verbose) {
       console.error(chalk.yellow('Shutdown requested. Will stop when current job is done or a second signal is recieved.'))
       if (process.stdout.isTTY) {

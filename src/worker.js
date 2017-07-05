@@ -5,6 +5,11 @@ const debug = require('debug')('qdone:worker')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
 const AWS = require('aws-sdk')
+var shutdownRequested = false
+
+exports.requestShutdown = function requestShutdown () {
+  shutdownRequested = true
+}
 
 //
 // Actually run the subprocess job
@@ -136,6 +141,7 @@ function pollForJobs (qname, qrl, options) {
     .promise()
     .then(function (response) {
       debug('sqs.receiveMessage.then', response)
+      if (shutdownRequested) return Promise.resolve({noJobs: 0, jobsSucceeded: 0, jobsFailed: 0})
       if (response.Messages) {
         const job = response.Messages[0]
         if (options.verbose) console.error(chalk.blue('  Found job ' + job.MessageId))
@@ -175,6 +181,8 @@ exports.listen = function listen (queues, options) {
           debug('entries.forEach.funtion')
           result = result.then((soFar = {noJobs: 0, jobsSucceeded: 0, jobsFailed: 0}) => {
             debug('soFar', soFar)
+            // Don't poll the next queue if shutdown was requested
+            if (shutdownRequested) return Promise.resolve(soFar)
             if (options.verbose) {
               console.error(
                 chalk.blue('Looking for work on ') +
