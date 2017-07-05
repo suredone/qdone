@@ -659,7 +659,7 @@ describe('cli', function () {
         callback(null, {})
       })
     })
-    it('should execute the job successfully and exit 0',
+    it('should begin executing the job, acknowledge a SIGTERM and successfully and exit 0 after the job completes',
       cliTest(['worker', 'test'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Looking for work on test')
         expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
