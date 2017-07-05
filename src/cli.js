@@ -26,7 +26,8 @@ const globalOptionDefinitions = [
   { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefix to place at the front of each SQS queue name [default: qdone_]' },
   { name: 'fail-suffix', type: String, defaultValue: '_failed', description: 'Suffix to append to each queue to generate fail queue name [default: _failed]' },
   { name: 'region', type: String, defaultValue: 'us-east-1', description: 'AWS region for Queues [default: us-east-1]' },
-  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: !process.stdout.isTTY, description: 'Less verbose output suitable for production logging. Automatically set if stdout is not a tty.' },
+  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stdout is not a tty.' },
+  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stdout is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
@@ -37,6 +38,13 @@ function setupAWS (options) {
   AWS.config.setPromisesDependency(Q.Promise)
   AWS.config.update({region: options.region})
   debug('loaded')
+}
+
+function setupVerbose (options) {
+  const verbose = options.verbose || (process.stdout.isTTY && !options.quiet)
+  const quiet = options.quiet || (!process.stdout.isTTY && !options.verbose)
+  options.verbose = verbose
+  options.quiet = quiet
 }
 
 exports.enqueue = function enqueue (argv) {
@@ -59,6 +67,7 @@ exports.enqueue = function enqueue (argv) {
   // Parse command and options
   try {
     var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    setupVerbose(options)
     debug('enqueue options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length !== 2) throw new UsageError('enqueue requires both <queue> and <command> arguments')
@@ -78,7 +87,7 @@ exports.enqueue = function enqueue (argv) {
     .enqueue(queue, command, options)
     .then(function (result) {
       debug('enqueue returned', result)
-      if (!options.quiet) console.error(chalk.blue('Enqueued job ') + result.MessageId)
+      if (options.verbose) console.error(chalk.blue('Enqueued job ') + result.MessageId)
       return result
     })
 }
@@ -105,6 +114,7 @@ exports.enqueueBatch = function enqueueBatch (argv) {
   let files
   try {
     var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    setupVerbose(options)
     debug('enqueue-batch options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('enqueue-batch requres one or more <file> arguments')
@@ -144,7 +154,7 @@ exports.enqueueBatch = function enqueueBatch (argv) {
       .enqueueBatch(pairs, options)
       .then(function (result) {
         debug('enqueueBatch returned', result)
-        if (!options.quiet) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
+        if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
       })
   })
 }
@@ -179,6 +189,7 @@ exports.worker = function worker (argv) {
   let queues
   try {
     var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    setupVerbose(options)
     debug('worker options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('worker requres one or more <queue> arguments')
@@ -202,11 +213,11 @@ exports.worker = function worker (argv) {
   function handleShutdown () {
     // Second signal forces shutdown
     if (shutdownRequested) {
-      if (!options.quiet) console.error(chalk.red('Recieved multiple kill signals, shutting down immediately.'))
+      if (options.verbose) console.error(chalk.red('Recieved multiple kill signals, shutting down immediately.'))
       process.kill(-process.pid, 'SIGKILL')
     }
     shutdownRequested = true
-    if (!options.quiet) {
+    if (options.verbose) {
       console.error(chalk.yellow('Shutdown requested. Will stop when current job is done or a second signal is recieved.'))
       if (process.stdout.isTTY) {
         console.error(chalk.yellow('NOTE: Interactive shells often signal whole process group so your child may exit.'))
@@ -218,7 +229,7 @@ exports.worker = function worker (argv) {
 
   function workLoop () {
     if (shutdownRequested) {
-      if (!options.quiet) console.error(chalk.blue('Shutting down as requested.'))
+      if (options.verbose) console.error(chalk.blue('Shutting down as requested.'))
       return Promise.resolve()
     }
     return worker
@@ -229,7 +240,7 @@ exports.worker = function worker (argv) {
         // Handle delay in the case we don't have any queues
         if (result === 'noQueues') {
           const roundDelay = Math.max(1000, options['wait-time'] * 1000)
-          if (!options.quiet) console.error(chalk.yellow('No queues to listen on!'))
+          if (options.verbose) console.error(chalk.yellow('No queues to listen on!'))
           if (options.drain) {
             console.error(chalk.blue('Shutting down because we are in drain mode and no work is available.'))
             return Promise.resolve()
@@ -245,7 +256,7 @@ exports.worker = function worker (argv) {
         // Draining continues to listen as long as there is work
         if (options.drain) {
           if (ranJob) return workLoop()
-          if (!options.quiet) {
+          if (options.verbose) {
             console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs: ') + jobsSucceeded + chalk.blue(' succeeded ') + jobsFailed + chalk.blue(' failed'))
           }
           // return Promise.resolve(jobCount)
@@ -287,6 +298,7 @@ exports.root = function root (originalArgv) {
     // Root command
     if (command === null) {
       const options = commandLineArgs(globalOptionDefinitions, {argv: originalArgv})
+      setupVerbose(options)
       debug('options', options)
       if (options.version) return Promise.resolve(console.log(packageJson.version))
       else if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))

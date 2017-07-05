@@ -12,7 +12,7 @@ const AWS = require('aws-sdk')
 function executeJob (job, qname, qrl, options) {
   debug('executeJob', job)
   const cmd = 'nice ' + job.Body
-  if (!options.quiet) console.error(chalk.blue('  Executing job command:'), cmd)
+  if (options.verbose) console.error(chalk.blue('  Executing job command:'), cmd)
 
   var jobStart = new Date()
   var visibilityTimeout = 30 // this should be the queue timeout
@@ -24,7 +24,7 @@ function executeJob (job, qname, qrl, options) {
     const jobRunTime = ((new Date()) - jobStart) / 1000
     // Double every time, up to max
     visibilityTimeout = Math.min(visibilityTimeout * 2, maxJobRun - jobRunTime, options['kill-after'] - jobRunTime)
-    if (!options.quiet) {
+    if (options.verbose) {
       console.error(
         chalk.blue('  Ran for ') + jobRunTime +
         chalk.blue(' seconds, requesting another ') + visibilityTimeout +
@@ -45,7 +45,7 @@ function executeJob (job, qname, qrl, options) {
           jobRunTime + visibilityTimeout >= maxJobRun ||
           jobRunTime + visibilityTimeout >= options['kill-after']
         ) {
-          if (!options.quiet) console.error(chalk.yellow('  warning: this is our last time extension'))
+          if (options.verbose) console.error(chalk.yellow('  warning: this is our last time extension'))
         } else {
           // Extend when we get 50% of the way to timeout
           timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
@@ -54,7 +54,7 @@ function executeJob (job, qname, qrl, options) {
       .fail(function (err) {
         debug('changeMessageVisibility.fail returned', err)
         // Rejection means we're ouuta time, whatever, let the job die
-        if (!options.quiet) console.error(chalk.red('  failed to extend job: ') + err)
+        if (options.verbose) console.error(chalk.red('  failed to extend job: ') + err)
       })
   }
 
@@ -67,7 +67,7 @@ function executeJob (job, qname, qrl, options) {
     .then(function (stdout, stderr) {
       debug('childProcess.exec.then')
       clearTimeout(timeoutExtender)
-      if (!options.quiet) {
+      if (options.verbose) {
         console.error(chalk.green('  SUCCESS'))
         if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
         if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
@@ -81,7 +81,7 @@ function executeJob (job, qname, qrl, options) {
         })
         .promise()
         .then(function () {
-          if (!options.quiet) {
+          if (options.verbose) {
             console.error(chalk.blue('  done'))
             console.error()
           }
@@ -91,7 +91,7 @@ function executeJob (job, qname, qrl, options) {
     .fail((err, stdout, stderr) => {
       debug('childProcess.exec.fail')
       clearTimeout(timeoutExtender)
-      if (!options.quiet) {
+      if (options.verbose) {
         console.error(chalk.red('  FAILED'))
         if (err.code) console.error(chalk.blue('  code  : ') + err.code)
         if (err.signal) console.error(chalk.blue('  signal: ') + err.signal)
@@ -138,7 +138,7 @@ function pollForJobs (qname, qrl, options) {
       debug('sqs.receiveMessage.then', response)
       if (response.Messages) {
         const job = response.Messages[0]
-        if (!options.quiet) console.error(chalk.blue('  Found job ' + job.MessageId))
+        if (options.verbose) console.error(chalk.blue('  Found job ' + job.MessageId))
         return executeJob(job, qname, qrl, options)
       } else {
         return Promise.resolve({noJobs: 1, jobsSucceeded: 0, jobsFailed: 0})
@@ -150,13 +150,13 @@ function pollForJobs (qname, qrl, options) {
 // Resolve queues for listening loop listen
 //
 exports.listen = function listen (queues, options) {
-  if (!options.quiet) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
+  if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
   const qnames = queues.map(function (queue) { return options.prefix + queue })
   return qrlCache
     .getQnameUrlPairs(qnames, options)
     .then(function (entries) {
       debug('qrlCache.getQnameUrlPairs.then')
-      if (!options.quiet) {
+      if (options.verbose) {
         console.error(chalk.blue('  done'))
         console.error()
       }
@@ -175,7 +175,7 @@ exports.listen = function listen (queues, options) {
           debug('entries.forEach.funtion')
           result = result.then((soFar = {noJobs: 0, jobsSucceeded: 0, jobsFailed: 0}) => {
             debug('soFar', soFar)
-            if (!options.quiet) {
+            if (options.verbose) {
               console.error(
                 chalk.blue('Looking for work on ') +
                 entry.qname.slice(options.prefix.length) +
@@ -196,7 +196,7 @@ exports.listen = function listen (queues, options) {
 
       // But only if we have queues to listen on
       if (entries.length) {
-        if (!options.quiet) {
+        if (options.verbose) {
           console.error(chalk.blue('Listening to queues (in this order):'))
           console.error(entries.map(function (e) {
             return '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)

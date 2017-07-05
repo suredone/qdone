@@ -134,7 +134,7 @@ function flushMessages (qrl, options) {
         if (batch.length) {
           requestCount += 1
           data.Successful.forEach(message => {
-            if (!options.quiet) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
+            if (options.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
           })
           numFlushed += batch.length
           batchMax = 10
@@ -178,7 +178,7 @@ function getQrl (queue, qname, fqueue, fqname, options) {
           .catch(function (err) {
             // Create fail queue if it doesn't exist
             if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
-              if (!options.quiet) console.error(chalk.blue('Creating fail queue ') + fqueue)
+              if (options.verbose) console.error(chalk.blue('Creating fail queue ') + fqueue)
               return createFailQueue(fqueue, fqname)
             }
             throw err // throw unhandled errors
@@ -188,7 +188,7 @@ function getQrl (queue, qname, fqueue, fqname, options) {
         return fqrl
           .then(getQueueAttributes)
           .then(data => {
-            if (!options.quiet) console.error(chalk.blue('Creating queue ') + queue)
+            if (options.verbose) console.error(chalk.blue('Creating queue ') + queue)
             return createQueue(queue, qname, data.Attributes.QueueArn)
           })
       }
