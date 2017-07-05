@@ -4,7 +4,7 @@ const chai = require('chai')
 // const exec = require('child_process').exec
 const packageJson = require('../package.json')
 const sinon = require('sinon')
-const chalk = require('chalk')
+const stripAnsi = require('strip-ansi')
 const AWS = require('aws-sdk-mock')
 // const mockStdin = require('mock-stdin')
 
@@ -43,14 +43,14 @@ function cliTest (command, success, failure) {
       .run(command)
       .then(function (result) {
         success = success || (result => result)
-        const stdout = chalk.stripColor(process.stdout.write.args.reduce((a, b) => a + b, ''))
-        const stderr = chalk.stripColor(process.stderr.write.args.reduce((a, b) => a + b, ''))
+        const stdout = stripAnsi(process.stdout.write.args.reduce((a, b) => a + b, ''))
+        const stderr = stripAnsi(process.stderr.write.args.reduce((a, b) => a + b, ''))
         return success(result, stdout, stderr)
       })
       .catch(function (err) {
         failure = failure || (err => { throw err })
-        const stdout = chalk.stripColor(process.stdout.write.args.reduce((a, b) => a + b, ''))
-        const stderr = chalk.stripColor(process.stderr.write.args.reduce((a, b) => a + b, ''))
+        const stdout = stripAnsi(process.stdout.write.args.reduce((a, b) => a + b, ''))
+        const stderr = stripAnsi(process.stderr.write.args.reduce((a, b) => a + b, ''))
         return failure(err, stdout, stderr)
       })
       .then(sandboxRestore)
