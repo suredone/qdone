@@ -196,7 +196,7 @@ $ qdone worker test --kill-after 300
 
 The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The timeout
-doubles in length every subsequent call, but never exceeding `--kill-after`.
+doubles every subsequent call but never exceeds `--kill-after`.
 
 ## Production Logging
 
@@ -216,17 +216,17 @@ The output examples in this readme assume you are running qdone from an interact
 }
 ```
 
-Each field in the above JSON except `event` and `timestamp` is optional, and only appears when it contains data. Note that log events other than `JOB_FAILED` may be added in the future. Also note that warnings and errors not in the above JSON format will appear on stderr.
+Each field in the above JSON except `event` and `timestamp` is optional and only appears when it contains data. Note that log events other than `JOB_FAILED` may be added in the future. Also note that warnings and errors not in the above JSON format will appear on stderr.
 
 ## Shutdown Behavior
 
-Send a SIGTERM or SIGINT to qdone and it will exit successfully *after* any running jobs complete. A second SIGTERM or SIGINT will immediately kill the entire process group, including any running jobs.
+Send a SIGTERM or SIGINT to qdone and it will exit successfully after any running jobs complete. A second SIGTERM or SIGINT will immediately kill the entire process group, including any running jobs.
 
 Interactive shells and init frameworks like systemd signal the entire process group by default, so jobs may exit prematurely after receiving the group signal.
 
 To get around this problem in systemd, use `KillMode=mixed` to keep the job from hearing the signal sent to qdone (but still allow systemd to send a SIGKILL to the child if it runs past `TimeoutStopSec`).
 
-Here is an example systemd service that runs a qdone worker that will allow a job to run for up to an hour, and will block restart/shutdown commands until any running job is safely finished:
+Here is an example systemd service that runs a qdone worker that allows jobs to run for up to an hour. Calls to `systemctl stop|restart` will block until any running job is safely finished:
 
 ```ini
 [Unit]
@@ -308,8 +308,8 @@ Global Options
     --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string        AWS region for Queues [default: us-east-1]
-    -q, --quiet            Less verbose output suitable for production logging. Automatically
-                           set if stdout is not a tty.
+    -q, --quiet            Turn on production logging. Automatically set if stdout is not a tty.
+    -v, --verbose          Turn on verbose output. Automatically set if stdout is a tty.
     -V, --version          Show version number
     --help                 Print full help message.
 
@@ -325,6 +325,8 @@ Options
     --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string        AWS region for Queues [default: us-east-1]
+    -q, --quiet            Turn on production logging. Automatically set if stdout is not a tty.
+    -v, --verbose          Turn on verbose output. Automatically set if stdout is a tty.
     -V, --version          Show version number
     --help                 Print full help message.
 
@@ -346,6 +348,8 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]
+    -q, --quiet               Turn on production logging. Automatically set if stdout is not a tty.
+    -v, --verbose             Turn on verbose output. Automatically set if stdout is a tty.
     -V, --version             Show version number
     --help                    Print full help message.
 
