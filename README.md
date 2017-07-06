@@ -200,7 +200,7 @@ doubles every subsequent call but never exceeds `--kill-after`.
 
 ## Production Logging
 
-The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stdout is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:
+The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stderr is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:
 
 ```javascript
 {
@@ -308,8 +308,8 @@ Global Options
     --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string        AWS region for Queues [default: us-east-1]
-    -q, --quiet            Turn on production logging. Automatically set if stdout is not a tty.
-    -v, --verbose          Turn on verbose output. Automatically set if stdout is a tty.
+    -q, --quiet            Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose          Turn on verbose output. Automatically set if stderr is a tty.
     -V, --version          Show version number
     --help                 Print full help message.
 
@@ -325,8 +325,8 @@ Options
     --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string        AWS region for Queues [default: us-east-1]
-    -q, --quiet            Turn on production logging. Automatically set if stdout is not a tty.
-    -v, --verbose          Turn on verbose output. Automatically set if stdout is a tty.
+    -q, --quiet            Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose          Turn on verbose output. Automatically set if stderr is a tty.
     -V, --version          Show version number
     --help                 Print full help message.
 
@@ -348,8 +348,8 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]
-    -q, --quiet               Turn on production logging. Automatically set if stdout is not a tty.
-    -v, --verbose             Turn on verbose output. Automatically set if stdout is a tty.
+    -q, --quiet               Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose             Turn on verbose output. Automatically set if stderr is a tty.
     -V, --version             Show version number
     --help                    Print full help message.
 

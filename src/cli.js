@@ -26,8 +26,8 @@ const globalOptionDefinitions = [
   { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefix to place at the front of each SQS queue name [default: qdone_]' },
   { name: 'fail-suffix', type: String, defaultValue: '_failed', description: 'Suffix to append to each queue to generate fail queue name [default: _failed]' },
   { name: 'region', type: String, defaultValue: 'us-east-1', description: 'AWS region for Queues [default: us-east-1]' },
-  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stdout is not a tty.' },
-  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stdout is a tty.' },
+  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
+  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
@@ -41,8 +41,8 @@ function setupAWS (options) {
 }
 
 function setupVerbose (options) {
-  const verbose = options.verbose || (process.stdout.isTTY && !options.quiet)
-  const quiet = options.quiet || (!process.stdout.isTTY && !options.verbose)
+  const verbose = options.verbose || (process.stderr.isTTY && !options.quiet)
+  const quiet = options.quiet || (!process.stderr.isTTY && !options.verbose)
   options.verbose = verbose
   options.quiet = quiet
 }
@@ -176,8 +176,8 @@ exports.worker = function worker (argv) {
     { content: 'SQS API Call Complexity', raw: true, long: true },
     {
       content: [
-        { contex: 'while listening', count: 'n + (1 per n*w)', desc: 'w: --wait-time in seconds\nn: number of queues' },
-        { contex: 'while job running', count: 'log(t/30) + 1', desc: 't: total job run time in seconds' }
+        { context: 'while listening', count: 'n + (1 per n*w)', desc: 'w: --wait-time in seconds\nn: number of queues' },
+        { context: 'while job running', count: 'log(t/30) + 1', desc: 't: total job run time in seconds' }
       ],
       long: true
     },
@@ -275,8 +275,85 @@ exports.worker = function worker (argv) {
   return workLoop()
 }
 
+exports.idleQueues = function idleQueues (argv) {
+  const optionDefinitions = [
+    { name: 'idle-for', alias: 'o', type: Number, defaultValue: 60, description: 'Minutes of inactivity after which a queue is considered idle. [default: 60]' },
+    { name: 'delete', type: Boolean, description: 'Delete the queue if it is idle. The fail queue also must be idle unless you use --unpair.' },
+    { name: 'unpair', type: Boolean, description: 'Treat queues and their fail queues as independent. By default they are treated as a unit.' },
+    { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues. This option only applies if you use --unpair. Otherwise, queues and fail queues are treated as a unit.' }
+  ].concat(globalOptionDefinitions)
+
+  const usageSections = [
+    { content: 'usage: qdone idle-queues [options] <queue...>', raw: true },
+    { content: 'Options', raw: true },
+    { optionList: optionDefinitions },
+    { content: 'SQS API Call Complexity', raw: true, long: true },
+    {
+      content: [
+        { count: '1 + q + i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
+        { context: 'with --delete options', count: '1 + q + 3i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
+        { context: 'with --unpair option', count: '1 + q', desc: 'q: number of queues in pattern' },
+        { context: 'with --unpair and --delete options', count: '1 + q + i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
+        { desc: 'NOTE: the --unpair option not cheaper if you include fail queues, because it doubles q.' }
+      ],
+      long: true
+    },
+    { content: 'CloudWatch API Call Complexity', raw: true, long: true },
+    {
+      content: [
+        { count: 'min: 0 (if queue and fail queue have waiting messages)\nmax: 12q\nexpected (approximate observed): 0.5q + 12i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
+        { context: 'with --unpair option', count: 'min: 0 (if queue has waiting messages)\nmax: 6q\nexpected (approximate observed): q + 6i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
+        { desc: 'NOTE: the --unpair option not cheaper if you include fail queues, because it doubles q.' }
+      ],
+      long: true
+    },
+    awsUsageHeader, awsUsageBody
+  ]
+  debug('idleQueues argv', argv)
+
+  // Parse command and options
+  let queues
+  try {
+    var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    setupVerbose(options)
+    debug('idleQueues options', options)
+    if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
+    if (!options._unknown || options._unknown.length === 0) throw new UsageError('idle-queues requres one or more <queue> arguments')
+    if (options['include-failed'] && !options.unpair) throw new UsageError('--include-failed should be used with --unpair')
+    if (options['idle-for'] < 5) throw new UsageError('--idle-for must be at least 5 minutes (CloudWatch limitation)')
+    queues = options._unknown
+    debug('queues', queues)
+  } catch (e) {
+    console.log(getUsage(usageSections.filter(s => !s.long)))
+    return Promise.reject(e)
+  }
+
+  // Load module after AWS global load
+  setupAWS(options)
+  const idleQueues = require('./idleQueues')
+
+  return idleQueues
+    .idleQueues(queues, options)
+    .then(function (result) {
+      debug('idleQueues returned', result)
+      if (result === 'noQueues') return Promise.resolve()
+      const callsSQS = result.map(a => a.apiCalls.SQS).reduce((a, b) => a + b, 0)
+      const callsCloudWatch = result.map(a => a.apiCalls.CloudWatch).reduce((a, b) => a + b, 0)
+      if (options.verbose) console.error(chalk.blue('Used ') + callsSQS + chalk.blue(' SQS and ') + callsCloudWatch + chalk.blue(' CloudWatch API calls.'))
+      // Print idle queues to stdout
+      result.filter(a => a.idle).map(a => a.queue).forEach(q => console.log(q))
+      return result
+    })
+    .catch(err => {
+      if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
+        console.error(chalk.yellow('This error can occur when you run this command immediately after deleting a queue. Wait 60 seconds and try again.'))
+        return Promise.reject(err)
+      }
+    })
+}
+
 exports.root = function root (originalArgv) {
-  const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker' ]
+  const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues' ]
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
@@ -284,7 +361,8 @@ exports.root = function root (originalArgv) {
     { content: [
         { name: 'enqueue', summary: 'Enqueue a single command' },
         { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
-        { name: 'worker', summary: 'Execute work on one or more queues' }
+        { name: 'worker', summary: 'Execute work on one or more queues' },
+        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
     ] },
     { content: 'Global Options', raw: true },
     { optionList: globalOptionDefinitions },
@@ -318,6 +396,8 @@ exports.root = function root (originalArgv) {
     return exports.enqueueBatch(argv)
   } else if (command === 'worker') {
     return exports.worker(argv)
+  } else if (command === 'idle-queues') {
+    return exports.idleQueues(argv)
   }
 }
 
