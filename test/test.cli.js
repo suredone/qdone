@@ -805,7 +805,7 @@ describe('cli', function () {
     it('should print queue name to stdout and exit 0',
       cliTest(['idle-queues', 'test'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
-        expect(stdout.trim()).to.equal('test')
+        expect(stdout).to.contain('test\n')
       }))
   })
 
@@ -840,7 +840,7 @@ describe('cli', function () {
     it('should print queue name to stdout and exit 0',
       cliTest(['idle-queues', 'test', '--unpair'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
-        expect(stdout.trim()).to.equal('test')
+        expect(stdout).to.contain('test\n')
       }))
   })
 
@@ -879,7 +879,8 @@ describe('cli', function () {
       cliTest(['idle-queues', 'test*', '--unpair', '--include-failed'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
         expect(stderr).to.contain('Queue test_failed has been idle for the last 60 minutes.')
-        expect(stdout.trim()).to.equal('test\ntest_failed')
+        expect(stdout).to.contain('test\n')
+        expect(stdout).to.contain('test_failed\n')
       }))
   })
 
@@ -892,7 +893,7 @@ describe('cli', function () {
       })
     })
     it('should print nothing to stdout and exit 0',
-      cliTest(['idle-queues', 'non-exist'], function (result, stdout, stderr) {
+      cliTest(['idle-queues', 'test'], null, function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue does not exist.')
       }))
   })

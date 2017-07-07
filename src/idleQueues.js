@@ -67,7 +67,6 @@ function getMetric (qname, qrl, metricName, options) {
         [metricName]: data.Datapoints.map(d => d.Sum).reduce((a, b) => a + b, 0)
       })
     })
-    .catch(err => { debug(err); throw err })
 }
 
 /**
