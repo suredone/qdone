@@ -1,12 +1,8 @@
 
-const Q = require('q')
 const debug = require('debug')('qdone:idleQueues')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
 const AWS = require('aws-sdk')
-
-const sqs = new AWS.SQS()
-const cloudwatch = new AWS.CloudWatch()
 
 // Queue attributes we check to determine idle
 const attributeNames = [
@@ -32,6 +28,7 @@ const metricNames = [
  * at this immediate moment.
  */
 function cheapIdleCheck (qname, qrl, options) {
+  const sqs = new AWS.SQS()
   return sqs
     .getQueueAttributes({AttributeNames: attributeNames, QueueUrl: qrl})
     .promise()
@@ -60,6 +57,7 @@ function getMetric (qname, qrl, metricName, options) {
     Statistics: ['Sum']
     // Unit: ['']
   }
+  const cloudwatch = new AWS.CloudWatch()
   return cloudwatch
     .getMetricStatistics(params)
     .promise()
@@ -69,7 +67,7 @@ function getMetric (qname, qrl, metricName, options) {
         [metricName]: data.Datapoints.map(d => d.Sum).reduce((a, b) => a + b, 0)
       })
     })
-    .catch(debug)
+    .catch(err => { debug(err); throw err })
 }
 
 /**
@@ -100,9 +98,8 @@ function checkIdle (qname, qrl, options) {
       }
       // If we get here, there's nothing in the queue at the moment,
       // so we have to check metrics one at a time
-      var promiseChain = Q()
-      metricNames.forEach(metricName => {
-        promiseChain = promiseChain.then((soFar = {
+      return metricNames.reduce((promiseChain, metricName) => {
+        return promiseChain.then((soFar = {
           queue: qname.slice(options.prefix.length),
           cheap: cheapResult,
           idle: true,
@@ -125,8 +122,7 @@ function checkIdle (qname, qrl, options) {
               )
             })
         })
-      })
-      return promiseChain
+      }, Promise.resolve())
     })
 }
 
@@ -134,6 +130,7 @@ function checkIdle (qname, qrl, options) {
  * Just deletes a queue.
  */
 function deleteQueue (qname, qrl, options) {
+  const sqs = new AWS.SQS()
   return sqs.deleteQueue({QueueUrl: qrl})
     .promise()
     .then(result => {
@@ -237,7 +234,7 @@ exports.idleQueues = function idleQueues (queues, options) {
         console.error()
       }
 
-      // Don't include fail queues, unless the user wants to
+      // Filter out any queue ending in suffix unless --include-failed is set
       entries = entries
         .filter(function (entry) {
           const suf = options['fail-suffix']

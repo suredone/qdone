@@ -43,15 +43,27 @@ function cliTest (command, success, failure) {
       .run(command)
       .then(function (result) {
         success = success || (result => result)
-        const stdout = stripAnsi(process.stdout.write.args.reduce((a, b) => a + b, ''))
-        const stderr = stripAnsi(process.stderr.write.args.reduce((a, b) => a + b, ''))
-        return success(result, stdout, stderr)
+        const stdout = process.stdout.write.args.reduce((a, b) => a + b, '')
+        const stderr = process.stderr.write.args.reduce((a, b) => a + b, '')
+        if (process.env.DEBUG) {
+          process.nextTick(_ => {
+            process.stdout.write(stdout)
+            process.stderr.write(stderr)
+          })
+        }
+        return success(result, stripAnsi(stdout), stripAnsi(stderr))
       })
       .catch(function (err) {
         failure = failure || (err => { throw err })
-        const stdout = stripAnsi(process.stdout.write.args.reduce((a, b) => a + b, ''))
-        const stderr = stripAnsi(process.stderr.write.args.reduce((a, b) => a + b, ''))
-        return failure(err, stdout, stderr)
+        const stdout = process.stdout.write.args.reduce((a, b) => a + b, '')
+        const stderr = process.stderr.write.args.reduce((a, b) => a + b, '')
+        if (process.env.DEBUG) {
+          process.nextTick(_ => {
+            process.stdout.write(stdout)
+            process.stderr.write(stderr)
+          })
+        }
+        return failure(err, stripAnsi(stdout), stripAnsi(stderr))
       })
       .then(sandboxRestore)
       .catch(sandboxRestore)
@@ -685,9 +697,6 @@ describe('cli', function () {
           }
         })
       })
-      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
-        throw new Error('should not call this')
-      })
     })
     it('should make no CloudWatch calls, print nothing to stdout and exit 0',
       cliTest(['idle-queues', 'test'], function (result, stdout, stderr) {
@@ -713,23 +722,178 @@ describe('cli', function () {
           }
         })
       })
-      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
-        throw new Error('should not call this')
-        /*
-        callback(null, {
-          [params.MetricName]: {
-            Datapoints: [
-
-            ]
-          }
-        })
-        */
-      })
     })
     it('should make no CloudWatch calls, print nothing to stdout and exit 0',
       cliTest(['idle-queues', 'test', '--unpair'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue test has been active in the last 60 minutes.')
         expect(stdout).to.equal('')
+      }))
+  })
+
+  describe('qdone idle-queues test # (active queue, multiple CloudWatch calls)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        if (params.MetricName === 'ApproximateNumberOfMessagesDelayed') {
+          callback(null, {
+            Label: params.MetricName,
+            Datapoints: [
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+              {Timestamp: new Date(), Sum: 1, Metric: 'Count'}
+            ]
+          })
+        } else {
+          callback(null, {
+            Label: params.MetricName,
+            Datapoints: [
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            ]
+          })
+        }
+      })
+    })
+    it('should make CloudWatch calls, print nothing to stdout and exit 0',
+      cliTest(['idle-queues', 'test'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test has been active in the last 60 minutes.')
+        expect(stdout).to.equal('')
+      }))
+  })
+
+  describe('qdone idle-queues test # (inactive queue)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        // Always return 0s
+        callback(null, {
+          Label: params.MetricName,
+          Datapoints: [
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+          ]
+        })
+      })
+    })
+    it('should print queue name to stdout and exit 0',
+      cliTest(['idle-queues', 'test'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
+        expect(stdout.trim()).to.equal('test')
+      }))
+  })
+
+  describe('qdone idle-queues test --unpair # (inactive queue)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        // Always return 0s
+        callback(null, {
+          Label: params.MetricName,
+          Datapoints: [
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+          ]
+        })
+      })
+    })
+    it('should print queue name to stdout and exit 0',
+      cliTest(['idle-queues', 'test', '--unpair'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
+        expect(stdout.trim()).to.equal('test')
+      }))
+  })
+
+  describe('qdone idle-queues \'test*\' --unpair --include-failed # (inactive queue)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
+        ]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        // Always return 0s
+        callback(null, {
+          Label: params.MetricName,
+          Datapoints: [
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+          ]
+        })
+      })
+    })
+    it('should print queue and fail queue name to stdout and exit 0',
+      cliTest(['idle-queues', 'test*', '--unpair', '--include-failed'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test has been idle for the last 60 minutes.')
+        expect(stderr).to.contain('Queue test_failed has been idle for the last 60 minutes.')
+        expect(stdout.trim()).to.equal('test\ntest_failed')
+      }))
+  })
+
+  describe('qdone idle-queues test # (no queues exist)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+        callback(err)
+      })
+    })
+    it('should print nothing to stdout and exit 0',
+      cliTest(['idle-queues', 'non-exist'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue does not exist.')
       }))
   })
 })
