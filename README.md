@@ -16,6 +16,7 @@ Command line job queue for SQS
   - Workers can listen to multiple queues, including wildcards
   - Efficient batch enqueing of large numbers of jobs
   - Dynamic visibility timeout for long running jobs
+  - Dynamic removal of idle queues
 
 qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in production.
 
@@ -198,6 +199,51 @@ The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The timeout
 doubles every subsequent call but never exceeds `--kill-after`.
 
+### Dynamically removing queues
+
+If you have workers listening on a dynamic number of queues, then any idle queues will negatively impact how quickly jobs can be dequeued and/or increase the number of unecessary API calls. You can discover which queues are idle using the `idle-queues` command:
+
+```bash
+$ qdone idle-queues 'test*' --idle-for 60 > idle-queues.txt
+Resolving queues: test*
+  done
+
+Checking queues (in this order):
+  test - https://sqs.us-east-1.../qdone_test
+  test2 - https://sqs.us-east-1.../qdone_test2
+
+Queue test2 has been idle for the last 60 minutes.
+Queue test has been idle for the last 60 minutes.
+Queue test_failed has been idle for the last 60 minutes.
+Queue test2_failed has been idle for the last 60 minutes.
+Used 4 SQS and 28 CloudWatch API calls.
+
+$ cat idle-queues.txt
+test
+test2
+```
+
+Accurate discovery of idle queues cannot be done through the SQS API alone, and requires the use of the more-expensive CloudWatch API (at the time of this writing, ~$0.40/1M calls for SQS API and ~$10/1M calls on CloudWatch). The `idle-queues` command attempts to make as few CloudWatch API calls as possible, exiting as soon as it discovers evidence of messages in the queue during the idle period.
+
+You can use the `--delete` option to actually remove a queue if it has been idle:
+
+```bash
+$ qdone idle-queues 'test*' --idle-for 60 --delete > deleted-queues.txt
+...
+Deleted test
+Deleted test_failed
+Deleted test2
+Deleted test2_failed
+Used 8 SQS and 28 CloudWatch API calls.
+
+$ cat deleted-queues.txt
+test
+test2
+```
+
+Because of the higher cost of CloudWatch API calls, you may wish plan your deletion schedule accordingly. For example, at the time of this writing, running the above command (two idle queues, 28 CloudWatch calls) every 10 minutes would cost around $1.20/month. However, if most of the queues are actively used, the number of CloudWatch calls needed goes down. On one of my setups, there are around 60 queues with a dozen queues idle over a two-hour period, and this translates to about 200 CloudWatch API calls every 10 minutes or $8/month.
+
+
 ## Production Logging
 
 The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stderr is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:
@@ -293,6 +339,23 @@ Example IAM policy allowing qdone to use queues with its prefix in any region:
 }
 ```
 
+For the `idle-queues` subcommand, you must add the following permission (and as of this writing, it is
+not possible to narrow the scope):
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": ["cloudwatch:GetMetricStatistics"],
+            "Effect": "Allow",
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+
 ## Command Line Usage
 
     usage: qdone [options] <command>
@@ -343,8 +406,8 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     -k, --kill-after number   Kill job after this many seconds [default: 30]
     -w, --wait-time number    Listen at most this long on each queue [default: 20]
     --include-failed          When using '*' do not ignore fail queues.
-    --drain                   Run until no more work is found and quit. NOTE: if used with  --wait-time 0,
-                              this option will not drain queues.
+    --drain                   Run until no more work is found and quit. NOTE: if used with
+                             --wait-time 0, this option will not drain queues.
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]
@@ -353,3 +416,25 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     -V, --version             Show version number
     --help                    Print full help message.
 
+### Idle queues usage
+
+    usage: qdone idle-queues [options] <queue...>
+
+  Options:
+
+    -o, --idle-for number   Minutes of inactivity after which a queue is considered
+                            idle. [default: 60]
+    --delete                Delete the queue if it is idle. The fail queue also must be
+                            idle unless you use --unpair.
+    --unpair                Treat queues and their fail queues as independent. By default
+                            they are treated as a unit.
+    --include-failed        When using '*' do not ignore fail queues. This option only
+                            applies if you use --unpair. Otherwise, queues and fail queues
+                            are treated as a unit.
+    --prefix string         Prefix to place at the front of each SQS queue name [default: qdone_]
+    --fail-suffix string    Suffix to append to each queue to generate fail queue name [default: _failed]
+    --region string         AWS region for Queues [default: us-east-1]
+    -q, --quiet             Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose           Turn on verbose output. Automatically set if stderr is a tty.
+    -V, --version           Show version number
+    --help                  Print full help message.
