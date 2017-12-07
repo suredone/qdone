@@ -1,16 +1,16 @@
 {
   "name": "qdone",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
     "aws-sdk": "^2.94.0",
-    "chalk": "^2.0.1",
-    "command-line-args": "^4.0.2",
-    "command-line-commands": "^2.0.0",
-    "command-line-usage": "^4.0.0",
-    "debug": "^2.6.3",
-    "q": "^1.4.1"
+    "chalk": "^2.3.0",
+    "command-line-args": "^4.0.7",
+    "command-line-commands": "^2.0.1",
+    "command-line-usage": "^4.0.2",
+    "debug": "^3.1.0",
+    "q": "^1.5.1"
   },
   "devDependencies": {
     "aws-sdk-mock": "^1.6.1",
