@@ -56,8 +56,8 @@ function executeJob (job, qname, qrl, options) {
           timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
         }
       })
-      .fail(function (err) {
-        debug('changeMessageVisibility.fail returned', err)
+      .catch(function (err) {
+        debug('changeMessageVisibility.catch returned', err)
         // Rejection means we're ouuta time, whatever, let the job die
         if (options.verbose) console.error(chalk.red('  failed to extend job: ') + err)
       })
@@ -93,8 +93,8 @@ function executeJob (job, qname, qrl, options) {
           return Promise.resolve({noJobs: 0, jobsSucceeded: 1, jobsFailed: 0})
         })
     })
-    .fail((err, stdout, stderr) => {
-      debug('childProcess.exec.fail')
+    .catch((err, stdout, stderr) => {
+      debug('childProcess.exec.catch')
       clearTimeout(timeoutExtender)
       if (options.verbose) {
         console.error(chalk.red('  FAILED'))

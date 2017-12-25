@@ -93,7 +93,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
           debug('qrlCache.get returned', qrl)
           return {qname: qname, qrl: qrl}
         })
-        .fail(function (err) {
+        .catch(function (err) {
           debug('qrlCache.get failed', err)
           if (options.verbose) console.error('  ' + chalk.red(qname.slice(options.prefix.length) + ' - ' + err))
         })
