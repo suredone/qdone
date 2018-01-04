@@ -5,16 +5,35 @@ const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
 const AWS = require('aws-sdk')
 
-function createFailQueue (fqueue, fqname) {
-  debug('createFailQueue(', fqueue, fqname, ')')
+function createDeadLetterQueue (fqueue, fqname) {
+  debug('createDeadLetterQueue(', fqueue, fqname, ')')
   const sqs = new AWS.SQS()
   return sqs
-    .createQueue({/* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
+    .createQueue({
       QueueName: fqname
     })
     .promise()
     .then(function (data) {
-      debug('createQueue returned', data)
+      debug('createDeadLetterQueue returned', data)
+      return data.QueueUrl
+    })
+}
+
+function createFailQueue (fqueue, fqname, deadLetterTargetArn) {
+  debug('createFailQueue(', fqueue, fqname, ')')
+  const sqs = new AWS.SQS()
+  const params = {
+    Attributes: { /* MessageRetentionPeriod: '259200', */ },
+    QueueName: qname
+  }
+  if (deadLetterTargetArn) {
+    params.Attributes['RedrivePolicy'] = `{"deadLetterTargetArn": "${deadLetterTargetArn}", "maxReceiveCount": "1"}'}`
+  }
+  return sqs
+    .createQueue(params)
+    .promise()
+    .then(function (data) {
+      debug('createFailQueue returned', data)
       return data.QueueUrl
     })
 }
