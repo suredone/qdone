@@ -1052,7 +1052,7 @@ describe('cli', function () {
       }))
   })
 
-  describe('qdone idle-queues \'test*\' # (queue was recently deleted)', function () {
+  describe('qdone idle-queues \'test*\' # (main queue was recently deleted)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
@@ -1073,6 +1073,68 @@ describe('cli', function () {
       cliTest(['idle-queues', 'test*'], null, function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue does not exist.')
         expect(stderr).to.contain('This error can occur when you run this command immediately after deleting a queue. Wait 60 seconds and try again.')
+      }))
+  })
+
+  describe('qdone idle-queues --delete \'test*\' # (failed queue was recently deleted)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        if (params.QueueName === 'qdone_test_failed') {
+          const err = new Error('Queue does not exist.')
+          err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+          callback(err, null)
+        } else {
+          callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        }
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`
+          // `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
+        ]})
+      })
+      AWS.mock('SQS', 'deleteQueue', function (params, callback) {
+        if (params.QueueUrl === 'https://q.amazonaws.com/123456789101/qdone_test_failed') {
+          const err = new Error('Queue does not exist.')
+          err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+          callback(err)
+          callback(err, null)
+        } else {
+          callback(null, {})
+        }
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        if (params.QueueUrl === 'https://q.amazonaws.com/123456789101/qdone_test_failed') {
+          const err = new Error('Queue does not exist.')
+          err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+          callback(err, null)
+        } else {
+          callback(null, {
+            Attributes: {
+              ApproximateNumberOfMessages: '0',
+              ApproximateNumberOfMessagesDelayed: '0',
+              ApproximateNumberOfMessagesNotVisible: '0'
+            }
+          })
+        }
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        // Always return 0s
+        callback(null, {
+          Label: params.MetricName,
+          Datapoints: [
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+          ]
+        })
+      })
+    })
+    it('should note the missing failed queue, print deleted queue to stdout and exit 0',
+      cliTest(['idle-queues', '--delete', 'test*'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test_failed does not exist.')
+        expect(stderr).to.contain('Deleted test')
+        expect(stdout).to.contain('test\n')
+        expect(stdout).to.not.contain('test_failed')
       }))
   })
 })

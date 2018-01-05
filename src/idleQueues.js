@@ -210,6 +210,26 @@ function processQueuePair (qname, qrl, options) {
           CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
         }}))
       })
+      .catch(e => {
+        // Handle the case where the fail queue has been deleted or was never created for some reason
+        if (e.code === 'AWS.SimpleQueueService.NonExistentQueue') {
+          if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
+          if (options.delete) {
+            return deleteQueue(qname, qrl, options)
+              .then(deleteResult => Object.assign(result, {
+                deleted: deleteResult.deleted,
+                apiCalls: {
+                  SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
+                  CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
+                }
+              }))
+          } else {
+            return result
+          }
+        } else {
+          throw e
+        }
+      })
     } else {
       if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
     }
