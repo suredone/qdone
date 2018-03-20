@@ -7,6 +7,7 @@ const chalk = require('chalk')
 const commandLineCommands = require('command-line-commands')
 const commandLineArgs = require('command-line-args')
 const getUsage = require('command-line-usage')
+const uuid = require('uuid')
 const packageJson = require('../package.json')
 
 class UsageError extends Error {}
@@ -47,8 +48,13 @@ function setupVerbose (options) {
   options.quiet = quiet
 }
 
+const enqueueOptionDefinitions = [
+  { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
+  { name: 'group-id', alias: 'g', type: String, defaultValue: uuid.v1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.' }
+]
+
 exports.enqueue = function enqueue (argv) {
-  const optionDefinitions = [].concat(globalOptionDefinitions)
+  const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue [options] <queue> <command>', raw: true },
     { content: 'Options', raw: true },
@@ -93,7 +99,7 @@ exports.enqueue = function enqueue (argv) {
 }
 
 exports.enqueueBatch = function enqueueBatch (argv) {
-  const optionDefinitions = [].concat(globalOptionDefinitions)
+  const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue-batch [options] <file...>', raw: true },
     { content: '<file...> can be one ore more filenames or - for stdin' },

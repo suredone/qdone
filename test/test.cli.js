@@ -165,6 +165,44 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone enqueue --fifo testQueue true # (queue exists, fifo mode)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should print id of enqueued message and exit 0',
+      cliTest(['enqueue', '--fifo', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+      }))
+  })
+
+  describe('qdone enqueue --fifo --group-id gidtest testQueue true # (queue exists, fifo mode, explicit group)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should print id of enqueued message and exit 0',
+      cliTest(['enqueue', '--fifo', '--group-id', 'gidtest', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+      }))
+  })
+
   describe('qdone enqueue --quiet testQueue true # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
@@ -410,6 +448,60 @@ describe('cli', function () {
         expect(stderr).to.contain('request 1')
         expect(stderr).to.contain('request 2')
         expect(stderr).to.contain('request 53')
+      }))
+  })
+
+  describe('qdone enqueue-batch test/fixtures/test-too-big-1.batch # (messages too big for full batch)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+        callback(err)
+      })
+      AWS.mock('SQS', 'createQueue', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0',
+            CreatedTimestamp: '1442426968',
+            DelaySeconds: '0',
+            LastModifiedTimestamp: '1442426968',
+            MaximumMessageSize: '262144',
+            MessageRetentionPeriod: '345600',
+            QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+            ReceiveMessageWaitTimeSeconds: '0',
+            RedrivePolicy: `{'deadLetterTargetArn':'arn:aws:sqs:us-east-1:80398EXAMPLE:${params.QueueName}','maxReceiveCount':1000}`,
+            VisibilityTimeout: '30'
+          }
+        })
+      })
+      var messageId = 0
+      AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
+        callback(null, {
+          Failed: [],
+          Successful: params.Entries.map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          }))
+        })
+      })
+    })
+    it('should print ids of enqueued messages, use 5 requests, print total count and exit 0',
+      cliTest(['enqueue-batch', 'test/fixtures/test-too-big-1.batch'], function (result, stdout, stderr) {
+        for (var messageId = 0; messageId < 10; messageId++) {
+          expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
+        }
+        expect(stderr).to.contain('Enqueued 10 jobs')
+        expect(stderr).to.contain('request 1')
+        expect(stderr).to.contain('request 2')
+        expect(stderr).to.contain('request 3')
+        expect(stderr).to.contain('request 4')
+        expect(stderr).to.contain('request 5')
       }))
   })
 
