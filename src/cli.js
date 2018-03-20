@@ -154,15 +154,15 @@ exports.enqueueBatch = function enqueueBatch (argv) {
       return deferred.promise
     })
   )
-  .then(function () {
-    debug('pairs', pairs)
-    return enqueue
-      .enqueueBatch(pairs, options)
-      .then(function (result) {
-        debug('enqueueBatch returned', result)
-        if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
-      })
-  })
+    .then(function () {
+      debug('pairs', pairs)
+      return enqueue
+        .enqueueBatch(pairs, options)
+        .then(function (result) {
+          debug('enqueueBatch returned', result)
+          if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
+        })
+    })
 }
 
 exports.worker = function worker (argv) {
@@ -365,10 +365,10 @@ exports.root = function root (originalArgv) {
     { content: 'usage: qdone [options] <command>', raw: true },
     { content: 'Commands', raw: true },
     { content: [
-        { name: 'enqueue', summary: 'Enqueue a single command' },
-        { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
-        { name: 'worker', summary: 'Execute work on one or more queues' },
-        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
+      { name: 'enqueue', summary: 'Enqueue a single command' },
+      { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
+      { name: 'worker', summary: 'Execute work on one or more queues' },
+      { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
     ] },
     { content: 'Global Options', raw: true },
     { optionList: globalOptionDefinitions },

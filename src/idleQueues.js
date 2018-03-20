@@ -19,7 +19,7 @@ const metricNames = [
   'ApproximateNumberOfMessagesVisible',
   'ApproximateNumberOfMessagesNotVisible',
   'ApproximateNumberOfMessagesDelayed',
-//    'NumberOfEmptyReceives',
+  //    'NumberOfEmptyReceives',
   'ApproximateAgeOfOldestMessage'
 ]
 
@@ -111,9 +111,9 @@ function checkIdle (qname, qrl, options) {
             .then(result => {
               debug('getMetric result', result)
               return Object.assign(
-                soFar,       // start with soFar object
-                result,      // add in our metricName keyed result
-                {idle: result[metricName] === 0},  // and recalculate idle
+                soFar, // start with soFar object
+                result, // add in our metricName keyed result
+                {idle: result[metricName] === 0}, // and recalculate idle
                 {apiCalls: {
                   SQS: soFar.apiCalls.SQS,
                   CloudWatch: soFar.apiCalls.CloudWatch + 1
@@ -210,26 +210,26 @@ function processQueuePair (qname, qrl, options) {
           CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
         }}))
       })
-      .catch(e => {
+        .catch(e => {
         // Handle the case where the fail queue has been deleted or was never created for some reason
-        if (e.code === 'AWS.SimpleQueueService.NonExistentQueue') {
-          if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
-          if (options.delete) {
-            return deleteQueue(qname, qrl, options)
-              .then(deleteResult => Object.assign(result, {
-                deleted: deleteResult.deleted,
-                apiCalls: {
-                  SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
-                  CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
-                }
-              }))
+          if (e.code === 'AWS.SimpleQueueService.NonExistentQueue') {
+            if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
+            if (options.delete) {
+              return deleteQueue(qname, qrl, options)
+                .then(deleteResult => Object.assign(result, {
+                  deleted: deleteResult.deleted,
+                  apiCalls: {
+                    SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
+                    CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
+                  }
+                }))
+            } else {
+              return result
+            }
           } else {
-            return result
+            throw e
           }
-        } else {
-          throw e
-        }
-      })
+        })
     } else {
       if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
     }

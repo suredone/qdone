@@ -79,14 +79,14 @@ function ingestQRLs (qrls) {
 exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
   const sqs = new AWS.SQS()
   return Q.all(qnames.map(function (qname) {
-    return qname.slice(-1) === '*'  // wildcard queues support
+    return qname.slice(-1) === '*' // wildcard queues support
       ? sqs
-          .listQueues({QueueNamePrefix: qname.slice(0, -1)})
-          .promise()
-          .then(function (data) {
-            debug('listQueues return', data)
-            return ingestQRLs(data.QueueUrls || [])
-          })
+        .listQueues({QueueNamePrefix: qname.slice(0, -1)})
+        .promise()
+        .then(function (data) {
+          debug('listQueues return', data)
+          return ingestQRLs(data.QueueUrls || [])
+        })
       : exports
         .get(qname)
         .then(function (qrl) {
@@ -98,10 +98,10 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
           if (options.verbose) console.error('  ' + chalk.red(qname.slice(options.prefix.length) + ' - ' + err))
         })
   }))
-  .then(function (results) {
+    .then(function (results) {
     // flatten nested results
-    return ([].concat.apply([], results)).filter(r => r)
-  })
+      return ([].concat.apply([], results)).filter(r => r)
+    })
 }
 
 debug('loaded')
