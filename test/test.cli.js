@@ -106,7 +106,7 @@ describe('cli', function () {
   // Enqueue
   describe('qdone enqueue', function () {
     it('should print usage and exit 1 with error',
-      cliTest(['enqueue'], null, function (err, stdout, stderr) {
+      cliTest(['enqueue', '--verbose'], null, function (err, stdout, stderr) {
         expect(stdout).to.contain('usage: ')
         expect(stderr).to.contain('<queue>')
         expect(err).to.be.an('error')
@@ -123,7 +123,7 @@ describe('cli', function () {
 
   describe('qdone enqueue onlyQueue', function () {
     it('should print usage and exit 1 with error',
-      cliTest(['enqueue', 'onlyQueue'], null, function (err, stdout, stderr) {
+      cliTest(['enqueue', '--verbose', 'onlyQueue'], null, function (err, stdout, stderr) {
         expect(stdout).to.contain('usage: ')
         expect(stderr).to.contain('<queue>')
         expect(err).to.be.an('error')
@@ -160,7 +160,7 @@ describe('cli', function () {
       })
     })
     it('should print id of enqueued message and exit 0',
-      cliTest(['enqueue', 'testQueue', 'true'], function (result, stdout, stderr) {
+      cliTest(['enqueue', '--verbose', 'testQueue', 'true'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
       }))
   })
@@ -198,7 +198,7 @@ describe('cli', function () {
       })
     })
     it('should print id of enqueued message and exit 0',
-      cliTest(['enqueue', '--fifo', '--group-id', 'gidtest', 'testQueue', 'true'], function (result, stdout, stderr) {
+      cliTest(['enqueue', '--verbose', '--fifo', '--group-id', 'gidtest', 'testQueue', 'true'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
       }))
   })
@@ -264,6 +264,96 @@ describe('cli', function () {
         expect(stderr).to.contain('Creating fail queue testQueue_failed')
         expect(stderr).to.contain('Creating queue testQueue')
         expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+      }))
+  })
+
+  describe('qdone enqueue --quiet testQueue true # (queue does not exist)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+        callback(err)
+      })
+      AWS.mock('SQS', 'createQueue', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0',
+            CreatedTimestamp: '1442426968',
+            DelaySeconds: '0',
+            LastModifiedTimestamp: '1442426968',
+            MaximumMessageSize: '262144',
+            MessageRetentionPeriod: '345600',
+            QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+            ReceiveMessageWaitTimeSeconds: '0',
+            RedrivePolicy: `{'deadLetterTargetArn':'arn:aws:sqs:us-east-1:80398EXAMPLE:${params.QueueName}','maxReceiveCount':1000}`,
+            VisibilityTimeout: '30'
+          }
+        })
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should create queues, print nothing and exit 0',
+      cliTest(['enqueue', '--quiet', 'testQueue', 'true'], function (result, stdout, stderr) {
+        expect(stderr).to.equal('')
+        expect(stdout).to.equal('')
+      }))
+  })
+
+  describe('qdone enqueue testQueue true # (unhandled error on fail queue creation)', function () {
+    before(function () {
+      var code = 'AWS.SimpleQueueService.NonExistentQueue'
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = code
+        code = 'AWS.SimpleQueueService.SomeOtherError'
+        callback(err)
+      })
+      AWS.mock('SQS', 'createQueue', function (params, callback) {
+        // callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        const err = new Error('Some Other Error.')
+        err.code = 'AWS.SimpleQueueService.SomeOtherError'
+        callback(err)
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0',
+            CreatedTimestamp: '1442426968',
+            DelaySeconds: '0',
+            LastModifiedTimestamp: '1442426968',
+            MaximumMessageSize: '262144',
+            MessageRetentionPeriod: '345600',
+            QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+            ReceiveMessageWaitTimeSeconds: '0',
+            RedrivePolicy: `{'deadLetterTargetArn':'arn:aws:sqs:us-east-1:80398EXAMPLE:${params.QueueName}','maxReceiveCount':1000}`,
+            VisibilityTimeout: '30'
+          }
+        })
+      })
+      AWS.mock('SQS', 'sendMessage', function (params, callback) {
+        callback(null, {
+          MD5OfMessageAttributes: '00484c68...59e48f06',
+          MD5OfMessageBody: '51b0a325...39163aa0',
+          MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
+        })
+      })
+    })
+    it('should print traceback and exit 1 with error',
+      cliTest(['enqueue', '--verbose', 'testQueue', 'true'], null, function (err, stdout, stderr) {
+        expect(err).to.be.an('error')
       }))
   })
 
@@ -338,6 +428,38 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (queue exists, some failures)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      var messageId = 0
+      AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
+        callback(null, {
+          Failed: params.Entries.slice(0, 2).map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          })),
+          Successful: params.Entries.slice(2).map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          }))
+        })
+      })
+    })
+    it('should exit 1 and show which messages failed',
+      cliTest(['enqueue-batch', '--verbose', 'test/fixtures/test-unique01-x24.batch'], null, function (err, stdout, stderr) {
+        expect(stderr).to.contain('Error: One or more message failures')
+        expect(err).to.be.an('error')
+        // Expect some ids of failed messages
+        for (var messageId = 0; messageId < 2; messageId++) {
+          expect(stderr).to.contain('da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
+        }
+      }))
+  })
+
   describe('qdone enqueue-batch --quiet test/fixtures/test-unique01-x24.batch # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
@@ -359,6 +481,61 @@ describe('cli', function () {
       cliTest(['enqueue-batch', '--quiet', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
         expect(stderr).to.equal('')
         expect(stdout).to.equal('')
+      }))
+  })
+
+  describe('qdone enqueue-batch --fifo test/fixtures/test-fifo01-x24.batch # (queue does not exist)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        const err = new Error('Queue does not exist.')
+        err.code = 'AWS.SimpleQueueService.NonExistentQueue'
+        callback(err)
+      })
+      AWS.mock('SQS', 'createQueue', function (params, callback) {
+        expect(params.QueueName.slice(-'.fifo'.length) === '.fifo')
+        expect(params.FifoQueue === 'true')
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0',
+            CreatedTimestamp: '1442426968',
+            DelaySeconds: '0',
+            LastModifiedTimestamp: '1442426968',
+            MaximumMessageSize: '262144',
+            MessageRetentionPeriod: '345600',
+            QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+            ReceiveMessageWaitTimeSeconds: '0',
+            RedrivePolicy: `{'deadLetterTargetArn':'arn:aws:sqs:us-east-1:80398EXAMPLE:${params.QueueName}','maxReceiveCount':1000}`,
+            VisibilityTimeout: '30'
+          }
+        })
+      })
+      var messageId = 0
+      AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
+        callback(null, {
+          Failed: [],
+          Successful: params.Entries.map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          }))
+        })
+      })
+    })
+    it('should print id of enqueued messages, use 3 requests, print total count and exit 0',
+      cliTest(['enqueue-batch', '--verbose', '--fifo', 'test/fixtures/test-fifo01-x24.batch'], function (result, stdout, stderr) {
+        for (var messageId = 0; messageId < 24; messageId++) {
+          expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
+        }
+        expect(stderr).to.contain('Enqueued 24 jobs')
+        expect(stderr).to.contain('request 1')
+        expect(stderr).to.contain('request 2')
+        expect(stderr).to.contain('request 3')
+        expect(stderr).to.not.contain('request 4')
       }))
   })
 

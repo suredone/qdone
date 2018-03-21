@@ -14,10 +14,7 @@ function createFailQueue (fqueue, fqname, deadLetterTargetArn, options) {
     Attributes: {},
     QueueName: fqname
   }
-  if (options.fifo) {
-    params.Attributes.FifoQueue = 'true'
-    params.QueueName = params.QueueName + '.fifo'
-  }
+  if (options.fifo) params.Attributes.FifoQueue = 'true'
   return sqs
     .createQueue(params)
     .promise()
@@ -37,10 +34,7 @@ function createQueue (queue, qname, deadLetterTargetArn, options) {
     },
     QueueName: qname
   }
-  if (options.fifo) {
-    params.Attributes.FifoQueue = 'true'
-    params.QueueName = params.QueueName + '.fifo'
-  }
+  if (options.fifo) params.Attributes.FifoQueue = 'true'
   return sqs
     .createQueue(params)
     .promise()
@@ -149,7 +143,6 @@ function flushMessages (qrl, options) {
         if (data.Failed && data.Failed.length) {
           const err = new Error('One or more message failures: ' + JSON.stringify(data.Failed))
           err.Failed = data.Failed
-          debug(err)
           throw err
         }
         // If we actually managed to flush any of them
@@ -226,8 +219,9 @@ function getQrl (queue, qname, fqueue, fqname, options) {
 exports.enqueue = function enqueue (queue, command, options) {
   debug('enqueue(', queue, command, ')')
 
+  queue = qrlCache.normalizeQueueName(queue, options)
   const qname = options.prefix + queue
-  const fqueue = queue + options['fail-suffix']
+  const fqueue = qrlCache.normalizeFailQueueName(queue, options)
   const fqname = options.prefix + fqueue
 
   // Now that we have the queue, send our message
@@ -243,10 +237,10 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
 
   function unpackPair (pair) {
-    const queue = pair.queue
+    const queue = qrlCache.normalizeQueueName(pair.queue, options)
     const command = pair.command
     const qname = options.prefix + queue
-    const fqueue = queue + options['fail-suffix']
+    const fqueue = qrlCache.normalizeFailQueueName(queue, options)
     const fqname = options.prefix + fqueue
     return { queue, qname, fqueue, fqname, command }
   }

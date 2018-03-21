@@ -13,6 +13,28 @@ function _get (qname) {
 }
 
 //
+// Normalizes a queue name to end with .fifo if options.fifo is set
+//
+const fifoSuffix = '.fifo'
+exports.normalizeQueueName = function normalizeQueueName (qname, options) {
+  const sliced = qname.slice(0, -fifoSuffix.length)
+  const suffix = qname.slice(-fifoSuffix.length)
+  const base = suffix === fifoSuffix ? sliced : qname
+  return base + (options.fifo && qname.slice(-1) !== '*' ? fifoSuffix : '')
+}
+
+//
+// Normalizes fail queue name, appending both --fail-suffix and .fifo depending on options
+//
+exports.normalizeFailQueueName = function normalizeFailQueueName (qname, options) {
+  qname = exports.normalizeQueueName(qname, {fifo: false}) // strip .fifo if it is there
+  const sliced = qname.slice(0, -options['fail-suffix'].length)
+  const suffix = qname.slice(-options['fail-suffix'].length)
+  const base = suffix === options['fail-suffix'] ? sliced : qname // strip --fail-suffix if it is there
+  return (base + options['fail-suffix']) + (options.fifo ? fifoSuffix : '')
+}
+
+//
 // Clear cache
 //
 exports.clear = function clear () {
@@ -85,6 +107,10 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
         .promise()
         .then(function (data) {
           debug('listQueues return', data)
+          if (options.fifo) {
+            // Remove non-fifo queues
+            data.QueueUrls = data.QueueUrls.filter(url => url.slice(-fifoSuffix.length) === fifoSuffix)
+          }
           return ingestQRLs(data.QueueUrls || [])
         })
       : exports

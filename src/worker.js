@@ -157,7 +157,7 @@ function pollForJobs (qname, qrl, options) {
 //
 exports.listen = function listen (queues, options) {
   if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(function (queue) { return options.prefix + queue })
+  const qnames = queues.map(function (queue) { return options.prefix + qrlCache.normalizeQueueName(queue, options) })
   return qrlCache
     .getQnameUrlPairs(qnames, options)
     .then(function (entries) {
@@ -170,7 +170,7 @@ exports.listen = function listen (queues, options) {
       // Don't listen to fail queues... unless user wants to
       entries = entries
         .filter(function (entry) {
-          const suf = options['fail-suffix']
+          const suf = options['fail-suffix'] + (options.fifo ? '.fifo' : '')
           return options['include-failed'] ? true : entry.qname.slice(-suf.length) !== suf
         })
 
