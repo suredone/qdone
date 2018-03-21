@@ -1,11 +1,11 @@
 # Changelog
 
-[v.1.3.0-alpha]  (Unreleased)
------------------------------
+v.1.3.0-alpha (Unreleased)
+--------------------------
 
 ## New Features
 
-### FIFO Option (#18)
+### FIFO Option ([#18])
 
 Added a `--fifo` and `--group-id <string>` option to `equeue` and `enqueue-batch`
 - Causes any new queues to be created as FIFO queues
@@ -25,13 +25,16 @@ Added a `--fifo` option to `worker`
 
 ## Bug Fixes
 
-- Fixed (#29) bug in `enqueue-batch` where SQS batches where command lines added up to > 256kb would not be split correctly and loop
+- Fixed ([#29]) bug in `enqueue-batch` where SQS batches where command lines added up to > 256kb would not be split correctly and loop
 
 ## Under the hood
 
-- Increased test coverage related to (#29)
-- Added test coverage for (#18)
+- Increased test coverage related to ([#29])
+- Added test coverage for ([#18])
 - Updated command line args libraries
+
+[#18](https://github.com/suredone/qdone/issues/18)
+[#29](https://github.com/suredone/qdone/issues/29)
 
 
 [v1.2.0]  (January 5, 2018)
@@ -39,7 +42,7 @@ Added a `--fifo` option to `worker`
 
 ## Bug Fixes
 
-- #22 fixes exception deleting failed queues in paired mode when fail queue does not exist
+- [#22](https://github.com/suredone/qdone/issues/22) fixes exception deleting failed queues in paired mode when fail queue does not exist
 
 
 [v1.1.0]. (December 25, 2017)
