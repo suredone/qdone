@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "1.2.1",
+  "version": "1.3.0-alpha.1",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
@@ -33,7 +33,10 @@
   "scripts": {
     "test": "standard && nyc mocha",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
-    "standard": "standard"
+    "standard": "standard",
+    "prep-for-publish": "npm shrinkwrap && echo now commit shrinkwrap and use npm run publish-{next,latest}",
+    "publish-latest": "npm publish --tag latest",
+    "publish-next": "npm publish --tag next"
   },
   "author": "Ryan Witt",
   "license": "MIT",
