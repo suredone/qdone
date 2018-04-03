@@ -109,7 +109,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
           debug('listQueues return', data)
           if (options.fifo) {
             // Remove non-fifo queues
-            data.QueueUrls = data.QueueUrls.filter(url => url.slice(-fifoSuffix.length) === fifoSuffix)
+            data.QueueUrls = (data.QueueUrls || []).filter(url => url.slice(-fifoSuffix.length) === fifoSuffix)
           }
           return ingestQRLs(data.QueueUrls || [])
         })
