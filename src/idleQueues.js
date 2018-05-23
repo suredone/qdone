@@ -27,7 +27,7 @@ const metricNames = [
  * Gets queue attributes from the SQS api and assesses whether queue is idle
  * at this immediate moment.
  */
-function cheapIdleCheck (qname, qrl, options) {
+ function cheapIdleCheck (qname, qrl, options) {
   const sqs = new AWS.SQS()
   return sqs
     .getQueueAttributes({AttributeNames: attributeNames, QueueUrl: qrl})
@@ -40,6 +40,7 @@ function cheapIdleCheck (qname, qrl, options) {
       return Promise.resolve(result)
     })
 }
+exports.cheapIdleCheck = cheapIdleCheck
 
 /**
  * Gets a single metric from the CloudWatch api.

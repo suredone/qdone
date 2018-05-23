@@ -244,6 +244,40 @@ test2
 Because of the higher cost of CloudWatch API calls, you may wish plan your deletion schedule accordingly. For example, at the time of this writing, running the above command (two idle queues, 28 CloudWatch calls) every 10 minutes would cost around $1.20/month. However, if most of the queues are actively used, the number of CloudWatch calls needed goes down. On one of my setups, there are around 60 queues with a dozen queues idle over a two-hour period, and this translates to about 200 CloudWatch API calls every 10 minutes or $8/month.
 
 
+### FIFO Queues
+
+
+The `equeue` and `enqueue-batch` commands can create FIFO queues with limited features controlled by the `--fifo` and `--group-id <string>` options.
+
+Using the `--fifo` option with `enqueue` or `enqueue-batch`:
+
+- causes any new queues to be created as FIFO queues
+- causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
+- causes failed queues to take the form `${name}_failed.fifo`
+
+Using the `--group-id` option with `enqueue` or `enqueue-batch` implies that:
+
+- Any commands with the same `--group-id` will be worked on in the order they were received by SQS (see [FIFO docs](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html)).
+- If you don't set `--group-id` it defaults to a unique id per call to `qdone`, so this means messages sent by `enqueue-batch` will always be processed within the batch in the order you sent them.
+
+Enqueue limitations:
+
+- There is NO option to set group id per-message in `enqueue-batch`. Adding this feature in the future will change the format of the batch input file.
+- There is NO support right now for Content Deduplication, however a Unique Message Deduplication ID is generated for each command, so retry-able errors should not result in duplicate messages.
+
+
+Using the `--fifo` option with `worker`:
+
+- causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
+- causes the worker to only listen to queues with a `.fifo` suffix when wildcard names are specified (e.g. `test_*` or `*`)
+
+Worker limitations:
+
+- Failed queues are still only included if `--include-failed` is set.
+- Regardless of how many workers you have, FIFO commands with the same `--group-id` will only be executed by one worker at a time.
+- There is NO support right now for only-once processing using the Receive Request Attempt ID
+
+
 ## Production Logging
 
 The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stderr is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:
@@ -297,7 +331,8 @@ WantedBy=multi-user.target
 | -- | -- | -- |
 | `qdone enqueue` |  2&nbsp;[+3] | One call to resolve the queue name, one call to enqueue the command, three extra calls if the queue does not exist yet. |
 | `qdone enqueue-batch` |  **q**&nbsp;+&nbsp;ceil(**c**/10)&nbsp;+&nbsp;3**n** | **q**: number of unique queue names in the batch <br/> **c**: number of commands in the batch  <br/> **n**: number of queues that do not exist yet |
-| `qdone worker` (while listening) |  <nobr>**n** + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
+| `qdone worker` (while listening, per listen round) |  <nobr>**n** + (1&nbsp;per&nbsp;**n**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **n**: number of queues  |
+| `qdone worker` (while listening with `--active-only`, per round) |  <nobr>**2n** + (1&nbsp;per&nbsp;**a**&times;**w**)</nobr> | **w**: `--wait-time` in seconds <br /> **a**: number of **active** queues  |
 | `qdone worker` (while job running) |  <nobr>log(**t**/30)&nbsp;+&nbsp;1</nobr> | **t**: total job run time in seconds |
 
 ## AWS Authentication
@@ -406,6 +441,7 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     -k, --kill-after number   Kill job after this many seconds [default: 30]
     -w, --wait-time number    Listen at most this long on each queue [default: 20]
     --include-failed          When using '*' do not ignore fail queues.
+    --active-only             Listen only to queues with pending messages.                                  
     --drain                   Run until no more work is found and quit. NOTE: if used with
                              --wait-time 0, this option will not drain queues.
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
