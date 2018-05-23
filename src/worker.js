@@ -168,7 +168,11 @@ exports.listen = function listen (queues, options) {
         debug({entiresBeforeCheck: entries})
         return Promise.all(entries.map(entry =>
           cheapIdleCheck(entry.qname, entry.qrl, options)
-            .then(result => Object.assign(entry, {idle: result.idle}))
+            .then(result =>
+              Promise.resolve(
+                Object.assign(entry, {idle: result.idle})
+              )
+            )
         ))
       } else {
         return entries
@@ -177,7 +181,7 @@ exports.listen = function listen (queues, options) {
     .then(function (entries) {
       if (options['active-only']) {
         // Filter out idle queues
-        return entries.filter(entry => entry && !entry.idle)
+        return entries.filter(entry => entry && entry.idle !== true)
       } else {
         return entries
       }
