@@ -1,7 +1,7 @@
 # Changelog
 
-v.1.3.0-alpha (Unreleased)
---------------------------
+v.1.3.0
+-------
 
 ### New Features
 
@@ -22,6 +22,12 @@ Added a `--fifo` option to `worker`
 - Failed queues are still only included if `--include-failed` is set.
 - Regardless of how many workers you have, FIFO commands with the same `--group-id` will only be executed by one worker at a time.
 - There is NO support right now for only-once processing using the Receive Request Attempt ID
+
+#### Only Listen To Active Queues
+
+We encountered an occasional production problem where aggressively deleting idle queues can cause the loss of a message that was sent between the idle check and the delete operation. We were using `qdone idle-queues --delete --idle-for 10`, which is much more aggressive than the default of 60 minutes.
+
+To address this, we are adding an alternate mode of operation to the worker with the new `--active-only` flag for use with wildcard (`*`) queues that does a cheap SQS API call to check whether a queue currently has waiting messages. If so, it's put into the list of queues for the current listening round. This should have the net effect of reducing the number of queues workers have to listen to (similarly to aggresive usage of `qdone idle-queues --delete`) without exposing messages to the delete race condition. For cases where idle queues still must be deleted, we recommend using a longer timeout.
 
 ### Bug Fixes
 

@@ -916,6 +916,64 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone worker "test*" --drain --active-only # (4 queues, 2 full, 2 empty)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}4`
+        ]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        const lastLetter = params.QueueUrl.slice(-1)
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: (lastLetter === '1' || lastLetter === '2') ? '1' : '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0',
+            CreatedTimestamp: '1442426968',
+            DelaySeconds: '0',
+            LastModifiedTimestamp: '1442426968',
+            MaximumMessageSize: '262144',
+            MessageRetentionPeriod: '345600',
+            QueueArn: 'arn:aws:sqs:us-east-1:80398EXAMPLE:MyNewQueue',
+            ReceiveMessageWaitTimeSeconds: '0',
+            RedrivePolicy: `{'deadLetterTargetArn':'arn:aws:sqs:us-east-1:80398EXAMPLE:${params.QueueName}','maxReceiveCount':1000}`,
+            VisibilityTimeout: '30'
+          }
+        })
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        if (params.QueueUrl === params.QueueUrl.slice(0, -1) + '2') {
+          AWS.restore('SQS', 'receiveMessage')
+          // Subsequent calls return no message
+          AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+            callback(null, {})
+          })
+        }
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test*', '--drain', '--active-only'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-1')
+        expect(stderr).to.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-2')
+        expect(stderr).to.not.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-3')
+        expect(stderr).to.not.contain('Found job da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-4')
+        expect(stderr).to.contain('Ran 2 jobs: 2 succeeded 0 failed')
+      }))
+  })
+
   describe('qdone worker test # (1 successful job + SIGTERM)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {

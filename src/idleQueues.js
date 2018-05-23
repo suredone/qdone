@@ -40,6 +40,7 @@ function cheapIdleCheck (qname, qrl, options) {
       return Promise.resolve(result)
     })
 }
+exports.cheapIdleCheck = cheapIdleCheck
 
 /**
  * Gets a single metric from the CloudWatch api.
