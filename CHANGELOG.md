@@ -23,7 +23,7 @@ Added a `--fifo` option to `worker`
 - Regardless of how many workers you have, FIFO commands with the same `--group-id` will only be executed by one worker at a time.
 - There is NO support right now for only-once processing using the Receive Request Attempt ID
 
-#### Only Listen To Active Queues
+#### Only Listen To Active Queues with `--active-only`
 
 We encountered an occasional production problem where aggressively deleting idle queues can cause the loss of a message that was sent between the idle check and the delete operation. We were using `qdone idle-queues --delete --idle-for 10`, which is much more aggressive than the default of 60 minutes.
 
