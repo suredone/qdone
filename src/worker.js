@@ -4,6 +4,7 @@ const childProcess = require('child_process')
 const debug = require('debug')('qdone:worker')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
+const cheapIdleCheck = require('./idleQueues').cheapIdleCheck
 const AWS = require('aws-sdk')
 var shutdownRequested = false
 
@@ -157,9 +158,34 @@ function pollForJobs (qname, qrl, options) {
 //
 exports.listen = function listen (queues, options) {
   if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(function (queue) { return options.prefix + queue })
+  const qnames = queues.map(function (queue) { return options.prefix + qrlCache.normalizeQueueName(queue, options) })
+  debug({hello: '?'})
   return qrlCache
     .getQnameUrlPairs(qnames, options)
+    .then(function (entries) {
+      // If user only wants active queues, run a cheap idle check
+      if (options['active-only']) {
+        debug({entiresBeforeCheck: entries})
+        return Promise.all(entries.map(entry =>
+          cheapIdleCheck(entry.qname, entry.qrl, options)
+            .then(result =>
+              Promise.resolve(
+                Object.assign(entry, {idle: result.idle})
+              )
+            )
+        ))
+      } else {
+        return entries
+      }
+    })
+    .then(function (entries) {
+      if (options['active-only']) {
+        // Filter out idle queues
+        return entries.filter(entry => entry && entry.idle !== true)
+      } else {
+        return entries
+      }
+    })
     .then(function (entries) {
       debug('qrlCache.getQnameUrlPairs.then')
       if (options.verbose) {
@@ -170,7 +196,7 @@ exports.listen = function listen (queues, options) {
       // Don't listen to fail queues... unless user wants to
       entries = entries
         .filter(function (entry) {
-          const suf = options['fail-suffix']
+          const suf = options['fail-suffix'] + (options.fifo ? '.fifo' : '')
           return options['include-failed'] ? true : entry.qname.slice(-suf.length) !== suf
         })
 

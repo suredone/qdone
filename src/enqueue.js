@@ -2,16 +2,21 @@
 const Q = require('q')
 const debug = require('debug')('qdone:enqueue')
 const chalk = require('chalk')
+const uuid = require('uuid')
 const qrlCache = require('./qrlCache')
 const AWS = require('aws-sdk')
 
-function createFailQueue (fqueue, fqname) {
+function createFailQueue (fqueue, fqname, deadLetterTargetArn, options) {
   debug('createFailQueue(', fqueue, fqname, ')')
   const sqs = new AWS.SQS()
+  const params = {
+    /* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
+    Attributes: {},
+    QueueName: fqname
+  }
+  if (options.fifo) params.Attributes.FifoQueue = 'true'
   return sqs
-    .createQueue({/* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
-      QueueName: fqname
-    })
+    .createQueue(params)
     .promise()
     .then(function (data) {
       debug('createQueue returned', data)
@@ -19,17 +24,19 @@ function createFailQueue (fqueue, fqname) {
     })
 }
 
-function createQueue (queue, qname, deadLetterTargetArn) {
+function createQueue (queue, qname, deadLetterTargetArn, options) {
   debug('createQueue(', queue, qname, ')')
   const sqs = new AWS.SQS()
+  const params = {
+    Attributes: {
+      // MessageRetentionPeriod: '259200',
+      RedrivePolicy: `{"deadLetterTargetArn": "${deadLetterTargetArn}", "maxReceiveCount": "1"}'}`
+    },
+    QueueName: qname
+  }
+  if (options.fifo) params.Attributes.FifoQueue = 'true'
   return sqs
-    .createQueue({
-      Attributes: {
-        // MessageRetentionPeriod: '259200',
-        RedrivePolicy: `{"deadLetterTargetArn": "${deadLetterTargetArn}", "maxReceiveCount": "1"}'}`
-      },
-      QueueName: qname
-    })
+    .createQueue(params)
     .promise()
     .then(function (data) {
       debug('createQueue returned', data)
@@ -66,9 +73,14 @@ function formatMessage (command, id) {
   return message
 }
 
-function sendMessage (qrl, command) {
+function sendMessage (qrl, command, options) {
   debug('sendMessage(', qrl, command, ')')
   const message = Object.assign({QueueUrl: qrl}, formatMessage(command))
+  // Add in group id if we're using fifo
+  if (options.fifo) {
+    message.MessageGroupId = options['group-id']
+    message.MessageDeduplicationId = uuid.v1()
+  }
   const sqs = new AWS.SQS()
   return sqs
     .sendMessage(message)
@@ -79,9 +91,18 @@ function sendMessage (qrl, command) {
     })
 }
 
-function sendMessageBatch (qrl, messages) {
-  debug('sendMessageBatch(', qrl, messages, ')')
+function sendMessageBatch (qrl, messages, options) {
+  debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), {MessageBody: e.MessageBody.slice(0, 10) + '...'})), ')')
   const params = { Entries: messages, QueueUrl: qrl }
+  // Add in group id if we're using fifo
+  if (options.fifo) {
+    params.Entries = params.Entries.map(
+      message => Object.assign({
+        MessageGroupId: options['group-id'],
+        MessageDeduplicationId: uuid.v1()
+      }, message)
+    )
+  }
   const sqs = new AWS.SQS()
   return sqs
     .sendMessageBatch(params)
@@ -104,25 +125,19 @@ function flushMessages (qrl, options) {
   debug('flushMessages', qrl)
   // Flush until empty
   var numFlushed = 0
-  var batchMax = 10
   function whileNotEmpty () {
     if (!(messages[qrl] && messages[qrl].length)) return numFlushed
     // Construct batch until full
     const batch = []
-    while (messages[qrl].length && batch.length < 10) {
+    var nextSize = JSON.stringify(messages[qrl][0]).length
+    var totalSize = 0
+    while ((totalSize + nextSize) < 262144 && messages[qrl].length && batch.length < 10) {
       batch.push(messages[qrl].shift())
+      totalSize += nextSize
+      if (messages[qrl].length) nextSize = JSON.stringify(messages[qrl][0]).length
+      else nextSize = 0
     }
-    return sendMessageBatch(qrl, batch)
-      .catch(function (err) {
-        // Only handle request too long errors
-        if (err.code !== 'AWS.SimpleQueueService.BatchRequestTooLong') throw err
-        // And bail if one message is still too long
-        if (batchMax === 1) throw err
-        // Respond by cutting batch size in half
-        batchMax = Math.max(1, batchMax / 2)
-        // And replace all our messages on the internal queue and try again
-        while (batch.length) messages[qrl].unshift(batch.pop())
-      })
+    return sendMessageBatch(qrl, batch, options)
       .then(function (data) {
         // Fail if there are any individual message failures
         if (data.Failed && data.Failed.length) {
@@ -130,14 +145,13 @@ function flushMessages (qrl, options) {
           err.Failed = data.Failed
           throw err
         }
-        // If we actually managed to flush any of them, reset the max batch size
+        // If we actually managed to flush any of them
         if (batch.length) {
           requestCount += 1
           data.Successful.forEach(message => {
             if (options.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
           })
           numFlushed += batch.length
-          batchMax = 10
         }
       })
       .then(whileNotEmpty)
@@ -179,7 +193,7 @@ function getQrl (queue, qname, fqueue, fqname, options) {
             // Create fail queue if it doesn't exist
             if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
               if (options.verbose) console.error(chalk.blue('Creating fail queue ') + fqueue)
-              return createFailQueue(fqueue, fqname)
+              return createFailQueue(fqueue, fqname, null, options)
             }
             throw err // throw unhandled errors
           })
@@ -189,7 +203,7 @@ function getQrl (queue, qname, fqueue, fqname, options) {
           .then(getQueueAttributes)
           .then(data => {
             if (options.verbose) console.error(chalk.blue('Creating queue ') + queue)
-            return createQueue(queue, qname, data.Attributes.QueueArn)
+            return createQueue(queue, qname, data.Attributes.QueueArn, options)
           })
       }
       throw err // throw unhandled errors
@@ -205,13 +219,14 @@ function getQrl (queue, qname, fqueue, fqname, options) {
 exports.enqueue = function enqueue (queue, command, options) {
   debug('enqueue(', queue, command, ')')
 
+  queue = qrlCache.normalizeQueueName(queue, options)
   const qname = options.prefix + queue
-  const fqueue = queue + options['fail-suffix']
+  const fqueue = qrlCache.normalizeFailQueueName(queue, options)
   const fqname = options.prefix + fqueue
 
   // Now that we have the queue, send our message
   return getQrl(queue, qname, fqueue, fqname, options)
-    .then(qrl => sendMessage(qrl, command))
+    .then(qrl => sendMessage(qrl, command, options))
 }
 
 //
@@ -222,20 +237,29 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
 
   function unpackPair (pair) {
-    const queue = pair.queue
+    const queue = qrlCache.normalizeQueueName(pair.queue, options)
     const command = pair.command
     const qname = options.prefix + queue
-    const fqueue = queue + options['fail-suffix']
+    const fqueue = qrlCache.normalizeFailQueueName(queue, options)
     const fqname = options.prefix + fqueue
     return { queue, qname, fqueue, fqname, command }
   }
 
+  // Find unique pairs
+  const uniquePairMap = {}
+  const uniquePairs = []
+  pairs.forEach(pair => {
+    if (!uniquePairMap[pair.queue]) {
+      uniquePairMap[pair.queue] = true
+      uniquePairs.push(pair)
+    }
+  })
+  debug({uniquePairMap, uniquePairs})
+
   // Prefetch unique qrls in parallel (creating as needed)
-  const qrls = {}
   requestCount = 0
   return Q.all(
-    pairs
-      .filter(pair => qrls[pair.queue] ? false : (qrls[pair.queue] = true)) // filter duplicates
+    uniquePairs
       .map(unpackPair)
       .map(u => getQrl(u.queue, u.qname, u.fqueue, u.fqname, options))
   ).then(function () {

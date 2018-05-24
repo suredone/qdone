@@ -7,6 +7,7 @@ const chalk = require('chalk')
 const commandLineCommands = require('command-line-commands')
 const commandLineArgs = require('command-line-args')
 const getUsage = require('command-line-usage')
+const uuid = require('uuid')
 const packageJson = require('../package.json')
 
 class UsageError extends Error {}
@@ -47,8 +48,13 @@ function setupVerbose (options) {
   options.quiet = quiet
 }
 
+const enqueueOptionDefinitions = [
+  { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
+  { name: 'group-id', alias: 'g', type: String, defaultValue: uuid.v1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.' }
+]
+
 exports.enqueue = function enqueue (argv) {
-  const optionDefinitions = [].concat(globalOptionDefinitions)
+  const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue [options] <queue> <command>', raw: true },
     { content: 'Options', raw: true },
@@ -93,7 +99,7 @@ exports.enqueue = function enqueue (argv) {
 }
 
 exports.enqueueBatch = function enqueueBatch (argv) {
-  const optionDefinitions = [].concat(globalOptionDefinitions)
+  const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue-batch [options] <file...>', raw: true },
     { content: '<file...> can be one ore more filenames or - for stdin' },
@@ -148,15 +154,15 @@ exports.enqueueBatch = function enqueueBatch (argv) {
       return deferred.promise
     })
   )
-  .then(function () {
-    debug('pairs', pairs)
-    return enqueue
-      .enqueueBatch(pairs, options)
-      .then(function (result) {
-        debug('enqueueBatch returned', result)
-        if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
-      })
-  })
+    .then(function () {
+      debug('pairs', pairs)
+      return enqueue
+        .enqueueBatch(pairs, options)
+        .then(function (result) {
+          debug('enqueueBatch returned', result)
+          if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
+        })
+    })
 }
 
 exports.worker = function worker (argv) {
@@ -164,7 +170,9 @@ exports.worker = function worker (argv) {
     { name: 'kill-after', alias: 'k', type: Number, defaultValue: 30, description: 'Kill job after this many seconds [default: 30]' },
     { name: 'wait-time', alias: 'w', type: Number, defaultValue: 20, description: 'Listen at most this long on each queue [default: 20]' },
     { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues.' },
-    { name: 'drain', type: Boolean, description: 'Run until no more work is found and quit. NOTE: if used with  --wait-time 0, this option will not drain queues.' }
+    { name: 'active-only', type: Boolean, description: 'Listen only to queues with pending messages.' },
+    { name: 'drain', type: Boolean, description: 'Run until no more work is found and quit. NOTE: if used with  --wait-time 0, this option will not drain queues.' },
+    { name: 'fifo', alias: 'f', type: Boolean, description: 'Automatically adds .fifo to queue names. Only listens to fifo queues when using \'*\'.' }
   ].concat(globalOptionDefinitions)
 
   const usageSections = [
@@ -359,10 +367,10 @@ exports.root = function root (originalArgv) {
     { content: 'usage: qdone [options] <command>', raw: true },
     { content: 'Commands', raw: true },
     { content: [
-        { name: 'enqueue', summary: 'Enqueue a single command' },
-        { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
-        { name: 'worker', summary: 'Execute work on one or more queues' },
-        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
+      { name: 'enqueue', summary: 'Enqueue a single command' },
+      { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
+      { name: 'worker', summary: 'Execute work on one or more queues' },
+      { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
     ] },
     { content: 'Global Options', raw: true },
     { optionList: globalOptionDefinitions },
