@@ -3,6 +3,7 @@ const Q = require('q')
 const childProcess = require('child_process')
 const debug = require('debug')('qdone:worker')
 const chalk = require('chalk')
+const treeKill = require('tree-kill')
 const qrlCache = require('./qrlCache')
 const cheapIdleCheck = require('./idleQueues').cheapIdleCheck
 const AWS = require('aws-sdk')
@@ -68,11 +69,34 @@ function executeJob (job, qname, qrl, options) {
   timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
   debug('timeout', visibilityTimeout * 1000 * 0.5)
 
-  return Q
-    .nfcall(childProcess.exec, cmd, {timeout: options['kill-after'] * 1000})
+  // NOTE: Due to #25 we cannot rely on child_process.exec's timeout option because
+  // it does not seem to work for child processes of the shell, so we'll create our
+  // own timeout and use tree-kill to catch all of the child processes.
+
+  let child
+  function killTree () {
+    debug('killTree', child.pid)
+    treeKill(child.pid, 'SIGTERM')
+    setTimeout(function () {
+      treeKill(child.pid, 'SIGKILL')
+    }, 1000)
+  }
+  const treeKiller = setTimeout(killTree, options['kill-after'] * 1000)
+  debug({treeKiller: options['kill-after'] * 1000, date: Date.now()})
+
+  const promise = new Promise(function (resolve, reject) {
+    child = childProcess.exec(cmd, function (err, stdout, stderr) {
+      if (err) reject(err, stdout, stderr)
+      else resolve(stdout, stderr)
+    })
+  })
+
+  return promise
+    // Q.nfcall(childProcess.exec, cmd, {timeout: options['kill-after'] * 1000})
     .then(function (stdout, stderr) {
-      debug('childProcess.exec.then')
+      debug('childProcess.exec.then', Date.now())
       clearTimeout(timeoutExtender)
+      clearTimeout(treeKiller)
       if (options.verbose) {
         console.error(chalk.green('  SUCCESS'))
         if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
@@ -97,6 +121,7 @@ function executeJob (job, qname, qrl, options) {
     .catch((err, stdout, stderr) => {
       debug('childProcess.exec.catch')
       clearTimeout(timeoutExtender)
+      clearTimeout(treeKiller)
       if (options.verbose) {
         console.error(chalk.red('  FAILED'))
         if (err.code) console.error(chalk.blue('  code  : ') + err.code)
