@@ -5,6 +5,7 @@ const chai = require('chai')
 const packageJson = require('../package.json')
 const sinon = require('sinon')
 const stripAnsi = require('strip-ansi')
+const fs = require('fs')
 const AWS = require('aws-sdk-mock')
 // const mockStdin = require('mock-stdin')
 
@@ -796,6 +797,40 @@ describe('cli', function () {
         expect(stdout).to.contain('"timestamp"')
         expect(stdout).to.contain('"job"')
         expect(stdout).to.contain('"exitCode"')
+      }))
+  })
+
+  describe('qdone worker test --drain --kill-after 1 --wait-time 1 --quiet # (job runs past kill timer)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+      })
+      AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+        callback(null, { Messages: [
+          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'bash test/fixtures/test-child-kill-linux.sh', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+        ] })
+        AWS.restore('SQS', 'receiveMessage')
+        // Subsequent calls return no message
+        AWS.mock('SQS', 'receiveMessage', function (params, callback) {
+          callback(null, {})
+        })
+        process.nextTick(function () {
+          clock.tick(1500)
+        })
+      })
+      AWS.mock('SQS', 'deleteMessage', function (params, callback) {
+        callback(null, {})
+      })
+    })
+    console.log('what')
+    it('should execute the job successfully and exit 0',
+      cliTest(['worker', 'test', '--drain', '--kill-after', '1', '--wait-time', '1'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('FAILED')
+        // Check that file does not continue to be written to
+        expect(fs.readFileSync('/tmp/qdone-test-child-kill-linux.out').toString()).to.equal('terminated\n')
       }))
   })
 
