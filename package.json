@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "1.4.0-beta",
+  "version": "1.4.0",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
