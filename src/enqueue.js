@@ -78,7 +78,7 @@ function sendMessage (qrl, command, options) {
   const message = Object.assign({QueueUrl: qrl}, formatMessage(command))
   // Add in group id if we're using fifo
   if (options.fifo) {
-    message.MessageGroupId = options['group-id']
+    message.MessageGroupId = options['group-id-per-message'] ? uuid.v1() : options['group-id']
     message.MessageDeduplicationId = uuid.v1()
   }
   const sqs = new AWS.SQS()
@@ -98,7 +98,7 @@ function sendMessageBatch (qrl, messages, options) {
   if (options.fifo) {
     params.Entries = params.Entries.map(
       message => Object.assign({
-        MessageGroupId: options['group-id'],
+        MessageGroupId: options['group-id-per-message'] ? uuid.v1() : options['group-id'],
         MessageDeduplicationId: uuid.v1()
       }, message)
     )

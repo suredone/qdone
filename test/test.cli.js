@@ -429,6 +429,41 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone enqueue-batch --fifo --group-id-per-message test/fixtures/test-unique01-x24.batch # (queue exists, group ids should be unique)', function () {
+    let groupIds
+    before(function () {
+      groupIds = {}
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      var messageId = 0
+      AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
+        params.Entries.forEach(message => {
+          groupIds[message.MessageGroupId] = true
+        })
+        callback(null, {
+          Failed: [],
+          Successful: params.Entries.map(message => ({
+            MD5OfMessageAttributes: '00484c68...59e48f06',
+            MD5OfMessageBody: '51b0a325...39163aa0',
+            MessageId: 'da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId++
+          }))
+        })
+      })
+    })
+    it('should print id of enqueued messages, use 3 requests, use unique group ids for every message, print total count and exit 0',
+      cliTest(['enqueue-batch', '--fifo', '--group-id-per-message', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
+        for (var messageId = 0; messageId < 24; messageId++) {
+          expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
+        }
+        expect(Object.keys(groupIds).length).to.equal(24)
+        expect(stderr).to.contain('Enqueued 24 jobs')
+        expect(stderr).to.contain('request 1')
+        expect(stderr).to.contain('request 2')
+        expect(stderr).to.contain('request 3')
+      }))
+  })
+
   describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (queue exists, some failures)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
