@@ -259,6 +259,7 @@ Using the `--group-id` option with `enqueue` or `enqueue-batch` implies that:
 
 - Any commands with the same `--group-id` will be worked on in the order they were received by SQS (see [FIFO docs](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/FIFO-queues.html)).
 - If you don't set `--group-id` it defaults to a unique id per call to `qdone`, so this means messages sent by `enqueue-batch` will always be processed within the batch in the order you sent them.
+- If you want each message in a batch to have a unique group id (i.e. they don't need to be processed in order, but need to be delivered exactly once) then use the `--group-id-per-message` option with `enqueue-batch`.
 
 Enqueue limitations:
 
@@ -420,13 +421,16 @@ Global Options
 
 Options
 
-    --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
-    --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
-    --region string        AWS region for Queues [default: us-east-1]
-    -q, --quiet            Turn on production logging. Automatically set if stderr is not a tty.
-    -v, --verbose          Turn on verbose output. Automatically set if stderr is a tty.
-    -V, --version          Show version number
-    --help                 Print full help message.
+    -f, --fifo                Create new queues as FIFOs
+    -g, --group-id string     FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.
+    --group-id-per-message    Use a unique Group ID for every message, even messages in the same batch.
+    --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
+    --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
+    --region string           AWS region for Queues [default: us-east-1]
+    -q, --quiet               Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose             Turn on verbose output. Automatically set if stderr is a tty.
+    -V, --version             Show version number
+    --help                    Print full help message.
 
 ### Worker Usage
 
