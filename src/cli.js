@@ -50,7 +50,8 @@ function setupVerbose (options) {
 
 const enqueueOptionDefinitions = [
   { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
-  { name: 'group-id', alias: 'g', type: String, defaultValue: uuid.v1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.' }
+  { name: 'group-id', alias: 'g', type: String, defaultValue: uuid.v1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.' },
+  { name: 'group-id-per-message', type: Boolean, description: 'Use a unique Group ID for every message, even messages in the same batch.' }
 ]
 
 exports.enqueue = function enqueue (argv) {

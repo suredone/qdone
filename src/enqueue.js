@@ -98,7 +98,7 @@ function sendMessageBatch (qrl, messages, options) {
   if (options.fifo) {
     params.Entries = params.Entries.map(
       message => Object.assign({
-        MessageGroupId: options['group-id'],
+        MessageGroupId: options['group-id-per-message'] ? uuid.v1() : options['group-id'],
         MessageDeduplicationId: uuid.v1()
       }, message)
     )
