@@ -1395,6 +1395,54 @@ describe('cli', function () {
       }))
   })
 
+  describe('qdone idle-queues test.fifo # (primary queue is idle and a FIFO, failed queue is active)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, {QueueUrls: [
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
+          `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed.fifo`
+        ]})
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '0',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+      AWS.mock('CloudWatch', 'getMetricStatistics', function (params, callback) {
+        // Always return data for failed queue
+        if (params.Dimensions[0].Value === 'qdone_test_failed.fifo') {
+          callback(null, {
+            Label: params.MetricName,
+            Datapoints: [
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+              {Timestamp: new Date(), Sum: 1, Metric: 'Count'}
+            ]
+          })
+        } else {
+          callback(null, {
+            Label: params.MetricName,
+            Datapoints: [
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
+              {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            ]
+          })
+        }
+      })
+    })
+    it('should print queue name to stdout and exit 0',
+      cliTest(['idle-queues', 'test.fifo'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test.fifo has been idle for the last 60 minutes.')
+        expect(stderr).to.contain('Queue test_failed.fifo has been active in the last 60 minutes.')
+      }))
+  })
+
   describe('qdone idle-queues \'test*\' --unpair --include-failed # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {

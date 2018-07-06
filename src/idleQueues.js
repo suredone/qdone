@@ -176,8 +176,10 @@ function processQueue (qname, qrl, options) {
  * Processes a queue and its fail queue, treating them as a unit.
  */
 function processQueuePair (qname, qrl, options) {
-  const fqname = qname + options['fail-suffix']
-  const fqrl = qrl + options['fail-suffix']
+  const isFifo = qname.endsWith('.fifo')
+  const normalizeOptions = Object.assign({}, options, {fifo: isFifo})
+  const fqname = qrlCache.normalizeFailQueueName(qname, normalizeOptions)
+  const fqrl = qrlCache.normalizeFailQueueName(qrl, normalizeOptions)
   return checkIdle(qname, qrl, options).then(result => {
     debug('result', result)
     if (result.idle) {
@@ -258,7 +260,10 @@ exports.idleQueues = function idleQueues (queues, options) {
       entries = entries
         .filter(function (entry) {
           const suf = options['fail-suffix']
-          return options['include-failed'] ? true : entry.qname.slice(-suf.length) !== suf
+          const sufFifo = options['fail-suffix'] + qrlCache.fifoSuffix
+          const isFail = entry.qname.endsWith(suf)
+          const isFifoFail = entry.qname.endsWith(sufFifo)
+          return options['include-failed'] ? true : (!isFail && !isFifoFail)
         })
 
       // But only if we have queues to remove

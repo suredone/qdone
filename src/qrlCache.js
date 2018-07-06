@@ -16,6 +16,7 @@ function _get (qname) {
 // Normalizes a queue name to end with .fifo if options.fifo is set
 //
 const fifoSuffix = '.fifo'
+exports.fifoSuffix = fifoSuffix
 exports.normalizeQueueName = function normalizeQueueName (qname, options) {
   const sliced = qname.slice(0, -fifoSuffix.length)
   const suffix = qname.slice(-fifoSuffix.length)
