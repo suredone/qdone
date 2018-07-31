@@ -424,6 +424,7 @@ Options
     -f, --fifo                Create new queues as FIFOs
     -g, --group-id string     FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.
     --group-id-per-message    Use a unique Group ID for every message, even messages in the same batch.
+    -d, --delay number        Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]

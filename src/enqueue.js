@@ -76,6 +76,8 @@ function formatMessage (command, id) {
 function sendMessage (qrl, command, options) {
   debug('sendMessage(', qrl, command, ')')
   const message = Object.assign({QueueUrl: qrl}, formatMessage(command))
+  // Add in delay if we're using it
+  if (options.delay) message.DelaySeconds = options.delay
   // Add in group id if we're using fifo
   if (options.fifo) {
     message.MessageGroupId = options['group-id']
@@ -97,10 +99,14 @@ function sendMessageBatch (qrl, messages, options) {
   // Add in group id if we're using fifo
   if (options.fifo) {
     params.Entries = params.Entries.map(
-      message => Object.assign({
-        MessageGroupId: options['group-id-per-message'] ? uuid.v1() : options['group-id'],
-        MessageDeduplicationId: uuid.v1()
-      }, message)
+      message => Object.assign(
+        {
+          MessageGroupId: options['group-id-per-message'] ? uuid.v1() : options['group-id'],
+          MessageDeduplicationId: uuid.v1()
+        },
+        options.delay ? {DelaySeconds: options.delay} : {},
+        message
+      )
     )
   }
   const sqs = new AWS.SQS()
