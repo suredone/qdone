@@ -28,7 +28,7 @@ exports.normalizeQueueName = function normalizeQueueName (qname, options) {
 // Normalizes fail queue name, appending both --fail-suffix and .fifo depending on options
 //
 exports.normalizeFailQueueName = function normalizeFailQueueName (qname, options) {
-  qname = exports.normalizeQueueName(qname, {fifo: false}) // strip .fifo if it is there
+  qname = exports.normalizeQueueName(qname, { fifo: false }) // strip .fifo if it is there
   const sliced = qname.slice(0, -options['fail-suffix'].length)
   const suffix = qname.slice(-options['fail-suffix'].length)
   const base = suffix === options['fail-suffix'] ? sliced : qname // strip --fail-suffix if it is there
@@ -53,7 +53,7 @@ exports.get = function get (qname) {
   const sqs = new AWS.SQS()
   if (qcache.hasOwnProperty(qname)) return Q.fcall(_get, qname)
   return sqs
-    .getQueueUrl({QueueName: qname})
+    .getQueueUrl({ QueueName: qname })
     .promise()
     .then(function (data) {
       debug('getQueueUrl returned', data)
@@ -90,7 +90,7 @@ function ingestQRLs (qrls) {
   qrls.forEach(function (qrl) {
     const qname = path.basename(url.parse(qrl).pathname)
     qcache[qname] = qrl
-    pairs.push({qname: qname, qrl: qrl})
+    pairs.push({ qname: qname, qrl: qrl })
     debug('qcache', Object.keys(qcache), 'ingestQRLs', qname, ' => ', qcache[qname])
   })
   return pairs
@@ -104,7 +104,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
   return Q.all(qnames.map(function (qname) {
     return qname.slice(-1) === '*' // wildcard queues support
       ? sqs
-        .listQueues({QueueNamePrefix: qname.slice(0, -1)})
+        .listQueues({ QueueNamePrefix: qname.slice(0, -1) })
         .promise()
         .then(function (data) {
           debug('listQueues return', data)
@@ -118,7 +118,7 @@ exports.getQnameUrlPairs = function getQnameUrlPairs (qnames, options) {
         .get(qname)
         .then(function (qrl) {
           debug('qrlCache.get returned', qrl)
-          return {qname: qname, qrl: qrl}
+          return { qname: qname, qrl: qrl }
         })
         .catch(function (err) {
           debug('qrlCache.get failed', err)

@@ -4,27 +4,27 @@
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
-    "aws-sdk": "^2.94.0",
-    "chalk": "^2.3.0",
+    "aws-sdk": "^2.330.0",
+    "chalk": "^2.4.1",
     "command-line-args": "^5.0.2",
     "command-line-commands": "^2.0.1",
-    "command-line-usage": "^5.0.3",
-    "debug": "^3.1.0",
+    "command-line-usage": "^5.0.5",
+    "debug": "^4.1.0",
     "q": "^1.5.1",
     "tree-kill": "^1.2.0",
-    "uuid": "^3.2.1"
+    "uuid": "^3.3.2"
   },
   "devDependencies": {
-    "aws-sdk-mock": "^1.6.1",
+    "aws-sdk-mock": "^1.7.0",
     "chai": "^3.5.0",
     "chai-as-promised": "^6.0.0",
     "coveralls": "^2.12.0",
     "mocha": "^3.2.0",
     "mock-stdin": "^0.3.1",
-    "nyc": "^10.1.2",
-    "sinon": "^2.1.0",
+    "nyc": "^10.3.2",
+    "sinon": "^2.4.1",
     "standard": "*",
-    "strip-ansi": "^4.0.0"
+    "strip-ansi": "^5.0.0"
   },
   "bin": "./qdone",
   "preferGlobal": true,

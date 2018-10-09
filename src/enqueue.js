@@ -75,7 +75,7 @@ function formatMessage (command, id) {
 
 function sendMessage (qrl, command, options) {
   debug('sendMessage(', qrl, command, ')')
-  const message = Object.assign({QueueUrl: qrl}, formatMessage(command))
+  const message = Object.assign({ QueueUrl: qrl }, formatMessage(command))
   // Add in group id if we're using fifo
   if (options.fifo) {
     message.MessageGroupId = options['group-id']
@@ -92,7 +92,7 @@ function sendMessage (qrl, command, options) {
 }
 
 function sendMessageBatch (qrl, messages, options) {
-  debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), {MessageBody: e.MessageBody.slice(0, 10) + '...'})), ')')
+  debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
   const params = { Entries: messages, QueueUrl: qrl }
   // Add in group id if we're using fifo
   if (options.fifo) {
@@ -254,7 +254,7 @@ exports.enqueueBatch = function enqueueBatch (pairs, options) {
       uniquePairs.push(pair)
     }
   })
-  debug({uniquePairMap, uniquePairs})
+  debug({ uniquePairMap, uniquePairs })
 
   // Prefetch unique qrls in parallel (creating as needed)
   requestCount = 0

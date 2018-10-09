@@ -30,7 +30,7 @@ const metricNames = [
 function cheapIdleCheck (qname, qrl, options) {
   const sqs = new AWS.SQS()
   return sqs
-    .getQueueAttributes({AttributeNames: attributeNames, QueueUrl: qrl})
+    .getQueueAttributes({ AttributeNames: attributeNames, QueueUrl: qrl })
     .promise()
     .then(data => {
       // debug('data', data)
@@ -54,7 +54,7 @@ function getMetric (qname, qrl, metricName, options) {
     MetricName: metricName,
     Namespace: 'AWS/SQS',
     Period: 3600,
-    Dimensions: [{Name: 'QueueName', Value: qname}],
+    Dimensions: [{ Name: 'QueueName', Value: qname }],
     Statistics: ['Sum']
     // Unit: ['']
   }
@@ -93,7 +93,7 @@ function checkIdle (qname, qrl, options) {
           queue: qname.slice(options.prefix.length),
           cheap: cheapResult,
           idle: false,
-          apiCalls: {SQS: 1, CloudWatch: 0}
+          apiCalls: { SQS: 1, CloudWatch: 0 }
         }
       }
       // If we get here, there's nothing in the queue at the moment,
@@ -103,7 +103,7 @@ function checkIdle (qname, qrl, options) {
           queue: qname.slice(options.prefix.length),
           cheap: cheapResult,
           idle: true,
-          apiCalls: {SQS: 1, CloudWatch: 0}
+          apiCalls: { SQS: 1, CloudWatch: 0 }
         }) => {
           debug('soFar', soFar)
           // Break out of our call chain if we find one failed check
@@ -114,11 +114,11 @@ function checkIdle (qname, qrl, options) {
               return Object.assign(
                 soFar, // start with soFar object
                 result, // add in our metricName keyed result
-                {idle: result[metricName] === 0}, // and recalculate idle
-                {apiCalls: {
+                { idle: result[metricName] === 0 }, // and recalculate idle
+                { apiCalls: {
                   SQS: soFar.apiCalls.SQS,
                   CloudWatch: soFar.apiCalls.CloudWatch + 1
-                }}
+                } }
               )
             })
         })
@@ -131,14 +131,14 @@ function checkIdle (qname, qrl, options) {
  */
 function deleteQueue (qname, qrl, options) {
   const sqs = new AWS.SQS()
-  return sqs.deleteQueue({QueueUrl: qrl})
+  return sqs.deleteQueue({ QueueUrl: qrl })
     .promise()
     .then(result => {
       debug(result)
       if (options.verbose) console.error(chalk.blue('Deleted ') + qname.slice(options.prefix.length))
       return Promise.resolve({
         deleted: true,
-        apiCalls: {SQS: 1, CloudWatch: 0}
+        apiCalls: { SQS: 1, CloudWatch: 0 }
       })
     })
 }
@@ -177,7 +177,7 @@ function processQueue (qname, qrl, options) {
  */
 function processQueuePair (qname, qrl, options) {
   const isFifo = qname.endsWith('.fifo')
-  const normalizeOptions = Object.assign({}, options, {fifo: isFifo})
+  const normalizeOptions = Object.assign({}, options, { fifo: isFifo })
   const fqname = qrlCache.normalizeFailQueueName(qname, normalizeOptions)
   const fqrl = qrlCache.normalizeFailQueueName(qrl, normalizeOptions)
   return checkIdle(qname, qrl, options).then(result => {
@@ -196,22 +196,22 @@ function processQueuePair (qname, qrl, options) {
               deleteQueue(qname, qrl, options),
               deleteQueue(fqname, fqrl, options)
             ]).then(deleteResults =>
-              deleteResults.reduce((a, b) => Object.assign(a, {apiCalls: {
+              deleteResults.reduce((a, b) => Object.assign(a, { apiCalls: {
                 SQS: a.apiCalls.SQS + b.apiCalls.SQS,
                 CloudWatch: a.apiCalls.CloudWatch + b.apiCalls.CloudWatch
-              }}), Object.assign(result, {failq: fresult}, {apiCalls: {
+              } }), Object.assign(result, { failq: fresult }, { apiCalls: {
                 SQS: result.apiCalls.SQS + fresult.apiCalls.SQS,
                 CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
-              }}))
+              } }))
             )
           }
         } else {
           if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
         }
-        return Promise.resolve(Object.assign(result, {idle: result.idle && fresult.idle, failq: fresult}, {apiCalls: {
+        return Promise.resolve(Object.assign(result, { idle: result.idle && fresult.idle, failq: fresult }, { apiCalls: {
           SQS: result.apiCalls.SQS + fresult.apiCalls.SQS,
           CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
-        }}))
+        } }))
       })
         .catch(e => {
         // Handle the case where the fail queue has been deleted or was never created for some reason

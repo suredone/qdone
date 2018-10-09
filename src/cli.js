@@ -37,7 +37,7 @@ function setupAWS (options) {
   debug('loading aws-sdk')
   const AWS = require('aws-sdk')
   AWS.config.setPromisesDependency(Q.Promise)
-  AWS.config.update({region: options.region})
+  AWS.config.update({ region: options.region })
   debug('loaded')
 }
 
@@ -73,7 +73,7 @@ exports.enqueue = function enqueue (argv) {
 
   // Parse command and options
   try {
-    var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('enqueue options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
@@ -120,13 +120,13 @@ exports.enqueueBatch = function enqueueBatch (argv) {
   // Parse command and options
   let files
   try {
-    var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('enqueue-batch options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('enqueue-batch requres one or more <file> arguments')
     debug('filenames', options._unknown)
-    files = options._unknown.map(f => f === '-' ? process.stdin : fs.createReadStream(f, {fd: fs.openSync(f, 'r')}))
+    files = options._unknown.map(f => f === '-' ? process.stdin : fs.createReadStream(f, { fd: fs.openSync(f, 'r') }))
   } catch (err) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
     return Promise.reject(err)
@@ -142,13 +142,13 @@ exports.enqueueBatch = function enqueueBatch (argv) {
     files.map(function (file) {
       // Construct (queue, command) pairs from input
       debug('file', file.name || 'stdin')
-      const input = readline.createInterface({input: file})
+      const input = readline.createInterface({ input: file })
       const deferred = Q.defer()
       input.on('line', line => {
         const parts = line.split(/\s+/)
         const queue = parts[0]
         const command = line.slice(queue.length).trim()
-        pairs.push({queue, command})
+        pairs.push({ queue, command })
       })
       input.on('error', deferred.reject)
       input.on('close', deferred.resolve)
@@ -197,7 +197,7 @@ exports.worker = function worker (argv) {
   // Parse command and options
   let queues
   try {
-    var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('worker options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
@@ -323,7 +323,7 @@ exports.idleQueues = function idleQueues (argv) {
   // Parse command and options
   let queues
   try {
-    var options = commandLineArgs(optionDefinitions, {argv, partial: true})
+    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('idleQueues options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
@@ -385,7 +385,7 @@ exports.root = function root (originalArgv) {
 
     // Root command
     if (command === null) {
-      const options = commandLineArgs(globalOptionDefinitions, {argv: originalArgv})
+      const options = commandLineArgs(globalOptionDefinitions, { argv: originalArgv })
       setupVerbose(options)
       debug('options', options)
       if (options.version) return Promise.resolve(console.log(packageJson.version))

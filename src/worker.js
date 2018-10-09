@@ -82,7 +82,7 @@ function executeJob (job, qname, qrl, options) {
     }, 1000)
   }
   const treeKiller = setTimeout(killTree, options['kill-after'] * 1000)
-  debug({treeKiller: options['kill-after'] * 1000, date: Date.now()})
+  debug({ treeKiller: options['kill-after'] * 1000, date: Date.now() })
 
   const promise = new Promise(function (resolve, reject) {
     child = childProcess.exec(cmd, function (err, stdout, stderr) {
@@ -115,7 +115,7 @@ function executeJob (job, qname, qrl, options) {
             console.error(chalk.blue('  done'))
             console.error()
           }
-          return Promise.resolve({noJobs: 0, jobsSucceeded: 1, jobsFailed: 0})
+          return Promise.resolve({ noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 })
         })
     })
     .catch((err, stdout, stderr) => {
@@ -143,7 +143,7 @@ function executeJob (job, qname, qrl, options) {
           errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined
         }))
       }
-      return Promise.resolve({noJobs: 0, jobsSucceeded: 0, jobsFailed: 1})
+      return Promise.resolve({ noJobs: 0, jobsSucceeded: 0, jobsFailed: 1 })
     })
 }
 
@@ -167,13 +167,13 @@ function pollForJobs (qname, qrl, options) {
     .promise()
     .then(function (response) {
       debug('sqs.receiveMessage.then', response)
-      if (shutdownRequested) return Promise.resolve({noJobs: 0, jobsSucceeded: 0, jobsFailed: 0})
+      if (shutdownRequested) return Promise.resolve({ noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 })
       if (response.Messages) {
         const job = response.Messages[0]
         if (options.verbose) console.error(chalk.blue('  Found job ' + job.MessageId))
         return executeJob(job, qname, qrl, options)
       } else {
-        return Promise.resolve({noJobs: 1, jobsSucceeded: 0, jobsFailed: 0})
+        return Promise.resolve({ noJobs: 1, jobsSucceeded: 0, jobsFailed: 0 })
       }
     })
 }
@@ -184,18 +184,18 @@ function pollForJobs (qname, qrl, options) {
 exports.listen = function listen (queues, options) {
   if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
   const qnames = queues.map(function (queue) { return options.prefix + qrlCache.normalizeQueueName(queue, options) })
-  debug({hello: '?'})
+  debug({ hello: '?' })
   return qrlCache
     .getQnameUrlPairs(qnames, options)
     .then(function (entries) {
       // If user only wants active queues, run a cheap idle check
       if (options['active-only']) {
-        debug({entiresBeforeCheck: entries})
+        debug({ entiresBeforeCheck: entries })
         return Promise.all(entries.map(entry =>
           cheapIdleCheck(entry.qname, entry.qrl, options)
             .then(result =>
               Promise.resolve(
-                Object.assign(entry, {idle: result.idle})
+                Object.assign(entry, { idle: result.idle })
               )
             )
         ))
@@ -230,7 +230,7 @@ exports.listen = function listen (queues, options) {
         var result = Q()
         entries.forEach(function (entry) {
           debug('entries.forEach.funtion')
-          result = result.then((soFar = {noJobs: 0, jobsSucceeded: 0, jobsFailed: 0}) => {
+          result = result.then((soFar = { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }) => {
             debug('soFar', soFar)
             // Don't poll the next queue if shutdown was requested
             if (shutdownRequested) return Promise.resolve(soFar)
@@ -243,7 +243,7 @@ exports.listen = function listen (queues, options) {
             }
             // Aggregate the results
             return pollForJobs(entry.qname, entry.qrl, options)
-              .then(({noJobs, jobsSucceeded, jobsFailed}) => ({
+              .then(({ noJobs, jobsSucceeded, jobsFailed }) => ({
                 noJobs: soFar.noJobs + noJobs,
                 jobsSucceeded: soFar.jobsSucceeded + jobsSucceeded,
                 jobsFailed: soFar.jobsFailed + jobsFailed

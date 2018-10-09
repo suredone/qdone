@@ -150,7 +150,7 @@ describe('cli', function () {
   describe('qdone enqueue testQueue true # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'sendMessage', function (params, callback) {
         callback(null, {
@@ -169,7 +169,7 @@ describe('cli', function () {
   describe('qdone enqueue --fifo testQueue true # (queue exists, fifo mode)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'sendMessage', function (params, callback) {
         callback(null, {
@@ -188,7 +188,7 @@ describe('cli', function () {
   describe('qdone enqueue --fifo --group-id gidtest testQueue true # (queue exists, fifo mode, explicit group)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'sendMessage', function (params, callback) {
         callback(null, {
@@ -207,7 +207,7 @@ describe('cli', function () {
   describe('qdone enqueue --quiet testQueue true # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'sendMessage', function (params, callback) {
         callback(null, {
@@ -232,7 +232,7 @@ describe('cli', function () {
         callback(err)
       })
       AWS.mock('SQS', 'createQueue', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -276,7 +276,7 @@ describe('cli', function () {
         callback(err)
       })
       AWS.mock('SQS', 'createQueue', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -403,7 +403,7 @@ describe('cli', function () {
   describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       var messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
@@ -434,7 +434,7 @@ describe('cli', function () {
     before(function () {
       groupIds = {}
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       var messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
@@ -467,7 +467,7 @@ describe('cli', function () {
   describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (queue exists, some failures)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       var messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
@@ -499,7 +499,7 @@ describe('cli', function () {
   describe('qdone enqueue-batch --quiet test/fixtures/test-unique01-x24.batch # (queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       var messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
@@ -530,7 +530,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'createQueue', function (params, callback) {
         expect(params.QueueName.slice(-'.fifo'.length) === '.fifo')
         expect(params.FifoQueue === 'true')
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -583,7 +583,7 @@ describe('cli', function () {
         callback(err)
       })
       AWS.mock('SQS', 'createQueue', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -632,7 +632,7 @@ describe('cli', function () {
   describe('qdone enqueue-batch test/fixtures/test-unique{01-x24.batch,02-x24.batch,24-x24.batch,24-x240.batch} # (ensemble fixtures, queue exists)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       var messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
@@ -672,7 +672,7 @@ describe('cli', function () {
         callback(err)
       })
       AWS.mock('SQS', 'createQueue', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -753,10 +753,10 @@ describe('cli', function () {
   describe('qdone worker test --drain # (no jobs)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, {})
@@ -775,10 +775,10 @@ describe('cli', function () {
   describe('qdone worker test --drain # (1 successful job)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, { Messages: [
@@ -806,10 +806,10 @@ describe('cli', function () {
   describe('qdone worker test --drain --quiet # (1 failed job)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, { Messages: [
@@ -838,10 +838,10 @@ describe('cli', function () {
   describe('qdone worker test --drain --kill-after 1 --wait-time 1 --quiet # (job runs past kill timer)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, { Messages: [
@@ -872,10 +872,10 @@ describe('cli', function () {
   describe('qdone worker "test*" --drain # (9 queues, 1 successful job per queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
@@ -885,7 +885,7 @@ describe('cli', function () {
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}7`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}8`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}9`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, { Messages: [
@@ -916,10 +916,10 @@ describe('cli', function () {
   describe('qdone worker test --drain # (1 successful job, time extended)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'changeMessageVisibility', function (params, callback) {
         callback(null, {})
@@ -954,10 +954,10 @@ describe('cli', function () {
   describe('qdone worker test --drain --quiet # (1 successful job, time extended)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'changeMessageVisibility', function (params, callback) {
         callback(null, {})
@@ -989,15 +989,15 @@ describe('cli', function () {
   describe('qdone worker "test*" --drain --active-only # (4 queues, 2 full, 2 empty)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}4`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         const lastLetter = params.QueueUrl.slice(-1)
@@ -1047,10 +1047,10 @@ describe('cli', function () {
   describe('qdone worker test # (1 successful job + SIGTERM)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
         callback(null, { Messages: [
@@ -1108,10 +1108,10 @@ describe('cli', function () {
   describe('qdone idle-queues test # (active queue shortcut via SQS API)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1133,10 +1133,10 @@ describe('cli', function () {
   describe('qdone idle-queues test --unpair # (active queue shortcut via SQS API)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1158,10 +1158,10 @@ describe('cli', function () {
   describe('qdone idle-queues test # (active queue, multiple CloudWatch calls)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1177,16 +1177,16 @@ describe('cli', function () {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 1, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 1, Metric: 'Count' }
             ]
           })
         } else {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
             ]
           })
         }
@@ -1202,10 +1202,10 @@ describe('cli', function () {
   describe('qdone idle-queues test # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1221,8 +1221,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
@@ -1237,10 +1237,10 @@ describe('cli', function () {
   describe('qdone idle-queues test --delete # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1256,8 +1256,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
@@ -1276,10 +1276,10 @@ describe('cli', function () {
   describe('qdone idle-queues test --unpair # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1295,8 +1295,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
@@ -1311,10 +1311,10 @@ describe('cli', function () {
   describe('qdone idle-queues test --unpair --delete # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`]})
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1330,8 +1330,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
@@ -1350,13 +1350,13 @@ describe('cli', function () {
   describe('qdone idle-queues test # (primary queue is idle, failed queue is active)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1373,16 +1373,16 @@ describe('cli', function () {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 1, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 1, Metric: 'Count' }
             ]
           })
         } else {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
             ]
           })
         }
@@ -1398,13 +1398,13 @@ describe('cli', function () {
   describe('qdone idle-queues test.fifo # (primary queue is idle and a FIFO, failed queue is active)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed.fifo`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1421,16 +1421,16 @@ describe('cli', function () {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 1, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 1, Metric: 'Count' }
             ]
           })
         } else {
           callback(null, {
             Label: params.MetricName,
             Datapoints: [
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-              {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+              { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
             ]
           })
         }
@@ -1446,13 +1446,13 @@ describe('cli', function () {
   describe('qdone idle-queues \'test*\' --unpair --include-failed # (inactive queue)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1468,8 +1468,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
@@ -1500,13 +1500,13 @@ describe('cli', function () {
   describe('qdone idle-queues \'test*\' # (main queue was recently deleted)', function () {
     before(function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
-        callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         const err = new Error('Queue does not exist.')
@@ -1529,14 +1529,14 @@ describe('cli', function () {
           err.code = 'AWS.SimpleQueueService.NonExistentQueue'
           callback(err, null)
         } else {
-          callback(null, {QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}`})
+          callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
         }
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, {QueueUrls: [
+        callback(null, { QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`
           // `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ]})
+        ] })
       })
       AWS.mock('SQS', 'deleteQueue', function (params, callback) {
         if (params.QueueUrl === 'https://q.amazonaws.com/123456789101/qdone_test_failed') {
@@ -1568,8 +1568,8 @@ describe('cli', function () {
         callback(null, {
           Label: params.MetricName,
           Datapoints: [
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'},
-            {Timestamp: new Date(), Sum: 0, Metric: 'Count'}
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' },
+            { Timestamp: new Date(), Sum: 0, Metric: 'Count' }
           ]
         })
       })
