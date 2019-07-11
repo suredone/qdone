@@ -19,7 +19,7 @@ var sandbox
 var clock
 
 beforeEach(function () {
-  sandbox = sinon.sandbox.create()
+  sandbox = sinon.createSandbox()
   sandbox.stub(process.stdout, 'write')
   sandbox.stub(process.stderr, 'write')
   clock = sandbox.useFakeTimers()

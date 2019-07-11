@@ -78,7 +78,7 @@ exports.enqueue = function enqueue (argv) {
     debug('enqueue options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length !== 2) throw new UsageError('enqueue requires both <queue> and <command> arguments')
-    var [ queue, command ] = options._unknown
+    var [queue, command] = options._unknown
     debug('queue', queue, 'command', command)
   } catch (e) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
@@ -362,7 +362,7 @@ exports.idleQueues = function idleQueues (argv) {
 }
 
 exports.root = function root (originalArgv) {
-  const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues' ]
+  const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues']
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
