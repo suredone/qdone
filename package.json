@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "1.5.1-beta",
+  "version": "1.5.2",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
@@ -8,7 +8,7 @@
     "chalk": "^2.4.1",
     "command-line-args": "^5.0.2",
     "command-line-commands": "^2.0.1",
-    "command-line-usage": "^6.0.2",
+    "command-line-usage": "5.0.5",
     "debug": "^4.1.0",
     "q": "^1.5.1",
     "tree-kill": "^1.2.0",
@@ -56,6 +56,11 @@
     "consumer",
     "amazon"
   ],
+  "greenkeeper": {
+    "ignore": [
+      "command-line-usage"
+    ]
+  },
   "bugs": {
     "url": "https://github.com/suredone/qdone/issues"
   },
