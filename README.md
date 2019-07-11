@@ -2,7 +2,8 @@
 [![Build Status](https://travis-ci.org/suredone/qdone.svg?branch=master)](https://travis-ci.org/suredone/qdone)
 [![Coverage Status](https://coveralls.io/repos/github/suredone/qdone/badge.svg)](https://coveralls.io/github/suredone/qdone)
 [![Dependencies](https://img.shields.io/david/suredone/qdone.svg)](https://david-dm.org/suredone/qdone)
-[![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com) [![Greenkeeper badge](https://badges.greenkeeper.io/suredone/qdone.svg)](https://greenkeeper.io/)
+[![Standard - JavaScript Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://standardjs.com)
+[![Greenkeeper badge](https://badges.greenkeeper.io/suredone/qdone.svg)](https://greenkeeper.io/)
 
 # qdone
 
