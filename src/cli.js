@@ -30,6 +30,9 @@ const globalOptionDefinitions = [
   { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
   { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
+  { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
+  { name: 'cache-prefix', type: String, defaultValue: 'qdone:', description: 'Prefix for all keys in cache.' },
+  { name: 'cache-ttl-seconds', type: Number, defaultValue: 10, description: 'Number of seconds to cache GetQueueAttributes calls.' },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
 
@@ -362,7 +365,7 @@ exports.idleQueues = function idleQueues (argv) {
 }
 
 exports.root = function root (originalArgv) {
-  const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues' ]
+  const validCommands = [ null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues', 'cache' ]
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
@@ -407,6 +410,19 @@ exports.root = function root (originalArgv) {
     return exports.worker(argv)
   } else if (command === 'idle-queues') {
     return exports.idleQueues(argv)
+  } else if (command === 'cache') {
+    debug({argv, originalArgv})
+    const options = commandLineArgs(globalOptionDefinitions, { argv: originalArgv })
+    debug('options', options)
+    const cache = require('./cache')
+    debug({cache})
+    return cache.setCache('test', 'foo', options).then(function (result) {
+      debug({setResult: result})
+      return cache.getCache('test', options).then(function (result) {
+        debug({getResult: result})
+        return Promise.resolve(0)
+      })
+    })
   }
 }
 
@@ -414,6 +430,12 @@ exports.run = function run (argv) {
   debug('run', argv)
   return exports
     .root(argv)
+    .then(() => {
+      // If cache actually is active, it will keep our program from existing
+      // until we disconnect the cache client
+      const cache = require('./cache')
+      cache.resetClient()
+    })
     .catch(function (err) {
       if (err.code === 'AccessDenied') console.log(getUsage([awsUsageHeader, awsUsageBody]))
       console.error(chalk.red.bold(err))

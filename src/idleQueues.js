@@ -2,6 +2,7 @@
 const debug = require('debug')('qdone:idleQueues')
 const chalk = require('chalk')
 const qrlCache = require('./qrlCache')
+const cache = require('./cache')
 const AWS = require('aws-sdk')
 
 // Queue attributes we check to determine idle
@@ -23,11 +24,7 @@ const metricNames = [
   'ApproximateAgeOfOldestMessage'
 ]
 
-/**
- * Gets queue attributes from the SQS api and assesses whether queue is idle
- * at this immediate moment.
- */
-function cheapIdleCheck (qname, qrl, options) {
+function _cheapIdleCheck (qname, qrl, options) {
   const sqs = new AWS.SQS()
   return sqs
     .getQueueAttributes({ AttributeNames: attributeNames, QueueUrl: qrl })
@@ -37,8 +34,37 @@ function cheapIdleCheck (qname, qrl, options) {
       const result = data.Attributes
       result.queue = qname.slice(options.prefix.length)
       result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
-      return Promise.resolve(result)
+      return Promise.resolve({result, SQS: 1})
     })
+}
+
+/**
+ * Gets queue attributes from the SQS api and assesses whether queue is idle
+ * at this immediate moment.
+ */
+function cheapIdleCheck (qname, qrl, options) {
+  if (options['cache-uri']) {
+    const key = 'cheap-idle-check:' + qrl
+    return cache.getCache(key, options).then(cacheResult => {
+      debug({cacheResult})
+      if (cacheResult) {
+        debug({action: 'return resolved'})
+        return Promise.resolve({result: cacheResult, SQS: 0})
+      } else {
+        // Cache miss, make actual call
+        debug({action: 'do real check'})
+        return _cheapIdleCheck(qname, qrl, options).then(({result, SQS}) => {
+          debug({action: 'setCache', key, result})
+          return cache.setCache(key, result, options).then(ok => {
+            debug({action: 'return result of set cache', result})
+            return Promise.resolve({result, SQS})
+          })
+        })
+      }
+    })
+  } else {
+    return _cheapIdleCheck(qname, qrl, options)
+  }
 }
 exports.cheapIdleCheck = cheapIdleCheck
 
@@ -85,7 +111,7 @@ function checkIdle (qname, qrl, options) {
   // Do the cheap check first to make sure there is no data in flight at the moment
   debug('checkIdle', qname, qrl)
   return cheapIdleCheck(qname, qrl, options)
-    .then(cheapResult => {
+    .then(({result: cheapResult, SQS}) => {
       debug('cheapResult', cheapResult)
       // Short circuit further calls if cheap result shows data
       if (cheapResult.idle === false) {
@@ -93,7 +119,7 @@ function checkIdle (qname, qrl, options) {
           queue: qname.slice(options.prefix.length),
           cheap: cheapResult,
           idle: false,
-          apiCalls: { SQS: 1, CloudWatch: 0 }
+          apiCalls: { SQS, CloudWatch: 0 }
         }
       }
       // If we get here, there's nothing in the queue at the moment,
