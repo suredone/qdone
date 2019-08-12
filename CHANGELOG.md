@@ -11,9 +11,9 @@ After switching our infrastructure to `--active-only` on jobs that have a large 
 
 We added the following options to the `idle-queues`, and `worker` commands to be used in conjunction with `--active-only`:
 
-- `--cache-url` that takes a `redis://...` cluster url [no default]
-- `--cache-ttl-seconds` that takes a number of seconds [default 10]
-- `--cache-prefix` that defines a cache key prefix [default qdone]
+- `--cache-url` that takes a `redis://...` or a `redis-cluster://` url [no default]
+- `--cache-ttl-seconds` that takes a number of seconds [default `10`]
+- `--cache-prefix` that defines a cache key prefix [default `qdone:`]
 
 The presence of the `--cache-url` option will cause the worker to cache `GetQueueAttributes` for each queue for the specified ttl.
 

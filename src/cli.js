@@ -418,7 +418,7 @@ exports.run = function run (argv) {
   return exports
     .root(argv)
     .then(() => {
-      // If cache actually is active, it will keep our program from existing
+      // If cache actually is active, it will keep our program from exiting
       // until we disconnect the cache client
       const cache = require('./cache')
       cache.resetClient()
