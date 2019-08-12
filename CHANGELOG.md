@@ -1,5 +1,45 @@
 # Changelog
 
+v.1.6.0
+-------
+
+### New Features
+
+#### Caching for SQS `GetQueueAttributes` calls ([#41](https://github.com/suredone/qdone/issues/41))
+
+After switching our infrastructure to `--active-only` on jobs that have a large number of dynamic queues, we noticed that spend a lot of money on GetQueueAttributes calls. However the state of the active queues is very cacheable, especially if queues tend to have large backlogs, as ours do.
+
+We added the following options to the `idle-queues`, and `worker` commands to be used in conjunction with `--active-only`:
+
+- `--cache-url` that takes a `redis://...` cluster url [no default]
+- `--cache-ttl-seconds` that takes a number of seconds [default 10]
+- `--cache-prefix` that defines a cache key prefix [default qdone]
+
+The presence of the `--cache-url` option will cause the worker to cache `GetQueueAttributes` for each queue for the specified ttl.
+
+
+v.1.5.0
+-------
+
+### New Features
+
+#### Added `--group-id-per-message` option for `enqueue-batch` ([#33](https://github.com/suredone/qdone/issues/33))
+
+This option creates a new Group ID for every message in a batch, for when you want exactly once delivery, but don't care about message order.
+
+### Bug Fixes
+
+- Fixed ([#35](https://github.com/suredone/qdone/issues/35)) by making `idle-queues` pairing behavior work for FIFO queues as well as normal queues.
+
+
+v.1.4.0
+-------
+
+### Bug Fixes
+
+- Fixed ([#25](https://github.com/suredone/qdone/issues/25)) bug on Linux in `worker` where child processes were not getting killed after `--kill-after` timer was reached.
+
+
 v.1.3.0
 -------
 
