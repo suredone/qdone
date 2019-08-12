@@ -15,8 +15,8 @@ chai.should()
 delete process.env.AWS_ACCESS_KEY_ID
 delete process.env.AWS_SECRET_ACCESS_KEY
 
-var sandbox
-var clock
+let sandbox
+let clock
 
 beforeEach(function () {
   sandbox = sinon.createSandbox()
@@ -860,7 +860,6 @@ describe('cli', function () {
         callback(null, {})
       })
     })
-    console.log('what')
     it('should execute the job successfully and exit 0',
       cliTest(['worker', 'test', '--drain', '--kill-after', '1', '--wait-time', '1'], function (result, stdout, stderr) {
         expect(stderr).to.contain('FAILED')
@@ -1150,6 +1149,31 @@ describe('cli', function () {
     })
     it('should make no CloudWatch calls, print nothing to stdout and exit 0',
       cliTest(['idle-queues', 'test', '--unpair'], function (result, stdout, stderr) {
+        expect(stderr).to.contain('Queue test has been active in the last 60 minutes.')
+        expect(stdout).to.equal('')
+      }))
+  })
+
+  describe('qdone idle-queues test --cache-uri redis://localhost # (cached getQueueAttributes call)', function () {
+    before(function () {
+      AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
+        callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
+      })
+      AWS.mock('SQS', 'listQueues', function (params, callback) {
+        callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
+      })
+      AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
+        callback(null, {
+          Attributes: {
+            ApproximateNumberOfMessages: '1',
+            ApproximateNumberOfMessagesDelayed: '0',
+            ApproximateNumberOfMessagesNotVisible: '0'
+          }
+        })
+      })
+    })
+    it('should make one call to getQueueAttributes, print nothing to stdout and exit 0',
+      cliTest(['idle-queues', 'test', '--cache-uri', 'redis://localhost'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Queue test has been active in the last 60 minutes.')
         expect(stdout).to.equal('')
       }))

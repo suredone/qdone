@@ -193,7 +193,7 @@ exports.listen = function listen (queues, options) {
         debug({ entiresBeforeCheck: entries })
         return Promise.all(entries.map(entry =>
           cheapIdleCheck(entry.qname, entry.qrl, options)
-            .then(result =>
+            .then(({result}) =>
               Promise.resolve(
                 Object.assign(entry, { idle: result.idle })
               )

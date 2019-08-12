@@ -10,6 +10,7 @@
     "command-line-commands": "^2.0.1",
     "command-line-usage": "5.0.5",
     "debug": "^4.1.0",
+    "ioredis": "^4.14.0",
     "q": "^1.5.1",
     "tree-kill": "^1.2.0",
     "uuid": "^3.3.2"

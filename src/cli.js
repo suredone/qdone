@@ -30,6 +30,9 @@ const globalOptionDefinitions = [
   { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
   { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
+  { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
+  { name: 'cache-prefix', type: String, defaultValue: 'qdone:', description: 'Prefix for all keys in cache.' },
+  { name: 'cache-ttl-seconds', type: Number, defaultValue: 10, description: 'Number of seconds to cache GetQueueAttributes calls.' },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
 
@@ -414,6 +417,12 @@ exports.run = function run (argv) {
   debug('run', argv)
   return exports
     .root(argv)
+    .then(() => {
+      // If cache actually is active, it will keep our program from existing
+      // until we disconnect the cache client
+      const cache = require('./cache')
+      cache.resetClient()
+    })
     .catch(function (err) {
       if (err.code === 'AccessDenied') console.log(getUsage([awsUsageHeader, awsUsageBody]))
       console.error(chalk.red.bold(err))
