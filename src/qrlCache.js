@@ -51,7 +51,7 @@ exports.clear = function clear () {
 exports.get = function get (qname) {
   debug('get', qname, qcache)
   const sqs = new AWS.SQS()
-  if (qcache.hasOwnProperty(qname)) return Q.fcall(_get, qname)
+  if (Object.prototype.hasOwnProperty.call(qcache, qname)) return Q.fcall(_get, qname)
   return sqs
     .getQueueUrl({ QueueName: qname })
     .promise()
@@ -88,7 +88,7 @@ function ingestQRLs (qrls) {
   const pairs = []
   debug('ingestQRLs', qrls)
   qrls.forEach(function (qrl) {
-    const qname = path.basename(url.parse(qrl).pathname)
+    const qname = path.basename((new url.URL(qrl)).pathname)
     qcache[qname] = qrl
     pairs.push({ qname: qname, qrl: qrl })
     debug('qcache', Object.keys(qcache), 'ingestQRLs', qname, ' => ', qcache[qname])
