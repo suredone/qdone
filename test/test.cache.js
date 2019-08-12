@@ -5,6 +5,7 @@ const cache = require('../src/cache')
 const expect = chai.expect
 
 beforeEach(function () { cache.resetClient() })
+after(function () { cache.resetClient() })
 
 describe('cache', function () {
   const options = {
@@ -15,28 +16,21 @@ describe('cache', function () {
 
   describe('getClient', function () {
     it('should throw an error for invalid cache uri', function () {
-      try {
-        cache.getClient(Object.assign({}, options, {'cache-uri': 'bob://foo'}))
-      } catch (e) {
-        expect(e).to.be.an.Error // eslint-disable-line
-      }
+      const badOptions = Object.assign({}, options, {'cache-uri': 'bob://foo'})
+      expect(() => cache.getClient(badOptions)).to.throw(/currently supported/)
     })
     it('should throw an error when --cache-uri is missing', function () {
-      try {
-        const badOptions = Object.assign({}, options)
-        delete badOptions['cache-uri']
-        cache.getClient(badOptions)
-      } catch (e) {
-        expect(e).to.be.an.Error // eslint-disable-line
-      }
+      const badOptions = Object.assign({}, options)
+      delete badOptions['cache-uri']
+      expect(() => cache.getClient(badOptions)).to.throw(/--cache-uri/)
     })
     it('should support redis:// URIs', function () {
       const client = cache.getClient(options)
-      return expect(client).to.be.defined
+      return expect(client).to.be.ok
     })
     it('should support redis-cache:// URIs', function () {
       const client = cache.getClient(Object.assign({}, options, {'cache-uri': 'redis-cluster://'}))
-      return expect(client).to.be.defined
+      return expect(client).to.be.ok
     })
     it('should return an identical client on subsequent calls', function () {
       const client1 = cache.getClient(options)
