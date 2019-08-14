@@ -16,12 +16,11 @@ function getClient (options) {
     return client
   } else if (options['cache-uri']) {
     const url = new URL(options['cache-uri'])
-    const redisOptions = {keyPrefix: options['cache-prefix']}
     if (url.protocol === 'redis:') {
-      client = new Redis(url.toString(), redisOptions)
+      client = new Redis(url.toString())
     } else if (url.protocol === 'redis-cluster:') {
       url.protocol = 'redis:'
-      client = new Redis.Cluster([url.toString()], {redisOptions})
+      client = new Redis.Cluster([url.toString()])
     } else {
       throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
     }
@@ -33,7 +32,6 @@ function getClient (options) {
 }
 
 function resetClient () {
-  debug({client})
   if (client) client.quit()
   client = undefined
 }
@@ -44,7 +42,10 @@ function resetClient () {
  */
 function getCache (key, options) {
   const client = getClient(options)
-  return client.get(key).then(result => {
+  const cacheKey = options['cache-prefix'] + key
+  debug({action: 'getCache', cacheKey})
+  return client.get(cacheKey).then(result => {
+    debug({action: 'getCache got', cacheKey, result})
     return result ? JSON.parse(result) : undefined
   })
 }
@@ -55,7 +56,9 @@ function getCache (key, options) {
 function setCache (key, value, options) {
   const client = getClient(options)
   const encoded = JSON.stringify(value)
-  return client.setex(key, options['cache-ttl-seconds'], encoded)
+  const cacheKey = options['cache-prefix'] + key
+  debug({action: 'setCache', cacheKey, value})
+  return client.setex(cacheKey, options['cache-ttl-seconds'], encoded)
 }
 
 module.exports = { getCache, setCache, getClient, resetClient }
