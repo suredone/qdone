@@ -20,7 +20,7 @@ function getClient (options) {
       client = new Redis(url.toString())
     } else if (url.protocol === 'redis-cluster:') {
       url.protocol = 'redis:'
-      client = new Redis.Cluster([url.toString()])
+      client = new Redis.Cluster([url.toString()], {slotsRefreshInterval: 60 * 1000})
     } else {
       throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
     }
