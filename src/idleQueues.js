@@ -34,7 +34,7 @@ function _cheapIdleCheck (qname, qrl, options) {
       const result = data.Attributes
       result.queue = qname.slice(options.prefix.length)
       result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
-      return Promise.resolve({result, SQS: 1})
+      return Promise.resolve({ result, SQS: 1 })
     })
 }
 
@@ -46,18 +46,18 @@ function cheapIdleCheck (qname, qrl, options) {
   if (options['cache-uri']) {
     const key = 'cheap-idle-check:' + qrl
     return cache.getCache(key, options).then(cacheResult => {
-      debug({cacheResult})
+      debug({ cacheResult })
       if (cacheResult) {
-        debug({action: 'return resolved'})
-        return Promise.resolve({result: cacheResult, SQS: 0})
+        debug({ action: 'return resolved' })
+        return Promise.resolve({ result: cacheResult, SQS: 0 })
       } else {
         // Cache miss, make actual call
-        debug({action: 'do real check'})
-        return _cheapIdleCheck(qname, qrl, options).then(({result, SQS}) => {
-          debug({action: 'setCache', key, result})
+        debug({ action: 'do real check' })
+        return _cheapIdleCheck(qname, qrl, options).then(({ result, SQS }) => {
+          debug({ action: 'setCache', key, result })
           return cache.setCache(key, result, options).then(ok => {
-            debug({action: 'return result of set cache', result})
-            return Promise.resolve({result, SQS})
+            debug({ action: 'return result of set cache', result })
+            return Promise.resolve({ result, SQS })
           })
         })
       }
@@ -111,7 +111,7 @@ function checkIdle (qname, qrl, options) {
   // Do the cheap check first to make sure there is no data in flight at the moment
   debug('checkIdle', qname, qrl)
   return cheapIdleCheck(qname, qrl, options)
-    .then(({result: cheapResult, SQS}) => {
+    .then(({ result: cheapResult, SQS }) => {
       debug('cheapResult', cheapResult)
       // Short circuit further calls if cheap result shows data
       if (cheapResult.idle === false) {
