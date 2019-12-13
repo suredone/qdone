@@ -79,7 +79,7 @@ function sendMessage (qrl, command, options) {
   // Add in group id if we're using fifo
   if (options.fifo) {
     message.MessageGroupId = options['group-id']
-    message.MessageDeduplicationId = uuid.v1()
+    message.MessageDeduplicationId = options['deduplication-id']
   }
   const sqs = new AWS.SQS()
   return sqs
