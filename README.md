@@ -425,6 +425,10 @@ Options
     -f, --fifo                Create new queues as FIFOs
     -g, --group-id string     FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.
     --group-id-per-message    Use a unique Group ID for every message, even messages in the same batch.
+    --deduplication-id string A Message Deduplication ID to give SQS when sending a message. Use this
+                              option if you are managing retries outside of qdone, and make sure the ID is
+                              the same for each retry in the deduplication window. Defaults to a string
+                              unique to this invocation.
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]

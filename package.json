@@ -1,10 +1,10 @@
 {
   "name": "qdone",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Language agnostic job queue for SQS",
   "main": "index.js",
   "dependencies": {
-    "aws-sdk": "^2.330.0",
+    "aws-sdk": "^2.580.0",
     "chalk": "^2.4.1",
     "command-line-args": "^5.0.2",
     "command-line-commands": "^2.0.1",

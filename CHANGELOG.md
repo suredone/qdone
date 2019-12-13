@@ -1,5 +1,19 @@
 # Changelog
 
+v.1.7.0
+-------
+
+### New Features
+
+#### Added `--deduplication-id` option for enqueue ([#40](https://github.com/suredone/qdone/issues/40))
+
+`qdone` has always set a deduplication id (using a UUID v1) when sending enqueue calls, but it looks like the aws sdk does not have adequate retry defaults set. This option lets a qdone user retry enqueue operations. For more information please see the [AWS docs for Message Deduplication ID](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/using-messagededuplicationid-property.html).
+
+### Under the hood
+
+- Updated aws-sdk.
+- Updated locked dependencies.
+
 v.1.6.0
 -------
 
