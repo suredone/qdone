@@ -10,6 +10,7 @@ jobs:
         matrix:
           version: [6, 10, 16]
           os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
     - uses: actions/setup-node@v3
