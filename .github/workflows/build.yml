@@ -16,7 +16,7 @@ jobs:
     - uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.version }}
-    - run: npm ci
+    - run: npm install --ci
     - run: npm test
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
