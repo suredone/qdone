@@ -1,4 +1,3 @@
-
 // const Q = require('q')
 // const debug = require('debug')('qdone:enqueue')
 // const chalk = require('chalk')
@@ -8,8 +7,6 @@
 
 import { v1 as uuidV1 } from 'uuid'
 import chalk from 'chalk'
-import { URL } from 'url'
-import { basename } from 'path'
 import {
   qrlCacheGet,
   qrlCacheSet,

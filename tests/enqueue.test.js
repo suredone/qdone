@@ -126,7 +126,6 @@ describe('createQueue', () => {
 
 describe('getQueueAttributes', () => {
   test('all attributes get queried', async () => {
-    const options = {}
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const sqsMock = mockClient(client)
@@ -598,9 +597,7 @@ describe('getQrl', () => {
   test('unhandled errors get re-thrown', async () => {
     const options = {}
     const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const fqname = `${qname}_failed`
-    const fqrl = `${qrl}_failed`
     const sqsMock = mockClient(client)
     setClient(sqsMock)
     sqsMock

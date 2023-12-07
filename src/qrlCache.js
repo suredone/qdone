@@ -119,7 +119,6 @@ export async function getMatchingQueues (prefix) {
 // Resolves into a flattened aray of {qname: ..., qrl: ...} objects.
 //
 export async function getQnameUrlPairs (qnames, options) {
-  const client = getClient()
   const promises = qnames.map(
     async function getQueueUrlOrUrls (qname) {
       if (qname.slice(-1) === '*') {
