@@ -1,0 +1,63 @@
+{
+  "name": "qdone",
+  "version": "2.0.0",
+  "description": "Language agnostic job queue for SQS",
+  "type": "module",
+  "module": "src/index.js",
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.465.0",
+    "@aws-sdk/client-sqs": "^3.465.0",
+    "debug": "^4.3.4",
+    "standard": "^17.1.0"
+  },
+  "devDependencies": {
+    "aws-sdk-client-mock": "^3.0.0",
+    "aws-sdk-client-mock-jest": "^3.0.0",
+    "jest": "^29.7.0"
+  },
+  "bin": "./qdone",
+  "preferGlobal": true,
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "test": "NODE_OPTIONS='--experimental-vm-modules --no-warnings' jest",
+    "lint": "standard",
+    "coverage": "nyc report --reporter=text-lcov | coveralls",
+    "standard": "standard",
+    "prep-for-publish": "npm shrinkwrap && echo now commit shrinkwrap and use npm run publish-{next,latest}",
+    "publish-latest": "npm publish --tag latest",
+    "publish-next": "npm publish --tag next"
+  },
+  "author": "Ryan Witt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suredone/qdone.git"
+  },
+  "keywords": [
+    "sqs",
+    "job",
+    "queue",
+    "cli",
+    "command line",
+    "aws",
+    "producer",
+    "consumer",
+    "amazon"
+  ],
+  "jest": {
+    "testEnvironment": "jest-environment-node",
+    "transform": {}
+  },
+  "standard": {
+    "env": [
+      "jest",
+      "es6"
+    ]
+  },
+  "bugs": {
+    "url": "https://github.com/suredone/qdone/issues"
+  },
+  "homepage": "https://github.com/suredone/qdone#readme"
+}
