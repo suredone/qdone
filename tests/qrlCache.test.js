@@ -1,5 +1,5 @@
 import { ListQueuesCommand, GetQueueUrlCommand } from '@aws-sdk/client-sqs'
-import { getClient, setClient } from '../src/sqs.js'
+import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import {
   normalizeQueueName,
   normalizeFailQueueName,
@@ -14,8 +14,8 @@ import {
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 
-getClient()
-const client = getClient()
+getSQSClient()
+const client = getSQSClient()
 
 // Always clear qrl cache at the beginning of each test
 beforeEach(qrlCacheClear)
@@ -53,7 +53,7 @@ describe('normalizeFailQueueName', () => {
 describe('qrlCacheGet', () => {
   test('basic get works', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolvesOnce({
@@ -72,7 +72,7 @@ describe('qrlCacheGet', () => {
 
   test('repeated get does not call api', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolvesOnce({
@@ -91,7 +91,7 @@ describe('qrlCacheGet', () => {
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
   })
   // test('nonexistent queue throws exception', async () => {
-  //   setClient(client)
+  //   setSQSClient(client)
   //   await expect(
   //     qrlCacheGet('foobar')
   //   ).resolves.toEqual(
@@ -112,7 +112,7 @@ describe('qrlCacheSet', () => {
 describe('qrlCacheClear', () => {
   test('basic clear works', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolvesOnce({
@@ -129,7 +129,7 @@ describe('qrlCacheClear', () => {
 describe('qrlCacheInvalidate', () => {
   test('basic invalidate works', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolves({
@@ -168,7 +168,7 @@ describe('ingestQRLs', () => {
 describe('getMatchingQueues', () => {
   test('gets prefixed queues when there is a single page', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolves({
@@ -188,7 +188,7 @@ describe('getMatchingQueues', () => {
 
   test('gets matching queues when there are multiple pages', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand)
       .resolves({
@@ -250,7 +250,7 @@ describe('getMatchingQueues', () => {
 describe('getQnameUrlPairs', () => {
   test('basic pairs with no wildcard queues work', async () => {
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     const qnames = []
     const expectedResult = []
     const N = 10
@@ -275,7 +275,7 @@ describe('getQnameUrlPairs', () => {
     const sqsMock = mockClient(client)
     const wildname = 'foobar_wild_'
     const wildurl = `https://sqs.us-east-1.amazonaws.com/foobar/${wildname}`
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(ListQueuesCommand, { QueueNamePrefix: wildname })
       .resolvesOnce({
@@ -318,7 +318,7 @@ describe('getQnameUrlPairs', () => {
     const sqsMock = mockClient(client)
     const wildname = 'foobar_wild_'
     const wildurl = `https://sqs.us-east-1.amazonaws.com/foobar/${wildname}`
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(ListQueuesCommand, { QueueNamePrefix: wildname })
       .resolvesOnce({

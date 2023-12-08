@@ -11,7 +11,7 @@ let client
  * Internal function to setup redis client. Parses URI to figure out
  * how to connect.
  */
-export function getClient (options) {
+export function getCacheClient (options) {
   if (client) {
     return client
   } else if (options['cache-uri']) {
@@ -24,14 +24,13 @@ export function getClient (options) {
     } else {
       throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
     }
-    // setTimeout(resetClient, 10000)
     return client
   } else {
     throw new UsageError('Caching requires the --cache-uri option')
   }
 }
 
-export function resetClient () {
+export function shutdownCache () {
   if (client) client.quit()
   client = undefined
 }
@@ -41,7 +40,7 @@ export function resetClient () {
  * if it is found.
  */
 export async function getCache (key, options) {
-  const client = getClient(options)
+  const client = getCacheClient(options)
   const cacheKey = options['cache-prefix'] + key
   debug({ action: 'getCache', cacheKey })
   const result = await client.get(cacheKey)
@@ -53,7 +52,7 @@ export async function getCache (key, options) {
  * Returns a promise for the status. Encodes object as JSON
  */
 export async function setCache (key, value, options) {
-  const client = getClient(options)
+  const client = getCacheClient(options)
   const encoded = JSON.stringify(value)
   const cacheKey = options['cache-prefix'] + key
   debug({ action: 'setCache', cacheKey, value })

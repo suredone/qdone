@@ -1,14 +1,14 @@
 /* eslint-env jest */
 
 import {
-  getClient,
-  resetClient,
+  getCacheClient,
+  shutdownCache,
   setCache,
   getCache
 } from '../src/cache.js'
 
-beforeEach(resetClient)
-afterAll(resetClient)
+beforeEach(shutdownCache)
+afterAll(shutdownCache)
 
 const options = {
   'cache-uri': 'redis://localhost',
@@ -16,27 +16,27 @@ const options = {
   'cache-prefix': 'qdone:'
 }
 
-describe('getClient', () => {
+describe('getCacheClient', () => {
   test('throws an error for invalid cache uri', () => {
     const badOptions = Object.assign({}, options, { 'cache-uri': 'bob://foo' })
-    expect(() => getClient(badOptions)).toThrow('currently supported')
+    expect(() => getCacheClient(badOptions)).toThrow('currently supported')
   })
   test('throws an error when --cache-uri is missing', () => {
     const badOptions = Object.assign({}, options)
     delete badOptions['cache-uri']
-    expect(() => getClient(badOptions)).toThrow(/--cache-uri/)
+    expect(() => getCacheClient(badOptions)).toThrow(/--cache-uri/)
   })
   test('supports redis:// URIs', () => {
-    expect(() => getClient(options)).not.toThrow()
+    expect(() => getCacheClient(options)).not.toThrow()
   })
   test('supports redis-cache:// URIs', () => {
-    expect(() => getClient(
+    expect(() => getCacheClient(
       Object.assign({}, options, { 'cache-uri': 'redis-cluster://' })
     )).not.toThrow()
   })
   test('returns an identical client on subsequent calls', () => {
-    const client1 = getClient(options)
-    const client2 = getClient(options)
+    const client1 = getCacheClient(options)
+    const client2 = getCacheClient(options)
     expect(client1).toEqual(client2)
   })
 })

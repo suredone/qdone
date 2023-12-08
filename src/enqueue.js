@@ -19,13 +19,13 @@ import {
   SendMessageCommand,
   SendMessageBatchCommand
 } from '@aws-sdk/client-sqs'
-import { getClient } from './sqs.js'
+import { getSQSClient } from './sqs.js'
 import Debug from 'debug'
 const debug = Debug('qdone:enqueue')
 
 export async function createFailQueue (fqueue, fqname, deadLetterTargetArn, options) {
   debug('createFailQueue(', fqueue, fqname, ')')
-  const client = getClient()
+  const client = getSQSClient()
   const params = {
     /* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
     Attributes: {},
@@ -43,7 +43,7 @@ export async function createFailQueue (fqueue, fqname, deadLetterTargetArn, opti
 
 export async function createQueue (queue, qname, deadLetterTargetArn, options) {
   debug('createQueue(', queue, qname, ')')
-  const client = getClient()
+  const client = getSQSClient()
   const maxReceiveCount = '1'
   const params = {
     Attributes: {
@@ -66,7 +66,7 @@ export async function createQueue (queue, qname, deadLetterTargetArn, options) {
 
 export async function getQueueAttributes (qrl) {
   debug('getQueueAttributes(', qrl, ')')
-  const client = getClient()
+  const client = getSQSClient()
   const params = { AttributeNames: ['All'], QueueUrl: qrl }
   const cmd = new GetQueueAttributesCommand(params)
   debug({ cmd })
@@ -97,7 +97,7 @@ export async function sendMessage (qrl, command, options) {
     params.MessageGroupId = options['group-id']
     params.MessageDeduplicationId = options['deduplication-id']
   }
-  const client = getClient()
+  const client = getSQSClient()
   const cmd = new SendMessageCommand(params)
   debug({ cmd })
   const data = await client.send(cmd)
@@ -118,7 +118,7 @@ export async function sendMessageBatch (qrl, messages, options) {
       }, message)
     )
   }
-  const client = getClient()
+  const client = getSQSClient()
   const cmd = new SendMessageBatchCommand(params)
   debug({ cmd })
   const data = await client.send(cmd)

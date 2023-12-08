@@ -2,7 +2,11 @@
  * Implementation for the worker that pulls jobs from queue and executes them.
  */
 
-import { ChangeMessageVisibilityCommand, DeleteMessageCommand } from '@aws/client-sqs'
+import {
+  ChangeMessageVisibilityCommand,
+  ReceiveMessageCommand,
+  DeleteMessageCommand
+} from '@aws-sdk/client-sqs'
 import { exec } from 'node:child_process'
 import treeKill from 'tree-kill'
 import chalk from 'chalk'
@@ -89,19 +93,18 @@ export async function executeJob (job, qname, qrl, options) {
   const treeKiller = setTimeout(killTree, options['kill-after'] * 1000)
   debug({ treeKiller: options['kill-after'] * 1000, date: Date.now() })
 
-  const promisifiedExec = new Promise(function (resolve, reject) {
-    child = exec(cmd, function (err, stdout, stderr) {
-      if (err) {
-        err.stdout = stdout
-        err.stderr = stderr
-        reject(err)
-      } else resolve({ stdout, stderr })
-    })
-  })
-
   try {
     // Success path for job execution
-    const { stdout, stderr } = await promisifiedExec(cmd)
+    const { stdout, stderr } = await new Promise(function (resolve, reject) {
+      child = exec(cmd, function (err, stdout, stderr) {
+        if (err) {
+          err.stdout = stdout
+          err.stderr = stderr
+          reject(err)
+        } else resolve({ stdout, stderr })
+      })
+    })
+
     debug('exec.then', Date.now())
     clearTimeout(timeoutExtender)
     clearTimeout(treeKiller)
@@ -126,11 +129,12 @@ export async function executeJob (job, qname, qrl, options) {
     clearTimeout(timeoutExtender)
     clearTimeout(treeKiller)
     if (options.verbose) {
+      const { code, signal, stdout, stderr } = err
       console.error(chalk.red('  FAILED'))
-      if (err.code) console.error(chalk.blue('  code  : ') + err.code)
-      if (err.signal) console.error(chalk.blue('  signal: ') + err.signal)
-      if (stdout) console.error(chalk.blue('  stdout: ') + err.stdout)
-      if (stderr) console.error(chalk.blue('  stderr: ') + err.stderr)
+      if (code) console.error(chalk.blue('  code  : ') + code)
+      if (signal) console.error(chalk.blue('  signal: ') + signal)
+      if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
+      if (stderr) console.error(chalk.blue('  stderr: ') + stderr)
       console.error(chalk.blue('  error : ') + err)
     } else {
       // Production error logging
@@ -141,8 +145,8 @@ export async function executeJob (job, qname, qrl, options) {
         command: job.Body,
         exitCode: err.code || undefined,
         killSignal: err.signal || undefined,
-        err.stderr,
-        err.stdout,
+        stderr: err.stderr,
+        stdout: err.stdout,
         errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined
       }))
     }
@@ -163,7 +167,7 @@ export async function pollForJobs (qname, qrl, options) {
     VisibilityTimeout: 30,
     WaitTimeSeconds: options['wait-time']
   }
-  const response = await getSQSClient().send(new RecieveMessageCommand(params))
+  const response = await getSQSClient().send(new ReceiveMessageCommand(params))
   debug('sqs.receiveMessage.then', response)
   if (shutdownRequested) return { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }
   if (response.Messages) {

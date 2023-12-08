@@ -6,7 +6,7 @@
 import { URL } from 'url'
 import { basename } from 'path'
 import { ListQueuesCommand, GetQueueUrlCommand } from '@aws-sdk/client-sqs'
-import { getClient } from './sqs.js'
+import { getSQSClient } from './sqs.js'
 import Debug from 'debug'
 const debug = Debug('qdone:qrlCache')
 
@@ -49,7 +49,7 @@ export function qrlCacheClear () {
 export async function qrlCacheGet (qname) {
   debug('get', qname, qcache)
   if (qcache.has(qname)) return qcache.get(qname)
-  const client = getClient()
+  const client = getSQSClient()
   const input = { QueueName: qname }
   const cmd = new GetQueueUrlCommand(input)
   debug({ cmd })
@@ -101,7 +101,7 @@ export function ingestQRLs (qrls) {
  */
 export async function getMatchingQueues (prefix) {
   const input = { QueueNamePrefix: prefix, MaxResults: 1000 }
-  const client = getClient()
+  const client = getSQSClient()
   async function processQueues (nextToken) {
     if (nextToken) input.NextToken = nextToken
     const command = new ListQueuesCommand(input)

@@ -5,7 +5,7 @@ import {
   SendMessageCommand,
   SendMessageBatchCommand
 } from '@aws-sdk/client-sqs'
-import { getClient, setClient } from '../src/sqs.js'
+import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import {
   createFailQueue,
   createQueue,
@@ -23,8 +23,8 @@ import { qrlCacheSet, qrlCacheClear } from '../src/qrlCache.js'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 
-getClient()
-const client = getClient()
+getSQSClient()
+const client = getSQSClient()
 
 // Always clear qrl cache at the beginning of each test
 beforeEach(qrlCacheClear)
@@ -35,7 +35,7 @@ describe('createFailQueue', () => {
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(CreateQueueCommand)
       .resolvesOnce({ QueueUrl: qrl })
@@ -50,7 +50,7 @@ describe('createFailQueue', () => {
     const qname = 'testqueue.fifo'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(CreateQueueCommand)
       .resolvesOnce({ QueueUrl: qrl })
@@ -72,7 +72,7 @@ describe('createQueue', () => {
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const deadLetterTargetArn = `arn:aws:sqs:us-east-1:foobar:${qname}_failed`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(CreateQueueCommand)
       .resolvesOnce({ QueueUrl: qrl })
@@ -100,7 +100,7 @@ describe('createQueue', () => {
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const deadLetterTargetArn = `arn:aws:sqs:us-east-1:foobar:${qname}_failed`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(CreateQueueCommand)
       .resolvesOnce({ QueueUrl: qrl })
@@ -129,7 +129,7 @@ describe('getQueueAttributes', () => {
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueAttributesCommand, { QueueUrl: qrl })
       .resolves({
@@ -195,7 +195,7 @@ describe('sendMessage', () => {
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
@@ -220,7 +220,7 @@ describe('sendMessage', () => {
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
@@ -249,7 +249,7 @@ describe('sendMessageBatch', () => {
       formatMessage(cmd),
       formatMessage(cmd)
     ]
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
@@ -282,7 +282,7 @@ describe('sendMessageBatch', () => {
       Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd)),
       Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd))
     ]
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({
@@ -324,7 +324,7 @@ describe('sendMessageBatch', () => {
       Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd)),
       Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd))
     ]
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({
@@ -372,7 +372,7 @@ describe('addMessage / flushMessages', () => {
     expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
 
     // Now we should see a flush
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolvesOnce({
@@ -462,7 +462,7 @@ describe('addMessage / flushMessages', () => {
     expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
 
     // Now we should see a flush
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolvesOnce({
@@ -543,7 +543,7 @@ describe('getQrl', () => {
     const fqname = `${qname}_failed`
     const fqrl = `${qrl}_failed`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     qrlCacheSet(qname, qrl)
     qrlCacheSet(fqname, fqrl)
     await expect(getQrl(qname, qname, fqname, fqname, options))
@@ -559,7 +559,7 @@ describe('getQrl', () => {
     const fqname = `${qname}_failed`
     const fqrl = `${qrl}_failed`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: qname })
       .rejectsOnce({ code: 'AWS.SimpleQueueService.NonExistentQueue' })
@@ -599,7 +599,7 @@ describe('getQrl', () => {
     const qname = 'testqueue'
     const fqname = `${qname}_failed`
     const sqsMock = mockClient(client)
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: qname })
       .rejectsOnce({ message: 'SomeOtherError', code: 'SomeOtherError' })
@@ -618,7 +618,7 @@ describe('enqueue', () => {
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
@@ -655,7 +655,7 @@ describe('enqueueBatch', () => {
       { queue: qname, command: cmd },
       { queue: qname, command: cmd }
     ]
-    setClient(sqsMock)
+    setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })

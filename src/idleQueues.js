@@ -2,7 +2,7 @@
  * Implementation of checks and caching of checks to determine if queues are idle.
  */
 import chalk from 'chalk'
-import { getClient as getSQSClient } from './sqs.js'
+import { getSQSClient as getSQSClient } from './sqs.js'
 import { getCloudWatchClient } from './cloudWatch.js'
 import { GetQueueAttributesCommand, DeleteQueueCommand } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'

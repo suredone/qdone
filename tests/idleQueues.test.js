@@ -1,6 +1,6 @@
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
 import { GetQueueAttributesCommand, DeleteQueueCommand } from '@aws-sdk/client-sqs'
-import { getClient as getSQSClient, setClient as setSQSClient } from '../src/sqs.js'
+import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import { getCloudWatchClient, setCloudWatchClient } from '../src/cloudWatch.js'
 import {
   attributeNames,
