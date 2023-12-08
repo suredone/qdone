@@ -14,7 +14,6 @@
     "command-line-usage": "^7.0.1",
     "debug": "^4.3.4",
     "ioredis": "^5.3.2",
-    "q": "^1.5.1",
     "standard": "^17.1.0",
     "uuid": "^9.0.1"
   },

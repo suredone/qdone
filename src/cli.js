@@ -10,8 +10,6 @@ import commandLineArgs from 'command-line-args'
 import Debug from 'debug'
 import chalk from 'chalk'
 
-import * as Q from 'q'
-
 import { shutdownCache } from './cache.js'
 import * as packageJson from '../package.json' assert { type: 'json' } // eslint-disable-line
 
@@ -142,34 +140,31 @@ export async function enqueueBatch (argv) {
   // Load module after AWS global load
   setupAWS(options)
   const { enqueueBatch } = await import('./enqueue.js')
-  const pairs = []
 
   // Load data and enqueue it
-  return Promise.all(
-    files.map(function (file) {
-      // Construct (queue, command) pairs from input
-      debug('file', file.name || 'stdin')
-      const input = createInterface({ input: file })
-      const deferred = Q.defer()
-      input.on('line', line => {
-        const parts = line.split(/\s+/)
-        const queue = parts[0]
-        const command = line.slice(queue.length).trim()
-        pairs.push({ queue, command })
+  const pairs = []
+  await Promise.all(
+    files.map(file => {
+      return new Promise((resolve, reject) => {
+        debug('file', file.name || 'stdin')
+        // Construct (queue, command) pairs from input
+        const input = createInterface({ input: file })
+        input.on('line', line => {
+          const parts = line.split(/\s+/)
+          const queue = parts[0]
+          const command = line.slice(queue.length).trim()
+          pairs.push({ queue, command })
+        })
+        input.on('error', reject)
+        input.on('close', resolve)
       })
-      input.on('error', deferred.reject)
-      input.on('close', deferred.resolve)
-      return deferred.promise
     })
   )
-    .then(function () {
-      debug('pairs', pairs)
-      return enqueueBatch(pairs, options)
-        .then(function (result) {
-          debug('enqueueBatch returned', result)
-          if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
-        })
-    })
+
+  debug('pairs', pairs)
+  const result = await enqueueBatch(pairs, options)
+  debug('enqueueBatch returned', result)
+  if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
 }
 
 export async function worker (argv) {
@@ -261,7 +256,8 @@ export async function worker (argv) {
             return Promise.resolve()
           }
           console.error(chalk.yellow('Retrying in ' + (roundDelay / 1000) + 's'))
-          return Q.delay(roundDelay).then(workLoop)
+          const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+          return delay(roundDelay).then(workLoop)
         }
 
         const ranJob = (result.jobsSucceeded + result.jobsFailed) > 0
