@@ -32,6 +32,9 @@ dependencies:
   standard:
     specifier: ^17.1.0
     version: 17.1.0
+  tree-kill:
+    specifier: ^1.2.2
+    version: 1.2.2
   uuid:
     specifier: ^9.0.1
     version: 9.0.1
@@ -46,9 +49,6 @@ devDependencies:
   jest:
     specifier: ^29.7.0
     version: 29.7.0
-  tree-kill:
-    specifier: ^1.2.2
-    version: 1.2.2
 
 packages:
 
@@ -4798,7 +4798,7 @@ packages:
   /tree-kill@1.2.2:
     resolution: {integrity: sha512-L0Orpi8qGpRG//Nd+H90vFB+3iHnue1zSSGmNOOCh1GLJ7rUKVwV2HvijphGQS2UmhUZewS9VgvxYIdgr+fG1A==}
     hasBin: true
-    dev: true
+    dev: false
 
   /tsconfig-paths@3.14.2:
     resolution: {integrity: sha512-o/9iXgCYc5L/JxCHPe3Hvh8Q/2xm5Z+p18PESBU6Ff33695QnCHBEjcytY2q19ua7Mbl/DavtBOLq+oG0RCL+g==}

@@ -340,10 +340,9 @@ export async function idleQueues (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const idleQueues = require('./idleQueues')
+  const { idleQueues } = await import('./idleQueues.js')
 
-  return idleQueues
-    .idleQueues(queues, options)
+  return idleQueues(queues, options)
     .then(function (result) {
       debug('idleQueues returned', result)
       if (result === 'noQueues') return Promise.resolve()
