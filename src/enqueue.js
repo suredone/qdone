@@ -97,6 +97,7 @@ export async function sendMessage (qrl, command, options) {
     params.MessageGroupId = options['group-id']
     params.MessageDeduplicationId = options['deduplication-id']
   }
+  if (options.delay) params.DelaySeconds = options.delay
   const client = getSQSClient()
   const cmd = new SendMessageCommand(params)
   debug({ cmd })
@@ -117,6 +118,10 @@ export async function sendMessageBatch (qrl, messages, options) {
         MessageDeduplicationId: uuidFunction()
       }, message)
     )
+  }
+  if (options.delay) {
+    params.Entries = params.Entries.map(message =>
+      Object.assign({ DelaySeconds: options.delay }, message))
   }
   const client = getSQSClient()
   const cmd = new SendMessageBatchCommand(params)

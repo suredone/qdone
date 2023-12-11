@@ -234,6 +234,40 @@ describe('sendMessage', () => {
         Object.assign({ QueueUrl: qrl, MessageGroupId: groupId }, formatMessage(cmd))
       )
   })
+
+  test('delay option works', async () => {
+    const groupId = 'foo'
+    const deduplicationId = 'bar'
+    const options = {
+      delay: 15,
+      fifo: true,
+      'group-id': groupId,
+      'deduplication-id': deduplicationId
+    }
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const md5 = 'foobar'
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(SendMessageCommand, { QueueUrl: qrl })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+    await expect(
+      sendMessage(qrl, cmd, options)
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(
+        1,
+        SendMessageCommand,
+        Object.assign({
+          QueueUrl: qrl,
+          MessageGroupId: groupId,
+          DelaySeconds: options.delay
+        }, formatMessage(cmd))
+      )
+  })
 })
 
 describe('sendMessageBatch', () => {
@@ -249,6 +283,35 @@ describe('sendMessageBatch', () => {
       formatMessage(cmd),
       formatMessage(cmd)
     ]
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+    await expect(
+      sendMessageBatch(qrl, messages, options)
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    expect(sqsMock)
+      .toHaveReceivedNthSpecificCommandWith(
+        1,
+        SendMessageBatchCommand,
+        Object.assign({ QueueUrl: qrl, Entries: messages })
+      )
+  })
+
+  test('batch with delay works', async () => {
+    const options = { delay: 15 }
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const md5 = 'foobar'
+    const messages = [
+      formatMessage(cmd),
+      formatMessage(cmd)
+    ]
+    messages[0].DelaySeconds = options.delay
+    messages[1].DelaySeconds = options.delay
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })

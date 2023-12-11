@@ -57,7 +57,8 @@ const enqueueOptionDefinitions = [
   { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
   { name: 'group-id', alias: 'g', type: String, defaultValue: uuidV1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to a string unique to this invocation.' },
   { name: 'group-id-per-message', type: Boolean, description: 'Use a unique Group ID for every message, even messages in the same batch.' },
-  { name: 'deduplication-id', type: String, defaultValue: uuidV1(), description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' }
+  { name: 'deduplication-id', type: String, defaultValue: uuidV1(), description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' },
+  { name: 'delay', alias: 'd', type: Number, defaultValue: 0, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' }
 ]
 
 export async function enqueue (argv) {
