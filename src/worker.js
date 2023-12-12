@@ -143,7 +143,7 @@ export async function executeJob (job, qname, qrl, options) {
         timestamp: new Date(),
         job: job.MessageId,
         command: job.Body,
-        exitCode: err.code || undefined,
+        exitCode: err.code || err.code || undefined,
         killSignal: err.signal || undefined,
         stderr: err.stderr,
         stdout: err.stdout,
@@ -206,7 +206,7 @@ export async function listen (queues, options) {
 
   // Start processing
   if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(queue => options.prefix + normalizeQueueName(queue, options))
+  const qnames = queues.map(queue => normalizeQueueName(queue, options))
   const pairs = await getQnameUrlPairs(qnames, options)
 
   // Figure out which pairs are active

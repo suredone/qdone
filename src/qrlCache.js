@@ -17,22 +17,33 @@ const qcache = new Map()
 // Normalizes a queue name to end with .fifo if options.fifo is set
 //
 export const fifoSuffix = '.fifo'
-export function normalizeQueueName (qname, options) {
-  const sliced = qname.slice(0, -fifoSuffix.length)
-  const suffix = qname.slice(-fifoSuffix.length)
-  const base = suffix === fifoSuffix ? sliced : qname
-  return base + (options.fifo && qname.slice(-1) !== '*' ? fifoSuffix : '')
+export function normalizeQueueName (qname, opt) {
+  const hasFifo = qname.endsWith(fifoSuffix)
+  const needsFifo = opt.fifo && qname.slice(-1) !== '*'
+  const needsPrefix = !qname.startsWith(opt.prefix)
+  const base = hasFifo ? qname.slice(0, -fifoSuffix.length) : qname
+  return (needsPrefix ? opt.prefix : '') + base + (needsFifo ? fifoSuffix : '')
 }
 
 //
 // Normalizes fail queue name, appending both --fail-suffix and .fifo depending on options
 //
-export function normalizeFailQueueName (qname, options) {
-  qname = normalizeQueueName(qname, { fifo: false }) // strip .fifo if it is there
-  const sliced = qname.slice(0, -(options['fail-suffix']?.length || 0))
-  const suffix = qname.slice(-(options['fail-suffix']?.length || 0))
-  const base = suffix === options['fail-suffix'] ? sliced : qname // strip --fail-suffix if it is there
-  return (base + options['fail-suffix']) + (options.fifo ? fifoSuffix : '')
+export function normalizeFailQueueName (fqname, opt) {
+  const newopt = Object.assign({}, opt, { fifo: false })
+  const base = normalizeQueueName(fqname, newopt) // strip fifo
+  debug({ fqname, base, opt })
+  const needsFail = !base.endsWith(opt.failSuffix)
+  return base + (needsFail ? opt.failSuffix : '') + (opt.fifo ? fifoSuffix : '')
+}
+
+//
+// Normalizes dlq queue name, appending both --dlq-suffix and .fifo depending on options
+//
+export function normalizeDLQName (dqname, opt) {
+  const newopt = Object.assign({}, opt, { fifo: false })
+  const base = normalizeQueueName(dqname, newopt) // strip fifo
+  const needsDead = !base.endsWith(opt.dlqSuffix)
+  return base + (needsDead ? opt.dlqSuffix : '') + (opt.fifo ? fifoSuffix : '')
 }
 
 //
@@ -52,9 +63,9 @@ export async function qrlCacheGet (qname) {
   const client = getSQSClient()
   const input = { QueueName: qname }
   const cmd = new GetQueueUrlCommand(input)
-  debug({ cmd })
+  // debug({ cmd })
   const result = await client.send(cmd)
-  debug({ result })
+  // debug('result', result)
   // if (!result) throw new Error(`No such queue ${qname}`)
   const { QueueUrl: qrl } = result
   // debug('getQueueUrl returned', data)

@@ -431,6 +431,8 @@ Options
                               unique to this invocation.
     -d, --delay number        Delays delivery of each message by the given number of seconds (up to 900 seconds,
                               or 15 minutes). Defaults to immediate delivery (no delay).
+    --dlq-after number        Sends messages from the failed queue to a dead letter queue after this many failures. [default: 3]
+    --dlq-suffix string       Suffix to append to each queue to generate DLQ name [default: _dead]
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string           AWS region for Queues [default: us-east-1]

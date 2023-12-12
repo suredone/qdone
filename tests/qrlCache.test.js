@@ -1,8 +1,10 @@
 import { ListQueuesCommand, GetQueueUrlCommand } from '@aws-sdk/client-sqs'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
+import { getOptionsWithDefaults } from '../src/defaults.js'
 import {
   normalizeQueueName,
   normalizeFailQueueName,
+  normalizeDLQName,
   qrlCacheGet,
   qrlCacheSet,
   qrlCacheClear,
@@ -23,30 +25,59 @@ beforeEach(qrlCacheClear)
 describe('normalizeQueueName', () => {
   test('names pass through when no options are set', () => {
     const options = {}
-    expect(normalizeQueueName('testqueue', options)).toBe('testqueue')
+    const opt = getOptionsWithDefaults(options)
+    expect(normalizeQueueName('testqueue', opt)).toBe('qdone_testqueue')
   })
   test('names get .fifo appended when that option is set', () => {
     const options = { fifo: true }
-    expect(normalizeQueueName('testqueue', options)).toBe('testqueue.fifo')
+    const opt = getOptionsWithDefaults(options)
+    expect(normalizeQueueName('testqueue', opt)).toBe('qdone_testqueue.fifo')
   })
   test('names named .fifo remain unchanged', () => {
-    const options = { fifo: true }
-    expect(normalizeQueueName('testqueue.fifo', options)).toBe('testqueue.fifo')
+    const opt = getOptionsWithDefaults({ fifo: true })
+    expect(normalizeQueueName('testqueue.fifo', opt)).toBe('qdone_testqueue.fifo')
+  })
+  test('extraneous .fifo gets stripped', () => {
+    const opt = getOptionsWithDefaults()
+    expect(normalizeQueueName('testqueue.fifo', opt)).toBe('qdone_testqueue')
   })
 })
 
 describe('normalizeFailQueueName', () => {
   test('names get fail-suffix appended when no options are set', () => {
-    const options = { 'fail-suffix': '_failed' }
-    expect(normalizeFailQueueName('testqueue', options)).toBe('testqueue_failed')
+    const opt = getOptionsWithDefaults()
+    expect(normalizeFailQueueName('testqueue', opt)).toBe('qdone_testqueue_failed')
+  })
+  test('fail-suffix is left unchanged', () => {
+    const opt = getOptionsWithDefaults()
+    expect(normalizeFailQueueName('testqueue_failed', opt)).toBe('qdone_testqueue_failed')
   })
   test('names get .fifo appended when that option is set', () => {
-    const options = { 'fail-suffix': '_failed', fifo: true }
-    expect(normalizeFailQueueName('testqueue_failed', options)).toBe('testqueue_failed.fifo')
+    const opt = getOptionsWithDefaults({ fifo: true })
+    expect(normalizeFailQueueName('testqueue_failed', opt)).toBe('qdone_testqueue_failed.fifo')
   })
-  test('queues named .fifo get fail suffix appended', () => {
-    const options = { 'fail-suffix': '_failed', fifo: true }
-    expect(normalizeFailQueueName('testqueue.fifo', options)).toBe('testqueue_failed.fifo')
+  test('queues named .fifo get fail-suffix appended', () => {
+    const opt = getOptionsWithDefaults({ fifo: true })
+    expect(normalizeFailQueueName('testqueue.fifo', opt)).toBe('qdone_testqueue_failed.fifo')
+  })
+})
+
+describe('normalizeDLQName', () => {
+  test('names get dead-suffix appended when no options are set', () => {
+    const opt = getOptionsWithDefaults()
+    expect(normalizeDLQName('testqueue', opt)).toBe('qdone_testqueue_dead')
+  })
+  test('dead-suffix is left unchanged', () => {
+    const opt = getOptionsWithDefaults()
+    expect(normalizeDLQName('testqueue_dead', opt)).toBe('qdone_testqueue_dead')
+  })
+  test('names get .fifo appended when that option is set', () => {
+    const opt = getOptionsWithDefaults({ fifo: true })
+    expect(normalizeDLQName('testqueue', opt)).toBe('qdone_testqueue_dead.fifo')
+  })
+  test('queues named .fifo get dead-suffix appended', () => {
+    const opt = getOptionsWithDefaults({ fifo: true })
+    expect(normalizeDLQName('testqueue.fifo', opt)).toBe('qdone_testqueue_dead.fifo')
   })
 })
 

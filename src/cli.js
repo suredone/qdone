@@ -1,7 +1,6 @@
 /**
  * Command line interface implementation
  */
-import { v1 as uuidV1 } from 'uuid'
 import { createReadStream, openSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import getUsage from 'command-line-usage'
@@ -10,6 +9,7 @@ import commandLineArgs from 'command-line-args'
 import Debug from 'debug'
 import chalk from 'chalk'
 
+import { defaults, setupAWS, setupVerbose } from './defaults.js'
 import { shutdownCache } from './cache.js'
 import * as packageJson from '../package.json' assert { type: 'json' } // eslint-disable-line
 
@@ -29,36 +29,29 @@ const awsUsageBody = {
 }
 
 const globalOptionDefinitions = [
-  { name: 'prefix', type: String, defaultValue: 'qdone_', description: 'Prefix to place at the front of each SQS queue name [default: qdone_]' },
-  { name: 'fail-suffix', type: String, defaultValue: '_failed', description: 'Suffix to append to each queue to generate fail queue name [default: _failed]' },
-  { name: 'region', type: String, defaultValue: process.env.AWS_REGION || 'us-east-1', description: 'AWS region for Queues [default: us-east-1]' },
-  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: false, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
-  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: false, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
+  { name: 'prefix', type: String, defaultValue: defaults.prefix, description: `Prefix to place at the front of each SQS queue name [default: ${defaults.prefix}]` },
+  { name: 'fail-suffix', type: String, defaultValue: defaults.failSuffix, description: `Suffix to append to each queue to generate fail queue name [default: ${defaults.failSuffix}]` },
+  { name: 'region', type: String, defaultValue: process.env.AWS_REGION || defaults.region, description: `AWS region for Queues [default: ${defaults.region}]` },
+  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: defaults.quiet, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
+  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: defaults.verbose, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
   { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
-  { name: 'cache-prefix', type: String, defaultValue: 'qdone:', description: 'Prefix for all keys in cache.' },
-  { name: 'cache-ttl-seconds', type: Number, defaultValue: 10, description: 'Number of seconds to cache GetQueueAttributes calls.' },
+  { name: 'cache-prefix', type: String, defaultValue: defaults.cachePrefix, description: `Prefix for all keys in cache. [default: ${defaults.cachePrefix}]` },
+  { name: 'cache-ttl-seconds', type: Number, defaultValue: defaults.cacheTtlSeconds, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
 
-function setupAWS (options) {
-  process.env.AWS_REGION = options.region
-  debug('loaded')
-}
-
-function setupVerbose (options) {
-  const verbose = options.verbose || (process.stderr.isTTY && !options.quiet)
-  const quiet = options.quiet || (!process.stderr.isTTY && !options.verbose)
-  options.verbose = verbose
-  options.quiet = quiet
-}
 
 const enqueueOptionDefinitions = [
   { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
-  { name: 'group-id', alias: 'g', type: String, defaultValue: uuidV1(), description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to a string unique to this invocation.' },
+  { name: 'group-id', alias: 'g', type: String, defaultValue: defaults.groupId, description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to a string unique to this invocation.' },
   { name: 'group-id-per-message', type: Boolean, description: 'Use a unique Group ID for every message, even messages in the same batch.' },
-  { name: 'deduplication-id', type: String, defaultValue: uuidV1(), description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' },
-  { name: 'delay', alias: 'd', type: Number, defaultValue: 0, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' }
+  { name: 'deduplication-id', type: String, defaultValue: defaults.deduplicationId, description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' },
+  { name: 'message-retention-period', type: Number, defaultValue: defaults.messageRetentionPeriod, description: `Number of seconds to retain jobs (up to 14 days). [default: ${defaults.messageRetentionPeriod}]` },
+  { name: 'delay', alias: 'd', type: Number, defaultValue: defaults.delay, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
+  { name: 'dlq', type: Boolean, description: 'Send messages from the failed queue to a DLQ.' },
+  { name: 'dql-suffix', type: String, defaultValue: defaults.dlqSuffix, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
+  { name: 'dql-after', type: String, defaultValue: defaults.dlqAfter, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` }
 ]
 
 export async function enqueue (argv) {
@@ -355,7 +348,7 @@ export async function idleQueues (argv) {
       return result
     })
     .catch(err => {
-      if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
+      if (err.Code === 'AWS.SimpleQueueService.NonExistentQueue') {
         console.error(chalk.yellow('This error can occur when you run this command immediately after deleting a queue. Wait 60 seconds and try again.'))
         return Promise.reject(err)
       }
