@@ -1,12 +1,10 @@
-import stripAnsi from 'strip-ansi'
-import Debug from 'debug'
 import { jest } from '@jest/globals'
 import { readFileSync } from 'node:fs'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 
 import {
-  ListQueuesCommand,
+  // ListQueuesCommand,
   GetQueueUrlCommand,
   SendMessageCommand
 } from '@aws-sdk/client-sqs'
@@ -14,20 +12,19 @@ import {
 import { run } from '../src/cli.js'
 import { qrlCacheClear } from '../src/qrlCache.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
-import * as packageJson from '../package.json' assert { type: 'json' }
 
 delete process.env.AWS_ACCESS_KEY_ID
 delete process.env.AWS_SECRET_ACCESS_KEY
 
-const debug = Debug('qdone:test:cli')
+const packageJson = JSON.parse(readFileSync('./package.json'))
 getSQSClient()
 const client = getSQSClient()
 
-function spyConsole() {
-  let spy = {}
+function spyConsole () {
+  const spy = {}
   beforeEach(() => {
     spy.log = jest.spyOn(console, 'log')// .mockImplementation(() => {})
-    spy.error = jest.spyOn(console, 'error')//.mockImplementation(() => {})
+    spy.error = jest.spyOn(console, 'error')// .mockImplementation(() => {})
     if (!process.env.DEBUG) {
       spy.log.mockImplementation(() => {})
       spy.error.mockImplementation(() => {})
@@ -69,7 +66,7 @@ describe('qdone --version', function () {
   test('should print package.json version and exit 0', async () => {
     await run(['--version'])
     expect(console.log).toHaveBeenCalledTimes(1)
-    expect(spy.log.mock.calls.join()).toContain(packageJson.default.version)
+    expect(spy.log.mock.calls.join()).toContain(packageJson.version)
   })
 })
 

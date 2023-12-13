@@ -1,7 +1,7 @@
 /**
  * Command line interface implementation
  */
-import { createReadStream, openSync } from 'node:fs'
+import { createReadStream, openSync, readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import getUsage from 'command-line-usage'
 import commandLineCommands from 'command-line-commands'
@@ -11,9 +11,9 @@ import chalk from 'chalk'
 
 import { defaults, setupAWS, setupVerbose } from './defaults.js'
 import { shutdownCache } from './cache.js'
-import * as packageJson from '../package.json' assert { type: 'json' } // eslint-disable-line
 
 const debug = Debug('qdone:cli')
+const packageJson = JSON.parse(readFileSync('./package.json'))
 
 class UsageError extends Error {}
 
@@ -40,7 +40,6 @@ const globalOptionDefinitions = [
   { name: 'cache-ttl-seconds', type: Number, defaultValue: defaults.cacheTtlSeconds, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
-
 
 const enqueueOptionDefinitions = [
   { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
@@ -190,9 +189,9 @@ export async function worker (argv) {
   debug('enqueue-batch argv', argv)
 
   // Parse command and options
-  let queues
+  let queues, options
   try {
-    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
+    options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('worker options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
@@ -209,10 +208,10 @@ export async function worker (argv) {
   setupAWS(options)
   const { listen, requestShutdown } = await import('./worker.js')
 
-  var jobCount = 0
-  var jobsSucceeded = 0
-  var jobsFailed = 0
-  var shutdownRequested = false
+  let jobCount = 0
+  let jobsSucceeded = 0
+  let jobsFailed = 0
+  let shutdownRequested = false
 
   function handleShutdown () {
     // Second signal forces shutdown
@@ -316,9 +315,9 @@ export async function idleQueues (argv) {
   debug('idleQueues argv', argv)
 
   // Parse command and options
-  let queues
+  let queues, options
   try {
-    var options = commandLineArgs(optionDefinitions, { argv, partial: true })
+    options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
     debug('idleQueues options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
@@ -361,20 +360,25 @@ export async function root (originalArgv) {
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
     { content: 'Commands', raw: true },
-    { content: [
-      { name: 'enqueue', summary: 'Enqueue a single command' },
-      { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
-      { name: 'worker', summary: 'Execute work on one or more queues' },
-      { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
-    ] },
+    {
+      content: [
+        { name: 'enqueue', summary: 'Enqueue a single command' },
+        { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
+        { name: 'worker', summary: 'Execute work on one or more queues' },
+        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
+      ]
+    },
     { content: 'Global Options', raw: true },
     { optionList: globalOptionDefinitions },
     awsUsageHeader, awsUsageBody
   ]
 
   // Parse command and options
+  let command, argv
   try {
-    var { command, argv } = commandLineCommands(validCommands, originalArgv)
+    const parsed = commandLineCommands(validCommands, originalArgv)
+    command = parsed.command
+    argv = parsed.argv
     debug('command', command)
 
     // Root command
@@ -382,7 +386,7 @@ export async function root (originalArgv) {
       const options = commandLineArgs(globalOptionDefinitions, { argv: originalArgv })
       setupVerbose(options)
       debug('options', options)
-      if (options.version) return console.log(packageJson.default.version)
+      if (options.version) return console.log(packageJson.version)
       else if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
       else console.log(getUsage(usageSections.filter(s => !s.long)))
       return Promise.resolve()
@@ -407,7 +411,7 @@ export async function root (originalArgv) {
 export async function run (argv) {
   debug('run', argv)
   try {
-    await root(argv) 
+    await root(argv)
     // If cache actually is active, it will keep our program from exiting
     // until we disconnect the cache client
     shutdownCache()
