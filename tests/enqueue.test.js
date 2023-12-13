@@ -9,7 +9,6 @@ import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import {
   getOrCreateFailQueue,
   getOrCreateQueue,
-  getOrCreateDLQ,
   getQueueAttributes,
   formatMessage,
   sendMessage,

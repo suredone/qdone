@@ -1,5 +1,5 @@
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { GetQueueAttributesCommand, DeleteQueueCommand } from '@aws-sdk/client-sqs'
+import { GetQueueAttributesCommand } from '@aws-sdk/client-sqs'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import { getCloudWatchClient, setCloudWatchClient } from '../src/cloudWatch.js'
 import {
@@ -113,7 +113,7 @@ describe('getMetric', () => {
     expect(cloudWatcHMock)
       .toHaveReceivedNthCommandWith(
         1,
-        GetQueueAttributesCommand,
+        GetMetricStatisticsCommand,
         {
           Dimensions: [{ Name: 'QueueName', Value: qname }],
           MetricName: metricName

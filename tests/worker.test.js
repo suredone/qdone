@@ -1,5 +1,4 @@
 import {
-  CreateQueueCommand,
   GetQueueUrlCommand,
   GetQueueAttributesCommand,
   SendMessageCommand,
@@ -16,7 +15,7 @@ import {
   enqueue,
   enqueueBatch
 } from '../src/enqueue.js'
-import { qrlCacheSet, qrlCacheClear } from '../src/qrlCache.js'
+import { qrlCacheClear } from '../src/qrlCache.js'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 

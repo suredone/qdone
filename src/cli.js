@@ -382,7 +382,7 @@ export async function root (originalArgv) {
       const options = commandLineArgs(globalOptionDefinitions, { argv: originalArgv })
       setupVerbose(options)
       debug('options', options)
-      if (options.version) return Promise.resolve(console.log(packageJson.version))
+      if (options.version) return console.log(packageJson.default.version)
       else if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
       else console.log(getUsage(usageSections.filter(s => !s.long)))
       return Promise.resolve()
@@ -412,7 +412,7 @@ export async function run (argv) {
     // until we disconnect the cache client
     shutdownCache()
   } catch (err) {
-    if (err.code === 'AccessDenied') console.log(getUsage([awsUsageHeader, awsUsageBody]))
+    if (err.Code === 'AccessDenied') console.log(getUsage([awsUsageHeader, awsUsageBody]))
     console.error(chalk.red.bold(err))
     console.error(err.stack.slice(err.stack.indexOf('\n') + 1))
     throw err
