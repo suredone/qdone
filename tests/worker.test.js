@@ -7,15 +7,12 @@ import {
 } from '@aws-sdk/client-sqs'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import {
-  createFailQueue,
-  createQueue,
   getQueueAttributes,
   formatMessage,
   sendMessage,
   sendMessageBatch,
   addMessage,
   flushMessages,
-  getQrl,
   enqueue,
   enqueueBatch
 } from '../src/enqueue.js'
@@ -28,101 +25,6 @@ const client = getSQSClient()
 
 // Always clear qrl cache at the beginning of each test
 beforeEach(qrlCacheClear)
-
-describe('createFailQueue', () => {
-  test('queue created with default options', async () => {
-    const options = {}
-    const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(CreateQueueCommand)
-      .resolvesOnce({ QueueUrl: qrl })
-    await expect(
-      createFailQueue(qrl, qname, undefined, options)
-    ).resolves.toBe(qrl)
-    expect(sqsMock)
-      .toHaveReceivedNthCommandWith(1, CreateQueueCommand, { QueueName: qname })
-  })
-  test('queue created with fifo', async () => {
-    const options = { fifo: true }
-    const qname = 'testqueue.fifo'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(CreateQueueCommand)
-      .resolvesOnce({ QueueUrl: qrl })
-    await expect(
-      createFailQueue(qname, qname, undefined, options)
-    ).resolves.toBe(qrl)
-    expect(sqsMock).toHaveReceivedNthCommandWith(
-      1,
-      CreateQueueCommand,
-      { QueueName: qname, Attributes: { FifoQueue: 'true' } }
-    )
-  })
-})
-
-describe('createQueue', () => {
-  test('queue created with default options', async () => {
-    const options = {}
-    const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const deadLetterTargetArn = `arn:aws:sqs:us-east-1:foobar:${qname}_failed`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(CreateQueueCommand)
-      .resolvesOnce({ QueueUrl: qrl })
-    await expect(
-      createQueue(qrl, qname, deadLetterTargetArn, options)
-    ).resolves.toBe(qrl)
-    expect(sqsMock).toHaveReceivedNthCommandWith(
-      1,
-      CreateQueueCommand,
-      {
-        QueueName: qname,
-        Attributes: {
-          RedrivePolicy: JSON.stringify({
-            deadLetterTargetArn,
-            maxReceiveCount: '1'
-          })
-        }
-      }
-    )
-  })
-
-  test('queue created with fifo', async () => {
-    const options = { fifo: true }
-    const qname = 'testqueue.fifo'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const deadLetterTargetArn = `arn:aws:sqs:us-east-1:foobar:${qname}_failed`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(CreateQueueCommand)
-      .resolvesOnce({ QueueUrl: qrl })
-    await expect(
-      createQueue(qname, qname, deadLetterTargetArn, options)
-    ).resolves.toBe(qrl)
-    expect(sqsMock).toHaveReceivedNthCommandWith(
-      1,
-      CreateQueueCommand,
-      {
-        QueueName: qname,
-        Attributes: {
-          FifoQueue: 'true',
-          RedrivePolicy: JSON.stringify({
-            deadLetterTargetArn,
-            maxReceiveCount: '1'
-          })
-        }
-      }
-    )
-  })
-})
 
 describe('getQueueAttributes', () => {
   test('all attributes get queried', async () => {
@@ -532,80 +434,6 @@ describe('addMessage / flushMessages', () => {
           ]
         })
       )
-  })
-})
-
-describe('getQrl', () => {
-  test('cached (qrl, fqrl) returns without calling api', async () => {
-    const options = {}
-    const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const fqname = `${qname}_failed`
-    const fqrl = `${qrl}_failed`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    qrlCacheSet(qname, qrl)
-    qrlCacheSet(fqname, fqrl)
-    await expect(getQrl(qname, qname, fqname, fqname, options))
-      .resolves.toBe(qrl)
-    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueAttributesCommand, 0)
-    expect(sqsMock).toHaveReceivedCommandTimes(CreateQueueCommand, 0)
-  })
-
-  test('uncached (qrl, fqrl) returns after calling api', async () => {
-    const options = {}
-    const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const fqname = `${qname}_failed`
-    const fqrl = `${qrl}_failed`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand, { QueueName: qname })
-      .rejectsOnce({ code: 'AWS.SimpleQueueService.NonExistentQueue' })
-      .resolvesOnce({ QueueUrl: qrl })
-      .on(GetQueueUrlCommand, { QueueName: fqname })
-      .rejectsOnce({ code: 'AWS.SimpleQueueService.NonExistentQueue' })
-      .resolvesOnce({ QueueUrl: fqrl })
-      .on(GetQueueAttributesCommand, { QueueUrl: fqrl })
-      .resolvesOnce({
-        Attributes: {
-          QueueArn: `arn:aws:sqs:us-east-1:foobar:${fqname}`,
-          CreatedTimestamp: '1701880336',
-          LastModifiedTimestamp: '1701880336',
-          VisibilityTimeout: '30',
-          MaximumMessageSize: '262144',
-          MessageRetentionPeriod: '345600',
-          DelaySeconds: '0',
-          ReceiveMessageWaitTimeSeconds: '0',
-          SqsManagedSseEnabled: 'true'
-        }
-      })
-      .on(CreateQueueCommand, { QueueName: qname })
-      .resolvesOnce({ QueueUrl: qrl })
-      .on(CreateQueueCommand, { QueueName: fqname })
-      .resolvesOnce({ QueueUrl: fqrl })
-    await expect(getQrl(qname, qname, fqname, fqname, options))
-      .resolves.toBe(qrl)
-    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
-    expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: fqname })
-    expect(sqsMock).toHaveReceivedNthCommandWith(3, CreateQueueCommand, { QueueName: fqname })
-    expect(sqsMock).toHaveReceivedNthCommandWith(4, GetQueueAttributesCommand, { QueueUrl: fqrl, AttributeNames: ['All'] })
-    expect(sqsMock).toHaveReceivedNthCommandWith(5, CreateQueueCommand, { QueueName: qname })
-  })
-
-  test('unhandled errors get re-thrown', async () => {
-    const options = {}
-    const qname = 'testqueue'
-    const fqname = `${qname}_failed`
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand, { QueueName: qname })
-      .rejectsOnce({ message: 'SomeOtherError', code: 'SomeOtherError' })
-    await expect(getQrl(qname, qname, fqname, fqname, options))
-      .rejects.toThrow('SomeOtherError')
-    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
   })
 })
 

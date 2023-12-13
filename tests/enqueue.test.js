@@ -92,7 +92,7 @@ describe('getOrCreateQueue', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: qname })
-      .rejectsOnce({ code: 'AWS.SimpleQueueService.NonExistentQueue' })
+      .rejectsOnce({ name: 'QueueDoesNotExist' })
       .on(GetQueueUrlCommand, { QueueName: qname + opt.failSuffix })
       .resolvesOnce({ QueueUrl: qrl + opt.failSuffix })
       .on(GetQueueAttributesCommand, { QueueUrl: qrl + opt.failSuffix })
@@ -147,7 +147,7 @@ describe('getOrCreateFailQueue', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: fqname })
-      .rejectsOnce({ Code: 'AWS.SimpleQueueService.NonExistentQueue' })
+      .rejectsOnce({ name: 'QueueDoesNotExist' })
       .on(GetQueueUrlCommand, { QueueName: dqname })
       .resolvesOnce({ QueueUrl: dqrl })
       .on(GetQueueAttributesCommand, { QueueUrl: dqrl })
@@ -174,7 +174,6 @@ describe('getOrCreateFailQueue', () => {
     const basename = 'testqueue'
     const qname = 'testqueue.fifo'
     const baseurl = `https://sqs.us-east-1.amazonaws.com/foobar/${basename}`
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const fqname = basename + opt.failSuffix + '.fifo'
     const fqrl = baseurl + opt.failSuffix + '.fifo'
     const dqname = basename + opt.dlqSuffix + '.fifo'
@@ -183,7 +182,7 @@ describe('getOrCreateFailQueue', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(GetQueueUrlCommand, { QueueName: fqname })
-      .rejectsOnce({ code: 'AWS.SimpleQueueService.NonExistentQueue' })
+      .rejectsOnce({ name: 'QueueDoesNotExist' })
       .on(GetQueueUrlCommand, { QueueName: dqname })
       .resolvesOnce({ QueueUrl: dqrl })
       .on(GetQueueAttributesCommand, { QueueUrl: dqrl })

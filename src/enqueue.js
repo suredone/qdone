@@ -103,7 +103,7 @@ export async function getOrCreateQueue (queue, opt) {
   } catch (err) {
     debug('getOrCreateQueue err', err)
     // Anything other than queue doesn't exist gets re-thrown
-    if (err.Code !== 'AWS.SimpleQueueService.NonExistentQueue') throw err
+    if (err.name !== 'QueueDoesNotExist') throw err
 
     // Get our fail queue so we can create our own
     const fqrl = await getOrCreateFailQueue(qname, opt)
@@ -123,7 +123,7 @@ export async function getOrCreateQueue (queue, opt) {
     }
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
-    debug({ params})
+    debug({ params })
     const data = await client.send(cmd)
     debug('createQueue returned', data)
     const qrl = data.QueueUrl

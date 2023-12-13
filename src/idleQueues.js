@@ -269,7 +269,7 @@ export async function processQueuePair (qname, qrl, options) {
   } catch (e) {
     // Handle the case where the fail queue has been deleted or was never
     // created for some reason
-    if (e.code !== 'AWS.SimpleQueueService.NonExistentQueue') throw e
+    if (e.name !== 'QueueDoesNotExist') throw e
 
     // Fail queue doesn't exist if we get here
     if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
