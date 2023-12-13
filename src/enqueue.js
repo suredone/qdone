@@ -45,6 +45,7 @@ export async function getOrCreateDLQ (queue, opt) {
     }
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
+    if (opt.verbose) console.error(chalk.blue('Creating dead letter queue ') + dqname)
     const data = await client.send(cmd)
     debug('createQueue returned', data)
     const dqrl = data.QueueUrl
@@ -82,6 +83,7 @@ export async function getOrCreateFailQueue (queue, opt) {
     }
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
+    if (opt.verbose) console.error(chalk.blue('Creating fail queue ') + fqname)
     const data = await client.send(cmd)
     debug('createQueue returned', data)
     const fqrl = data.QueueUrl
@@ -124,6 +126,7 @@ export async function getOrCreateQueue (queue, opt) {
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     debug({ params })
+    if (opt.verbose) console.error(chalk.blue('Creating queue ') + qname)
     const data = await client.send(cmd)
     debug('createQueue returned', data)
     const qrl = data.QueueUrl
@@ -157,15 +160,15 @@ export function formatMessage (command, id) {
   return message
 }
 
-export async function sendMessage (qrl, command, options) {
+export async function sendMessage (qrl, command, opt) {
   debug('sendMessage(', qrl, command, ')')
   const params = Object.assign({ QueueUrl: qrl }, formatMessage(command))
   // Add in group id if we're using fifo
-  if (options.fifo) {
-    params.MessageGroupId = options['group-id']
-    params.MessageDeduplicationId = options['deduplication-id']
+  if (opt.fifo) {
+    params.MessageGroupId = opt.groupId
+    params.MessageDeduplicationId = opt.deduplicationId
   }
-  if (options.delay) params.DelaySeconds = options.delay
+  if (opt.delay) params.DelaySeconds = opt.delay
   const client = getSQSClient()
   const cmd = new SendMessageCommand(params)
   debug({ cmd })
@@ -174,22 +177,22 @@ export async function sendMessage (qrl, command, options) {
   return data
 }
 
-export async function sendMessageBatch (qrl, messages, options) {
+export async function sendMessageBatch (qrl, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
   const params = { Entries: messages, QueueUrl: qrl }
-  const uuidFunction = options.uuidFunction || uuidV1
+  const uuidFunction = opt.uuidFunction || uuidV1
   // Add in group id if we're using fifo
-  if (options.fifo) {
+  if (opt.fifo) {
     params.Entries = params.Entries.map(
       message => Object.assign({
-        MessageGroupId: options['group-id-per-message'] ? uuidFunction() : options['group-id'],
+        MessageGroupId: opt.groupIdPerMessage ? uuidFunction() : opt.groupId,
         MessageDeduplicationId: uuidFunction()
       }, message)
     )
   }
-  if (options.delay) {
+  if (opt.delay) {
     params.Entries = params.Entries.map(message =>
-      Object.assign({ DelaySeconds: options.delay }, message))
+      Object.assign({ DelaySeconds: opt.delay }, message))
   }
   const client = getSQSClient()
   const cmd = new SendMessageBatchCommand(params)
@@ -207,7 +210,7 @@ let requestCount = 0
 // If the message is too large, batch is retried with half the messages.
 // Returns number of messages flushed.
 //
-export async function flushMessages (qrl, options) {
+export async function flushMessages (qrl, opt) {
   debug('flushMessages', qrl)
   // Flush until empty
   let numFlushed = 0
@@ -225,7 +228,7 @@ export async function flushMessages (qrl, options) {
     }
 
     // Send batch
-    const data = await sendMessageBatch(qrl, batch, options)
+    const data = await sendMessageBatch(qrl, batch, opt)
     debug({ data })
 
     // Fail if there are any individual message failures
@@ -239,7 +242,7 @@ export async function flushMessages (qrl, options) {
     if (batch.length) {
       requestCount += 1
       data.Successful.forEach(message => {
-        if (options.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
+        if (opt.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
       })
       numFlushed += batch.length
     }
@@ -254,12 +257,12 @@ export async function flushMessages (qrl, options) {
 // Returns number of messages flushed.
 //
 let messageIndex = 0
-export async function addMessage (qrl, command, options) {
+export async function addMessage (qrl, command, opt) {
   const message = formatMessage(command, messageIndex++)
   messages[qrl] = messages[qrl] || []
   messages[qrl].push(message)
   if (messages[qrl].length >= 10) {
-    return flushMessages(qrl, options)
+    return flushMessages(qrl, opt)
   }
   return 0
 }

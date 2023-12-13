@@ -29,28 +29,28 @@ const awsUsageBody = {
 }
 
 const globalOptionDefinitions = [
-  { name: 'prefix', type: String, defaultValue: defaults.prefix, description: `Prefix to place at the front of each SQS queue name [default: ${defaults.prefix}]` },
-  { name: 'fail-suffix', type: String, defaultValue: defaults.failSuffix, description: `Suffix to append to each queue to generate fail queue name [default: ${defaults.failSuffix}]` },
-  { name: 'region', type: String, defaultValue: process.env.AWS_REGION || defaults.region, description: `AWS region for Queues [default: ${defaults.region}]` },
-  { name: 'quiet', alias: 'q', type: Boolean, defaultValue: defaults.quiet, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
-  { name: 'verbose', alias: 'v', type: Boolean, defaultValue: defaults.verbose, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
+  { name: 'prefix', type: String, description: `Prefix to place at the front of each SQS queue name [default: ${defaults.prefix}]` },
+  { name: 'fail-suffix', type: String, description: `Suffix to append to each queue to generate fail queue name [default: ${defaults.failSuffix}]` },
+  { name: 'region', type: String, description: `AWS region for Queues [default: ${defaults.region}]` },
+  { name: 'quiet', alias: 'q', type: Boolean, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
+  { name: 'verbose', alias: 'v', type: Boolean, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
   { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
-  { name: 'cache-prefix', type: String, defaultValue: defaults.cachePrefix, description: `Prefix for all keys in cache. [default: ${defaults.cachePrefix}]` },
-  { name: 'cache-ttl-seconds', type: Number, defaultValue: defaults.cacheTtlSeconds, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
+  { name: 'cache-prefix', type: String, description: `Prefix for all keys in cache. [default: ${defaults.cachePrefix}]` },
+  { name: 'cache-ttl-seconds', type: Number, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
   { name: 'help', type: Boolean, description: 'Print full help message.' }
 ]
 
 const enqueueOptionDefinitions = [
   { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
-  { name: 'group-id', alias: 'g', type: String, defaultValue: defaults.groupId, description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to a string unique to this invocation.' },
+  { name: 'group-id', alias: 'g', type: String, description: 'FIFO Group ID to use for all messages enqueued in current command. Defaults to a string unique to this invocation.' },
   { name: 'group-id-per-message', type: Boolean, description: 'Use a unique Group ID for every message, even messages in the same batch.' },
-  { name: 'deduplication-id', type: String, defaultValue: defaults.deduplicationId, description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' },
-  { name: 'message-retention-period', type: Number, defaultValue: defaults.messageRetentionPeriod, description: `Number of seconds to retain jobs (up to 14 days). [default: ${defaults.messageRetentionPeriod}]` },
-  { name: 'delay', alias: 'd', type: Number, defaultValue: defaults.delay, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
+  { name: 'deduplication-id', type: String, description: 'A Message Deduplication ID to give SQS when sending a message. Use this option if you are managing retries outside of qdone, and make sure the ID is the same for each retry in the deduplication window. Defaults to a string unique to this invocation.' },
+  { name: 'message-retention-period', type: Number, description: `Number of seconds to retain jobs (up to 14 days). [default: ${defaults.messageRetentionPeriod}]` },
+  { name: 'delay', alias: 'd', type: Number, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
   { name: 'dlq', type: Boolean, description: 'Send messages from the failed queue to a DLQ.' },
-  { name: 'dql-suffix', type: String, defaultValue: defaults.dlqSuffix, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
-  { name: 'dql-after', type: String, defaultValue: defaults.dlqAfter, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` }
+  { name: 'dql-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
+  { name: 'dql-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` }
 ]
 
 export async function enqueue (argv) {
@@ -95,6 +95,56 @@ export async function enqueue (argv) {
   debug('enqueue returned', result)
   if (options.verbose) console.error(chalk.blue('Enqueued job ') + result.MessageId)
   return result
+}
+
+const monitorOptionDefinitions = [
+  { name: 'save', alias: 's', type: Boolean, description: 'Saves data to CloudWatch' },
+]
+
+export async function monitor (argv) {
+  const optionDefinitions = [].concat(monitorOptionDefinitions, globalOptionDefinitions)
+  const usageSections = [
+    { content: 'usage: qdone monitor <queuePattern> ', raw: true },
+    { content: 'Options', raw: true },
+    { optionList: optionDefinitions },
+    { content: 'SQS API Call Complexity', raw: true, long: true },
+    {
+      content: [
+        { count: '1 + N', summary: 'one call to resolve the queue names (potentially more calls if there are pages)\none call per queue to get attributes' }
+      ],
+      long: true
+    },
+    awsUsageHeader, awsUsageBody
+  ]
+  debug('monitor argv', argv)
+
+  // Parse command and options
+  let options, queue
+  try {
+    options = commandLineArgs(optionDefinitions, { argv, partial: true })
+    setupVerbose(options)
+    debug('enqueue options', options)
+    if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
+    if (!options._unknown || options._unknown.length !== 1) throw new UsageError('monitor requires the <queue> argument')
+    queue = options._unknown[0]
+    debug('queue', queue)
+  } catch (e) {
+    console.log(getUsage(usageSections.filter(s => !s.long)))
+    return Promise.reject(e)
+  }
+
+  // Load module after AWS global load
+  setupAWS(options)
+  const { getAggregateData } = await import('./monitor.js')
+  const { putAggregateData } = await import('./cloudWatch.js')
+  const data = await getAggregateData(queue)
+  console.log(data)
+  if (options.save) {
+    process.stderr.write('Saving to CloudWatch...')
+    await putAggregateData(data)
+    process.stderr.write('done\n')
+  }
+  return data
 }
 
 export async function enqueueBatch (argv) {
@@ -355,7 +405,7 @@ export async function idleQueues (argv) {
 }
 
 export async function root (originalArgv) {
-  const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues']
+  const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues', 'monitor']
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
@@ -365,7 +415,8 @@ export async function root (originalArgv) {
         { name: 'enqueue', summary: 'Enqueue a single command' },
         { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
         { name: 'worker', summary: 'Execute work on one or more queues' },
-        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' }
+        { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' },
+        { name: 'monitor', summary: 'Monitor multiple queues at once' }
       ]
     },
     { content: 'Global Options', raw: true },
@@ -405,6 +456,8 @@ export async function root (originalArgv) {
     return worker(argv)
   } else if (command === 'idle-queues') {
     return idleQueues(argv)
+  } else if (command === 'monitor') {
+    return monitor(argv)
   }
 }
 

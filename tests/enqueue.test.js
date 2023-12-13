@@ -295,6 +295,7 @@ describe('sendMessage', () => {
     const groupId = 'foo'
     const deduplicationId = 'bar'
     const options = { fifo: true, 'group-id': groupId, 'deduplication-id': deduplicationId }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -306,14 +307,12 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
     await expect(
-      sendMessage(qrl, cmd, options)
+      sendMessage(qrl, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
-    expect(sqsMock)
-      .toHaveReceivedNthCommandWith(
-        1,
-        SendMessageCommand,
-        Object.assign({ QueueUrl: qrl, MessageGroupId: groupId }, formatMessage(cmd))
-      )
+    expect(sqsMock).toHaveReceivedNthCommandWith(
+      1, SendMessageCommand,
+      Object.assign({}, formatMessage(cmd), { QueueUrl: qrl, MessageGroupId: opt.groupId })
+    )
   })
 
   test('delay option works', async () => {
@@ -325,6 +324,7 @@ describe('sendMessage', () => {
       'group-id': groupId,
       'deduplication-id': deduplicationId
     }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -336,7 +336,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
     await expect(
-      sendMessage(qrl, cmd, options)
+      sendMessage(qrl, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(

@@ -36,6 +36,9 @@ export function getOptionsWithDefaults (options) {
   // For API invocations don't force caller to supply default options
   if (!options) options = {}
 
+  // Activate DLQ if any option is set
+  const dlq = options.dlq || !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'])
+
   const opt = {
     prefix: options.prefix === '' ? options.prefix : defaults.prefix,
     failSuffix: options.failSuffix || options['fail-suffix'] || defaults.failSuffix,
@@ -50,20 +53,18 @@ export function getOptionsWithDefaults (options) {
     deduplicationId: options.deduplicationId || options['deduplication-id'] || defaults.deduplicationId,
     messageRetentionPeriod: options['message-retention-period'] || defaults.messageRetentionPeriod,
     delay: options.delay || defaults.delay,
-    dlq: options.dlq || defaults,
+    dlq: dlq || defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || defaults.dlqSuffix,
     dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter
   }
-
-  // Activate DLQ if any option is set
-  opt.dlq = !!(opt.dlqSuffix || opt.dlqAfter || opt.dlqName)
 
   // TODO: validate options
   return opt
 }
 
 export function setupAWS (options) {
-  process.env.AWS_REGION = options.region
+  const opt = getOptionsWithDefaults(options)
+  process.env.AWS_REGION = opt.region
 }
 
 export function setupVerbose (options) {
