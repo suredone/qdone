@@ -9,8 +9,9 @@ import commandLineArgs from 'command-line-args'
 import Debug from 'debug'
 import chalk from 'chalk'
 
-import { defaults, setupAWS, setupVerbose } from './defaults.js'
+import { defaults, setupAWS, setupVerbose, getOptionsWithDefaults } from './defaults.js'
 import { shutdownCache } from './cache.js'
+import { withSentry } from './sentry.js'
 
 const debug = Debug('qdone:cli')
 const packageJson = JSON.parse(readFileSync('./package.json'))
@@ -38,7 +39,8 @@ const globalOptionDefinitions = [
   { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
   { name: 'cache-prefix', type: String, description: `Prefix for all keys in cache. [default: ${defaults.cachePrefix}]` },
   { name: 'cache-ttl-seconds', type: Number, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
-  { name: 'help', type: Boolean, description: 'Print full help message.' }
+  { name: 'help', type: Boolean, description: 'Print full help message.' },
+  { name: 'sentry-dsn', type: String, description: 'Optional Sentry DSN to track unhandled errors.' }
 ]
 
 const enqueueOptionDefinitions = [
@@ -91,14 +93,19 @@ export async function enqueue (argv) {
   const { enqueue } = await import('./enqueue.js')
 
   // Normal (non batch) enqueue
-  const result = await enqueue(queue, command, options)
+  const opt = getOptionsWithDefaults(options)
+  const result = await withSentry(
+    'enqueue',
+    async () => enqueue(queue, command, options),
+    opt
+  )
   debug('enqueue returned', result)
   if (options.verbose) console.error(chalk.blue('Enqueued job ') + result.MessageId)
   return result
 }
 
 const monitorOptionDefinitions = [
-  { name: 'save', alias: 's', type: Boolean, description: 'Saves data to CloudWatch' },
+  { name: 'save', alias: 's', type: Boolean, description: 'Saves data to CloudWatch' }
 ]
 
 export async function monitor (argv) {
@@ -251,7 +258,7 @@ export async function worker (argv) {
     debug('queues', queues)
   } catch (err) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
-    return Promise.reject(err)
+    throw err
   }
 
   // Load module after AWS global load

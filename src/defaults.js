@@ -55,7 +55,8 @@ export function getOptionsWithDefaults (options) {
     delay: options.delay || defaults.delay,
     dlq: dlq || defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || defaults.dlqSuffix,
-    dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter
+    dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter,
+    sentryDsn: options.sentryDsn || options['sentry-dsn']
   }
 
   // TODO: validate options
