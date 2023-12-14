@@ -1,65 +1,150 @@
+// const Q = require('q')
+// const debug = require('debug')('qdone:enqueue')
+// const chalk = require('chalk')
+// const uuid = require('uuid')
+// const qrlCache = require('./qrlCache')
+// const AWS = require('aws-sdk')
 
-const Q = require('q')
-const debug = require('debug')('qdone:enqueue')
-const chalk = require('chalk')
-const uuid = require('uuid')
-const qrlCache = require('./qrlCache')
-const AWS = require('aws-sdk')
+import { v1 as uuidV1 } from 'uuid'
+import chalk from 'chalk'
+import Debug from 'debug'
+import {
+  CreateQueueCommand,
+  GetQueueAttributesCommand,
+  SendMessageCommand,
+  SendMessageBatchCommand,
+  QueueDoesNotExist
+} from '@aws-sdk/client-sqs'
 
-function createFailQueue (fqueue, fqname, deadLetterTargetArn, options) {
-  debug('createFailQueue(', fqueue, fqname, ')')
-  const sqs = new AWS.SQS()
-  const params = {
-    /* Attributes: {MessageRetentionPeriod: '259200', RedrivePolicy: '{"deadLetterTargetArn": "arn:aws:sqs:us-east-1:80398EXAMPLE:MyDeadLetterQueue", "maxReceiveCount": "1000"}'}, */
-    Attributes: {},
-    QueueName: fqname
+import {
+  qrlCacheGet,
+  qrlCacheSet,
+  normalizeQueueName,
+  normalizeFailQueueName,
+  normalizeDLQName
+} from './qrlCache.js'
+import { getSQSClient } from './sqs.js'
+import { getOptionsWithDefaults } from './defaults.js'
+
+const debug = Debug('qdone:enqueue')
+
+export async function getOrCreateDLQ (queue, opt) {
+  debug('getOrCreateDLQ(', queue, ')')
+  const dqname = normalizeDLQName(queue, opt)
+  try {
+    const dqrl = await qrlCacheGet(dqname)
+    return dqrl
+  } catch (err) {
+    // Anything other than queue doesn't exist gets re-thrown
+    if (!(err instanceof QueueDoesNotExist)) throw err
+
+    // Create our DLQ
+    const client = getSQSClient()
+    const params = {
+      Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
+      QueueName: dqname
+    }
+    if (opt.fifo) params.Attributes.FifoQueue = 'true'
+    const cmd = new CreateQueueCommand(params)
+    if (opt.verbose) console.error(chalk.blue('Creating dead letter queue ') + dqname)
+    const data = await client.send(cmd)
+    debug('createQueue returned', data)
+    const dqrl = data.QueueUrl
+    qrlCacheSet(dqname, dqrl)
+    return dqrl
   }
-  if (options.fifo) params.Attributes.FifoQueue = 'true'
-  return sqs
-    .createQueue(params)
-    .promise()
-    .then(function (data) {
-      debug('createQueue returned', data)
-      return data.QueueUrl
-    })
 }
 
-function createQueue (queue, qname, deadLetterTargetArn, options) {
-  debug('createQueue(', queue, qname, ')')
-  const sqs = new AWS.SQS()
-  const params = {
-    Attributes: {
-      // MessageRetentionPeriod: '259200',
-      RedrivePolicy: `{"deadLetterTargetArn": "${deadLetterTargetArn}", "maxReceiveCount": "1"}'}`
-    },
-    QueueName: qname
+export async function getOrCreateFailQueue (queue, opt) {
+  debug('getOrCreateFailQueue(', queue, ')')
+  const fqname = normalizeFailQueueName(queue, opt)
+  try {
+    const fqrl = await qrlCacheGet(fqname)
+    return fqrl
+  } catch (err) {
+    // Anything other than queue doesn't exist gets re-thrown
+    if (!(err instanceof QueueDoesNotExist)) throw err
+
+    // Crate our fail queue
+    const client = getSQSClient()
+    const params = {
+      Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
+      QueueName: fqname
+    }
+    // If we have a dlq, we grab it and set a redrive policy
+    if (opt.dlq) {
+      const dqrl = await getOrCreateDLQ(queue, opt)
+      const dqa = await getQueueAttributes(dqrl)
+      debug('dqa', dqa)
+      params.Attributes.RedrivePolicy = JSON.stringify({
+        deadLetterTargetArn: dqa.Attributes.QueueArn,
+        maxReceiveCount: opt.dlqAfter + ''
+      })
+    }
+    if (opt.fifo) params.Attributes.FifoQueue = 'true'
+    const cmd = new CreateQueueCommand(params)
+    if (opt.verbose) console.error(chalk.blue('Creating fail queue ') + fqname)
+    const data = await client.send(cmd)
+    debug('createQueue returned', data)
+    const fqrl = data.QueueUrl
+    qrlCacheSet(fqname, fqrl)
+    return fqrl
   }
-  if (options.fifo) params.Attributes.FifoQueue = 'true'
-  return sqs
-    .createQueue(params)
-    .promise()
-    .then(function (data) {
-      debug('createQueue returned', data)
-      return data.QueueUrl
-    })
 }
 
-function getQueueAttributes (qrl) {
+/**
+ * Returns a qrl for a queue that either exists or does not
+ */
+export async function getOrCreateQueue (queue, opt) {
+  debug('getOrCreateQueue(', queue, ')')
+  const qname = normalizeQueueName(queue, opt)
+  try {
+    const qrl = await qrlCacheGet(qname)
+    return qrl
+  } catch (err) {
+    // Anything other than queue doesn't exist gets re-thrown
+    if (!(err instanceof QueueDoesNotExist)) throw err
+
+    // Get our fail queue so we can create our own
+    const fqrl = await getOrCreateFailQueue(qname, opt)
+    const fqa = await getQueueAttributes(fqrl)
+
+    // Create our queue
+    const client = getSQSClient()
+    const params = {
+      Attributes: {
+        MessageRetentionPeriod: opt.messageRetentionPeriod + '',
+        RedrivePolicy: JSON.stringify({
+          deadLetterTargetArn: fqa.Attributes.QueueArn,
+          maxReceiveCount: '1'
+        })
+      },
+      QueueName: qname
+    }
+    if (opt.fifo) params.Attributes.FifoQueue = 'true'
+    const cmd = new CreateQueueCommand(params)
+    debug({ params })
+    if (opt.verbose) console.error(chalk.blue('Creating queue ') + qname)
+    const data = await client.send(cmd)
+    debug('createQueue returned', data)
+    const qrl = data.QueueUrl
+    qrlCacheSet(qname, qrl)
+    return qrl
+  }
+}
+
+export async function getQueueAttributes (qrl) {
   debug('getQueueAttributes(', qrl, ')')
-  const sqs = new AWS.SQS()
-  return sqs
-    .getQueueAttributes({
-      AttributeNames: ['All'],
-      QueueUrl: qrl
-    })
-    .promise()
-    .then(function (data) {
-      debug('getQueueAttributes returned', data)
-      return data
-    })
+  const client = getSQSClient()
+  const params = { AttributeNames: ['All'], QueueUrl: qrl }
+  const cmd = new GetQueueAttributesCommand(params)
+  // debug({ cmd })
+  const data = await client.send(cmd)
+  debug('GetQueueAttributes returned', data)
+  return data
 }
 
-function formatMessage (command, id) {
+export function formatMessage (command, id) {
   const message = {
     /*
     MessageAttributes: {
@@ -73,88 +158,93 @@ function formatMessage (command, id) {
   return message
 }
 
-function sendMessage (qrl, command, options) {
+export async function sendMessage (qrl, command, opt) {
   debug('sendMessage(', qrl, command, ')')
-  const message = Object.assign({ QueueUrl: qrl }, formatMessage(command))
+  const params = Object.assign({ QueueUrl: qrl }, formatMessage(command))
   // Add in group id if we're using fifo
-  if (options.fifo) {
-    message.MessageGroupId = options['group-id']
-    message.MessageDeduplicationId = options['deduplication-id']
+  if (opt.fifo) {
+    params.MessageGroupId = opt.groupId
+    params.MessageDeduplicationId = opt.deduplicationId
   }
-  const sqs = new AWS.SQS()
-  return sqs
-    .sendMessage(message)
-    .promise()
-    .then(function (data) {
-      debug('sendMessage returned', data)
-      return data
-    })
+  if (opt.delay) params.DelaySeconds = opt.delay
+  const client = getSQSClient()
+  const cmd = new SendMessageCommand(params)
+  debug({ cmd })
+  const data = await client.send(cmd)
+  debug('sendMessage returned', data)
+  return data
 }
 
-function sendMessageBatch (qrl, messages, options) {
+export async function sendMessageBatch (qrl, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
   const params = { Entries: messages, QueueUrl: qrl }
+  const uuidFunction = opt.uuidFunction || uuidV1
   // Add in group id if we're using fifo
-  if (options.fifo) {
+  if (opt.fifo) {
     params.Entries = params.Entries.map(
       message => Object.assign({
-        MessageGroupId: options['group-id-per-message'] ? uuid.v1() : options['group-id'],
-        MessageDeduplicationId: uuid.v1()
+        MessageGroupId: opt.groupIdPerMessage ? uuidFunction() : opt.groupId,
+        MessageDeduplicationId: uuidFunction()
       }, message)
     )
   }
-  const sqs = new AWS.SQS()
-  return sqs
-    .sendMessageBatch(params)
-    .promise()
-    .then(function (data) {
-      debug('sendMessageBatch returned', data)
-      return data
-    })
+  if (opt.delay) {
+    params.Entries = params.Entries.map(message =>
+      Object.assign({ DelaySeconds: opt.delay }, message))
+  }
+  const client = getSQSClient()
+  const cmd = new SendMessageBatchCommand(params)
+  debug({ cmd })
+  const data = await client.send(cmd)
+  debug('sendMessageBatch returned', data)
+  return data
 }
 
 const messages = {}
-var requestCount = 0
+let requestCount = 0
 
 //
 // Flushes the internal message buffer for qrl.
 // If the message is too large, batch is retried with half the messages.
 // Returns number of messages flushed.
 //
-function flushMessages (qrl, options) {
+export async function flushMessages (qrl, opt) {
   debug('flushMessages', qrl)
   // Flush until empty
-  var numFlushed = 0
-  function whileNotEmpty () {
+  let numFlushed = 0
+  async function whileNotEmpty () {
     if (!(messages[qrl] && messages[qrl].length)) return numFlushed
     // Construct batch until full
     const batch = []
-    var nextSize = JSON.stringify(messages[qrl][0]).length
-    var totalSize = 0
+    let nextSize = JSON.stringify(messages[qrl][0]).length
+    let totalSize = 0
     while ((totalSize + nextSize) < 262144 && messages[qrl].length && batch.length < 10) {
       batch.push(messages[qrl].shift())
       totalSize += nextSize
       if (messages[qrl].length) nextSize = JSON.stringify(messages[qrl][0]).length
       else nextSize = 0
     }
-    return sendMessageBatch(qrl, batch, options)
-      .then(function (data) {
-        // Fail if there are any individual message failures
-        if (data.Failed && data.Failed.length) {
-          const err = new Error('One or more message failures: ' + JSON.stringify(data.Failed))
-          err.Failed = data.Failed
-          throw err
-        }
-        // If we actually managed to flush any of them
-        if (batch.length) {
-          requestCount += 1
-          data.Successful.forEach(message => {
-            if (options.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
-          })
-          numFlushed += batch.length
-        }
+
+    // Send batch
+    const data = await sendMessageBatch(qrl, batch, opt)
+    debug({ data })
+
+    // Fail if there are any individual message failures
+    if (data.Failed && data.Failed.length) {
+      const err = new Error('One or more message failures: ' + JSON.stringify(data.Failed))
+      err.Failed = data.Failed
+      throw err
+    }
+
+    // If we actually managed to flush any of them
+    if (batch.length) {
+      requestCount += 1
+      data.Successful.forEach(message => {
+        if (opt.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
       })
-      .then(whileNotEmpty)
+      numFlushed += batch.length
+    }
+    return whileNotEmpty()
   }
   return whileNotEmpty()
 }
@@ -164,125 +254,75 @@ function flushMessages (qrl, options) {
 // Automaticaly flushes if queue has >= 10 messages.
 // Returns number of messages flushed.
 //
-var messageIndex = 0
-function addMessage (qrl, command, options) {
+let messageIndex = 0
+export async function addMessage (qrl, command, opt) {
   const message = formatMessage(command, messageIndex++)
   messages[qrl] = messages[qrl] || []
   messages[qrl].push(message)
-  if (messages[qrl].length > 10) {
-    return flushMessages(qrl, options)
+  if (messages[qrl].length >= 10) {
+    return flushMessages(qrl, opt)
   }
   return 0
-}
-
-//
-// Fetches (or returns cached) the qrl
-//
-function getQrl (queue, qname, fqueue, fqname, options) {
-  debug('getQrl', queue, qname, fqueue, fqname)
-  // Normal queue
-  const qrl = qrlCache
-    .get(qname)
-    .catch(function (err) {
-      // Create our queue if it doesn't exist
-      if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
-        // Grab fail queue
-        const fqrl = qrlCache
-          .get(fqname)
-          .catch(function (err) {
-            // Create fail queue if it doesn't exist
-            if (err.code === 'AWS.SimpleQueueService.NonExistentQueue') {
-              if (options.verbose) console.error(chalk.blue('Creating fail queue ') + fqueue)
-              return createFailQueue(fqueue, fqname, null, options)
-            }
-            throw err // throw unhandled errors
-          })
-
-        // Need to grab fail queue's ARN to create our queue
-        return fqrl
-          .then(getQueueAttributes)
-          .then(data => {
-            if (options.verbose) console.error(chalk.blue('Creating queue ') + queue)
-            return createQueue(queue, qname, data.Attributes.QueueArn, options)
-          })
-      }
-      throw err // throw unhandled errors
-    })
-
-  return qrl
 }
 
 //
 // Enqueue a single command
 // Returns a promise for the SQS API response.
 //
-exports.enqueue = function enqueue (queue, command, options) {
-  debug('enqueue(', queue, command, ')')
-
-  queue = qrlCache.normalizeQueueName(queue, options)
-  const qname = options.prefix + queue
-  const fqueue = qrlCache.normalizeFailQueueName(queue, options)
-  const fqname = options.prefix + fqueue
-
-  // Now that we have the queue, send our message
-  return getQrl(queue, qname, fqueue, fqname, options)
-    .then(qrl => sendMessage(qrl, command, options))
+export async function enqueue (queue, command, options) {
+  debug('enqueue(', { queue, command }, ')')
+  const opt = getOptionsWithDefaults(options)
+  const qrl = await getOrCreateQueue(queue, opt)
+  return sendMessage(qrl, command, opt)
 }
 
 //
 // Enqueue many commands formatted as an array of {queue: ..., command: ...} pairs.
 // Returns a promise for the total number of messages enqueued.
 //
-exports.enqueueBatch = function enqueueBatch (pairs, options) {
+export async function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
+  const opt = getOptionsWithDefaults(options)
 
-  function unpackPair (pair) {
-    const queue = qrlCache.normalizeQueueName(pair.queue, options)
-    const command = pair.command
-    const qname = options.prefix + queue
-    const fqueue = qrlCache.normalizeFailQueueName(queue, options)
-    const fqname = options.prefix + fqueue
-    return { queue, qname, fqueue, fqname, command }
+  // Find unique queues so we can pre-fetch qrls. We do this so that all
+  // queues are created prior to going through our flush logic
+  const normalizedPairs = pairs.map(({ queue, command }) => ({
+    qname: normalizeQueueName(queue, opt),
+    command
+  }))
+  const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
+
+  // Prefetch qrls / create queues in parallel
+  const createPromises = []
+  for (const qname of uniqueQnames) {
+    createPromises.push(getOrCreateQueue(qname, opt))
   }
+  await Promise.all(createPromises)
 
-  // Find unique pairs
-  const uniquePairMap = {}
-  const uniquePairs = []
-  pairs.forEach(pair => {
-    if (!uniquePairMap[pair.queue]) {
-      uniquePairMap[pair.queue] = true
-      uniquePairs.push(pair)
-    }
-  })
-  debug({ uniquePairMap, uniquePairs })
-
-  // Prefetch unique qrls in parallel (creating as needed)
+  // After we've prefetched, all qrls are in cache
+  // so go back through the list of pairs and fire off messages
   requestCount = 0
-  return Q.all(
-    uniquePairs
-      .map(unpackPair)
-      .map(u => getQrl(u.queue, u.qname, u.fqueue, u.fqname, options))
-  ).then(function () {
-    // After we've prefetched, all qrls are in cache
-    // so go back through the list of pairs and fire off messages
-    return Q.all(
-      // Add every individual command, flushing as we go
-      pairs
-        .map(unpackPair)
-        .map(u =>
-          getQrl(u.queue, u.qname, u.fqueue, u.fqname, options)
-            .then(qrl => addMessage(qrl, u.command, options))
-        )
-    ).then(function (flushCounts) {
-      // Count up how many were flushed during add
-      debug('flushCounts', flushCounts)
-      const totalFlushed = flushCounts.reduce((a, b) => a + b, 0)
-      // And flush any remaining messages
-      return Q
-        .all(Object.keys(messages).map(key => flushMessages(key, options))) // messages is the global flush buffer
-        .then(flushCounts => flushCounts.reduce((a, b) => a + b, totalFlushed))
-    })
-  })
+  const addMessagePromises = []
+  for (const { qname, command } of normalizedPairs) {
+    const qrl = await getOrCreateQueue(qname, opt)
+    addMessagePromises.push(addMessage(qrl, command, opt))
+  }
+  const flushCounts = await Promise.all(addMessagePromises)
+
+  // Count up how many were flushed during add
+  debug('flushCounts', flushCounts)
+  const initialFlushTotal = flushCounts.reduce((a, b) => a + b, 0)
+
+  // And flush any remaining messages
+  const extraFlushPromises = []
+  for (const qrl in messages) {
+    extraFlushPromises.push(flushMessages(qrl, opt))
+  }
+  const extraFlushCounts = await Promise.all(extraFlushPromises)
+  const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)
+  const totalFlushed = initialFlushTotal + extraFlushTotal
+  debug({ initialFlushTotal, extraFlushTotal, totalFlushed })
+  return totalFlushed
 }
 
 debug('loaded')

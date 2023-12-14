@@ -1,7 +1,7 @@
-
-const Redis = require('ioredis')
-const { URL } = require('url')
-const debug = require('debug')('qdone:cache')
+import Redis from 'ioredis'
+import { URL } from 'url'
+import Debug from 'debug'
+const debug = Debug('qdone:cache')
 
 class UsageError extends Error {}
 
@@ -11,7 +11,7 @@ let client
  * Internal function to setup redis client. Parses URI to figure out
  * how to connect.
  */
-function getClient (options) {
+export function getCacheClient (options) {
   if (client) {
     return client
   } else if (options['cache-uri']) {
@@ -24,14 +24,13 @@ function getClient (options) {
     } else {
       throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
     }
-    // setTimeout(resetClient, 10000)
     return client
   } else {
     throw new UsageError('Caching requires the --cache-uri option')
   }
 }
 
-function resetClient () {
+export function shutdownCache () {
   if (client) client.quit()
   client = undefined
 }
@@ -40,27 +39,24 @@ function resetClient () {
  * Returns a promise for the item. Resolves to false if cache is empty, object
  * if it is found.
  */
-function getCache (key, options) {
-  const client = getClient(options)
+export async function getCache (key, options) {
+  const client = getCacheClient(options)
   const cacheKey = options['cache-prefix'] + key
   debug({ action: 'getCache', cacheKey })
-  return client.get(cacheKey).then(result => {
-    debug({ action: 'getCache got', cacheKey, result })
-    return result ? JSON.parse(result) : undefined
-  })
+  const result = await client.get(cacheKey)
+  debug({ action: 'getCache got', cacheKey, result })
+  return result ? JSON.parse(result) : undefined
 }
 
 /**
  * Returns a promise for the status. Encodes object as JSON
  */
-function setCache (key, value, options) {
-  const client = getClient(options)
+export async function setCache (key, value, options) {
+  const client = getCacheClient(options)
   const encoded = JSON.stringify(value)
   const cacheKey = options['cache-prefix'] + key
   debug({ action: 'setCache', cacheKey, value })
   return client.setex(cacheKey, options['cache-ttl-seconds'], encoded)
 }
-
-module.exports = { getCache, setCache, getClient, resetClient }
 
 debug('loaded')
