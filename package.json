@@ -3,8 +3,8 @@
   "version": "2.0.0",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
-  "module": "src/index.js",
-  "bin": "./qdone",
+  "module": "index.js",
+  "bin": "./src/bin.js",
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.465.0",
     "@aws-sdk/client-sqs": "^3.465.0",
