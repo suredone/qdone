@@ -8,7 +8,7 @@ import { init, captureException } from '@sentry/node'
 const debug = Debug('qdone:sentry')
 
 let sentryWasInit = false
-export async function withSentry (operationName, callback, opt) {
+export async function withSentry (callback, opt) {
   // Bail if sentry isn't enabled
   if (!opt.sentryDsn) return callback()
 
@@ -17,9 +17,6 @@ export async function withSentry (operationName, callback, opt) {
     init({ dsn: opt.sentryDsn, traceSampleRate: 0 })
     sentryWasInit = true
   }
-  // const transaction = startTransaction({
-  //   op: operationName, name: callback
-  // })
   try {
     const result = await callback()
     debug({ result })
@@ -29,8 +26,5 @@ export async function withSentry (operationName, callback, opt) {
     const sentryResult = await captureException(err)
     debug({ sentryResult })
     throw err
-  } finally {
-    // const txnResult = await transaction.finish()
-    // debug({ txnResult })
   }
 }

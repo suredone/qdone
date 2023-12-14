@@ -12,7 +12,8 @@ import {
   CreateQueueCommand,
   GetQueueAttributesCommand,
   SendMessageCommand,
-  SendMessageBatchCommand
+  SendMessageBatchCommand,
+  QueueDoesNotExist
 } from '@aws-sdk/client-sqs'
 
 import {
@@ -35,7 +36,7 @@ export async function getOrCreateDLQ (queue, opt) {
     return dqrl
   } catch (err) {
     // Anything other than queue doesn't exist gets re-thrown
-    if (err.name !== 'QueueDoesNotExist') throw err
+    if (!(err instanceof QueueDoesNotExist)) throw err
 
     // Create our DLQ
     const client = getSQSClient()
@@ -57,13 +58,12 @@ export async function getOrCreateDLQ (queue, opt) {
 export async function getOrCreateFailQueue (queue, opt) {
   debug('getOrCreateFailQueue(', queue, ')')
   const fqname = normalizeFailQueueName(queue, opt)
-  debug({ fqname })
   try {
     const fqrl = await qrlCacheGet(fqname)
     return fqrl
   } catch (err) {
     // Anything other than queue doesn't exist gets re-thrown
-    if (err.name !== 'QueueDoesNotExist') throw err
+    if (!(err instanceof QueueDoesNotExist)) throw err
 
     // Crate our fail queue
     const client = getSQSClient()
@@ -100,12 +100,10 @@ export async function getOrCreateQueue (queue, opt) {
   const qname = normalizeQueueName(queue, opt)
   try {
     const qrl = await qrlCacheGet(qname)
-    debug('getOrCreateQueue return', qrl)
     return qrl
   } catch (err) {
-    debug('getOrCreateQueue err', err)
     // Anything other than queue doesn't exist gets re-thrown
-    if (err.name !== 'QueueDoesNotExist') throw err
+    if (!(err instanceof QueueDoesNotExist)) throw err
 
     // Get our fail queue so we can create our own
     const fqrl = await getOrCreateFailQueue(qname, opt)
@@ -318,7 +316,7 @@ export async function enqueueBatch (pairs, options) {
   // And flush any remaining messages
   const extraFlushPromises = []
   for (const qrl in messages) {
-    extraFlushPromises.push(flushMessages(qrl, options))
+    extraFlushPromises.push(flushMessages(qrl, opt))
   }
   const extraFlushCounts = await Promise.all(extraFlushPromises)
   const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)

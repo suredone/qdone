@@ -4,7 +4,7 @@
 import chalk from 'chalk'
 import { getSQSClient } from './sqs.js'
 import { getCloudWatchClient } from './cloudWatch.js'
-import { GetQueueAttributesCommand, DeleteQueueCommand } from '@aws-sdk/client-sqs'
+import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
 import { normalizeFailQueueName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
 import { getCache, setCache } from './cache.js'
@@ -269,7 +269,7 @@ export async function processQueuePair (qname, qrl, options) {
   } catch (e) {
     // Handle the case where the fail queue has been deleted or was never
     // created for some reason
-    if (e.name !== 'QueueDoesNotExist') throw e
+    if (!(e instanceof QueueDoesNotExist)) throw e
 
     // Fail queue doesn't exist if we get here
     if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))

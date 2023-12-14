@@ -55,7 +55,7 @@ const enqueueOptionDefinitions = [
   { name: 'dql-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` }
 ]
 
-export async function enqueue (argv) {
+export async function enqueue (argv, testHook) {
   const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue [options] <queue> <command>', raw: true },
@@ -83,21 +83,20 @@ export async function enqueue (argv) {
     queue = options._unknown[0]
     command = options._unknown[1]
     debug('queue', queue, 'command', command)
-  } catch (e) {
+  } catch (err) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
-    return Promise.reject(e)
+    throw err
   }
 
   // Load module after AWS global load
   setupAWS(options)
-  const { enqueue } = await import('./enqueue.js')
+  const { enqueue: enqueueOriginal } = await import('./enqueue.js')
+  const enqueue = testHook || enqueueOriginal
 
   // Normal (non batch) enqueue
   const opt = getOptionsWithDefaults(options)
-  const result = await withSentry(
-    'enqueue',
-    async () => enqueue(queue, command, options),
-    opt
+  const result = (
+    await withSentry(async () => enqueue(queue, command, opt), opt)
   )
   debug('enqueue returned', result)
   if (options.verbose) console.error(chalk.blue('Enqueued job ') + result.MessageId)
@@ -154,7 +153,32 @@ export async function monitor (argv) {
   return data
 }
 
-export async function enqueueBatch (argv) {
+export async function loadBatchFile (filename) {
+  const file = filename === '-' ? process.stdin : createReadStream(filename, { fd: openSync(filename, 'r') })
+  const pairs = []
+  await new Promise((resolve, reject) => {
+    debug('file', file.name || 'stdin')
+    // Construct (queue, command) pairs from input
+    const input = createInterface({ input: file })
+    input.on('line', line => {
+      const parts = line.split(/\s+/)
+      const queue = parts[0]
+      const command = line.slice(queue.length).trim()
+      pairs.push({ queue, command })
+    })
+    input.on('error', reject)
+    input.on('close', resolve)
+  })
+  return pairs
+}
+
+export async function loadBatchFiles (filenames) {
+  const results = await Promise.all(filenames.map(loadBatchFile))
+  const pairs = results.flat()
+  return pairs
+}
+
+export async function enqueueBatch (argv, testHook) {
   const optionDefinitions = [].concat(enqueueOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone enqueue-batch [options] <file...>', raw: true },
@@ -173,7 +197,7 @@ export async function enqueueBatch (argv) {
   debug('enqueue-batch argv', argv)
 
   // Parse command and options
-  let files, options
+  let filenames, options
   try {
     options = commandLineArgs(optionDefinitions, { argv, partial: true })
     setupVerbose(options)
@@ -181,7 +205,7 @@ export async function enqueueBatch (argv) {
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('enqueue-batch requres one or more <file> arguments')
     debug('filenames', options._unknown)
-    files = options._unknown.map(f => f === '-' ? process.stdin : createReadStream(f, { fd: openSync(f, 'r') }))
+    filenames = options._unknown
   } catch (err) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
     throw err
@@ -189,35 +213,23 @@ export async function enqueueBatch (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const { enqueueBatch } = await import('./enqueue.js')
+  const { enqueueBatch: enqueueBatchOriginal } = await import('./enqueue.js')
+  const enqueueBatch = testHook || enqueueBatchOriginal
 
   // Load data and enqueue it
-  const pairs = []
-  await Promise.all(
-    files.map(file => {
-      return new Promise((resolve, reject) => {
-        debug('file', file.name || 'stdin')
-        // Construct (queue, command) pairs from input
-        const input = createInterface({ input: file })
-        input.on('line', line => {
-          const parts = line.split(/\s+/)
-          const queue = parts[0]
-          const command = line.slice(queue.length).trim()
-          pairs.push({ queue, command })
-        })
-        input.on('error', reject)
-        input.on('close', resolve)
-      })
-    })
-  )
-
+  const pairs = await loadBatchFiles(filenames)
   debug('pairs', pairs)
-  const result = await enqueueBatch(pairs, options)
+
+  // Normal (non batch) enqueue
+  const opt = getOptionsWithDefaults(options)
+  const result = (
+    await withSentry(async () => enqueueBatch(pairs, opt), opt)
+  )
   debug('enqueueBatch returned', result)
   if (options.verbose) console.error(chalk.blue('Enqueued ') + result + chalk.blue(' jobs'))
 }
 
-export async function worker (argv) {
+export async function worker (argv, testHook) {
   const optionDefinitions = [
     { name: 'kill-after', alias: 'k', type: Number, defaultValue: 30, description: 'Kill job after this many seconds [default: 30]' },
     { name: 'wait-time', alias: 'w', type: Number, defaultValue: 20, description: 'Listen at most this long on each queue [default: 20]' },
@@ -263,7 +275,8 @@ export async function worker (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const { listen, requestShutdown } = await import('./worker.js')
+  const { listen: originalListen, requestShutdown } = await import('./worker.js')
+  const listen = testHook || originalListen
 
   let jobCount = 0
   let jobsSucceeded = 0
@@ -335,7 +348,7 @@ export async function worker (argv) {
   return workLoop()
 }
 
-export async function idleQueues (argv) {
+export async function idleQueues (argv, testHook) {
   const optionDefinitions = [
     { name: 'idle-for', alias: 'o', type: Number, defaultValue: 60, description: 'Minutes of inactivity after which a queue is considered idle. [default: 60]' },
     { name: 'delete', type: Boolean, description: 'Delete the queue if it is idle. The fail queue also must be idle unless you use --unpair.' },
@@ -390,7 +403,8 @@ export async function idleQueues (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const { idleQueues } = await import('./idleQueues.js')
+  const { idleQueues: idleQueuesOriginal } = await import('./idleQueues.js')
+  const idleQueues = testHook || idleQueuesOriginal
 
   return idleQueues(queues, options)
     .then(function (result) {
@@ -411,7 +425,7 @@ export async function idleQueues (argv) {
     })
 }
 
-export async function root (originalArgv) {
+export async function root (originalArgv, testHook) {
   const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues', 'monitor']
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
@@ -456,22 +470,22 @@ export async function root (originalArgv) {
 
   // Run child commands
   if (command === 'enqueue') {
-    return enqueue(argv)
+    return enqueue(argv, testHook)
   } else if (command === 'enqueue-batch') {
-    return enqueueBatch(argv)
+    return enqueueBatch(argv, testHook)
   } else if (command === 'worker') {
-    return worker(argv)
+    return worker(argv, testHook)
   } else if (command === 'idle-queues') {
-    return idleQueues(argv)
+    return idleQueues(argv, testHook)
   } else if (command === 'monitor') {
-    return monitor(argv)
+    return monitor(argv, testHook)
   }
 }
 
-export async function run (argv) {
+export async function run (argv, testHook) {
   debug('run', argv)
   try {
-    await root(argv)
+    await root(argv, testHook)
     // If cache actually is active, it will keep our program from exiting
     // until we disconnect the cache client
     shutdownCache()

@@ -1,27 +1,14 @@
 import { jest } from '@jest/globals'
 import { readFileSync } from 'node:fs'
-import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 
-import {
-  // ListQueuesCommand,
-  GetQueueUrlCommand,
-  GetQueueAttributesCommand,
-  SendMessageCommand,
-  CreateQueueCommand
-} from '@aws-sdk/client-sqs'
-
-import { run } from '../src/cli.js'
-import { qrlCacheClear } from '../src/qrlCache.js'
-import { getSQSClient, setSQSClient } from '../src/sqs.js'
+import { run, loadBatchFiles } from '../src/cli.js'
 import { getOptionsWithDefaults } from '../src/defaults.js'
 
 delete process.env.AWS_ACCESS_KEY_ID
 delete process.env.AWS_SECRET_ACCESS_KEY
 
 const packageJson = JSON.parse(readFileSync('./package.json'))
-getSQSClient()
-const client = getSQSClient()
 
 function spyConsole () {
   const spy = {}
@@ -45,357 +32,142 @@ function spyConsole () {
 }
 
 const spy = spyConsole()
-// Always clear qrl cache at the beginning of each test
-beforeEach(qrlCacheClear)
 
 // Root command
 describe('qdone', () => {
-  test('should print usage and exit 0', async () => {
+  test('no args # should print usage and exit 0', async () => {
     await run([])
     expect(console.log).toHaveBeenCalledTimes(1)
     expect(spy.log.mock.calls.join()).toContain('usage: ')
   })
-})
-
-describe('qdone --help', function () {
-  test('should print usage and exit 0', async () => {
+  test('--help # should print usage and exit 0', async () => {
     await run(['--help'])
     expect(console.log).toHaveBeenCalledTimes(1)
     expect(spy.log.mock.calls.join()).toContain('usage: ')
   })
-})
-
-describe('qdone --version', function () {
-  test('should print package.json version and exit 0', async () => {
+  test('--version # should print package.json version and exit 0', async () => {
     await run(['--version'])
     expect(console.log).toHaveBeenCalledTimes(1)
     expect(spy.log.mock.calls.join()).toContain(packageJson.version)
   })
-})
-
-describe('qdone --some-invalid-option', function () {
-  test('should print usage and exit 1', async () => {
+  test('--some-invalid-option # should print usage and exit 1', async () => {
     await expect(run(['--some-invalid-option'])).rejects.toThrow('Unknown option')
   })
 })
 
 // Enqueue
-describe('qdone enqueue', function () {
-  test('should print usage and exit 1 with error', async () => {
-    await expect(run(['enqueue', '--verbose'])).rejects.toThrow('')
+describe('enqueue', () => {
+  test('qdone enqueue # should print usage and exit 1 with error', async () => {
+    const enqueue = jest.fn()
+    await expect(run(['enqueue', '--verbose'], enqueue)).rejects.toThrow('')
     expect(spy.log.mock.calls.join()).toContain('usage: ')
+    expect(enqueue).toHaveBeenCalledTimes(0)
   })
-})
-
-describe('qdone enqueue --help', function () {
-  test('should print usage and exit 0', async () => {
-    await expect(run(['enqueue', '--help']))
+  test('qdone enqueue --help # should print usage and exit 0', async () => {
+    const enqueue = jest.fn()
+    await expect(run(['enqueue', '--help'], enqueue))
     expect(spy.log.mock.calls.join()).toContain('usage: ')
     expect(spy.log.mock.calls.join()).toContain('enqueue')
+    expect(enqueue).toHaveBeenCalledTimes(0)
   })
-})
-
-describe('qdone enqueue onlyQueue', function () {
-  test('should print usage and exit 1 with error', async () => {
+  test('qdone enqueue onlyQueue # should print usage and exit 1 with error', async () => {
     await expect(run(['enqueue', '--verbose', 'onlyQueue'])).rejects.toThrow('requires both')
     expect(spy.log.mock.calls.join()).toContain('usage: ')
     expect(spy.log.mock.calls.join()).toContain('<queue>')
   })
-})
-
-describe('qdone enqueue testQueue true # (with no credentials)', function () {
-  test('should print usage and exit 1 with error', async () => {
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    const err = new Error('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
-    err.Code = 'AccessDenied'
-    sqsMock.on(GetQueueUrlCommand).rejectsOnce(err)
+  test('qdone enqueue testQueue true # (no credentials) should print usage and exit 1 with error', async () => {
+    const opt = getOptionsWithDefaults({ quiet: true })
+    const enqueue = jest.fn(() => {
+      const err = new Error('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
+      err.Code = 'AccessDenied'
+      throw err
+    })
     await expect(
-      run(['enqueue', 'testQueue', 'true'])
+      run(['enqueue', 'testQueue', 'true'], enqueue)
     ).rejects.toThrow('Access to the resource')
     expect(spy.error.mock.calls.join()).toContain('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
+    expect(enqueue).toHaveBeenCalledWith('testQueue', 'true', opt)
   })
-})
-
-describe('qdone enqueue testQueue true # (queue exists)', function () {
-  test('should print id of enqueued message and exit 0', async () => {
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/testQueue' })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
-    await run(['enqueue', '--verbose', 'testQueue', 'true'])
+  test('qdone enqueue testQueue true # (queue exists) should print id of enqueued message and exit 0', async () => {
+    const opt = getOptionsWithDefaults({ verbose: true })
+    const enqueue = jest.fn(() => ({ MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE' }))
+    await run(['enqueue', '--verbose', 'testQueue', 'true'], enqueue)
     const stderr = spy.error.mock.calls.join()
     expect(stderr).toContain('da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    expect(enqueue).toHaveBeenCalledWith('testQueue', 'true', opt)
   })
-})
-
-describe('qdone enqueue --fifo testQueue true # (queue exists, fifo mode)', function () {
-  test('should print id of enqueued message and exit 0', async () => {
-    const opt = getOptionsWithDefaults({ fifo: true })
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue.fifo' })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
-    await run(['enqueue', '--verbose', '--fifo', 'testQueue', 'true'])
-    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: 'qdone_testQueue.fifo' })
-    expect(sqsMock).toHaveReceivedNthCommandWith(2, SendMessageCommand, {
-      QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue.fifo',
-      MessageBody: 'true',
-      MessageDeduplicationId: opt.deduplicationId,
-      MessageGroupId: opt.groupId
-    })
+  test('qdone enqueue --fifo testQueue true # fifo gets passed correctly', async () => {
+    const opt = getOptionsWithDefaults({ fifo: true, verbose: true })
+    const enqueue = jest.fn(() => ({ MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE' }))
+    await run(['enqueue', '--fifo', '--verbose', 'testQueue', 'true'], enqueue)
     const stderr = spy.error.mock.calls.join()
     expect(stderr).toContain('da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+    expect(enqueue).toHaveBeenCalledTimes(1)
+    expect(enqueue).toHaveBeenCalledWith('testQueue', 'true', opt)
   })
-})
-
-describe('qdone enqueue --fifo --group-id gidtest testQueue true # (queue exists, fifo mode, explicit group)', function () {
-  test('should print id of enqueued message and exit 0', async () => {
-    const opt = getOptionsWithDefaults({ fifo: true })
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue.fifo' })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
-    await run(['enqueue', '--verbose', '--fifo', '--group-id', 'gidtest', 'testQueue', 'true'])
-    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: 'qdone_testQueue.fifo' })
-    expect(sqsMock).toHaveReceivedNthCommandWith(2, SendMessageCommand, {
-      QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue.fifo',
-      MessageBody: 'true',
-      MessageDeduplicationId: opt.deduplicationId,
-      MessageGroupId: 'gidtest'
-    })
+  test('qdone enqueue --group-id groupid testQueue true # group id gets passed correctly', async () => {
+    const opt = getOptionsWithDefaults({ groupId: 'groupid', verbose: true })
+    const enqueue = jest.fn(() => ({ MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE' }))
+    await run(['enqueue', '--verbose', '--group-id', 'groupid', 'testQueue', 'true'], enqueue)
     const stderr = spy.error.mock.calls.join()
     expect(stderr).toContain('da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
+    expect(enqueue).toHaveBeenCalledWith('testQueue', 'true', opt)
   })
-})
-
-describe('qdone enqueue --quiet testQueue true # (queue exists)', function () {
-  test('should have no output and exit 0', async () => {
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue.fifo' })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
-    await run(['enqueue', '--quiet', 'testQueue', 'true'])
+  test('qdone enqueue --quiet testQueue true # should have no output and exit 0', async () => {
+    const opt = getOptionsWithDefaults({ quiet: true })
+    const enqueue = jest.fn(() => ({ MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE' }))
+    await run(['enqueue', '--quiet', 'testQueue', 'true'], enqueue)
     const stderr = spy.error.mock.calls.join()
     const stdout = spy.log.mock.calls.join()
     expect(stderr).toEqual('')
     expect(stdout).toEqual('')
+    expect(enqueue).toHaveBeenCalledWith('testQueue', 'true', opt)
   })
 })
 
-describe('qdone enqueue testQueue true # (queue does not exist)', function () {
-  const opt = getOptionsWithDefaults()
-  let sqsMock
-  beforeEach(() => {
-    const err = new Error('Queue does not exist.')
-    err.name = 'QueueDoesNotExist'
-    sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
-      .rejectsOnce(err)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
-      .rejectsOnce(err)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
-      .on(CreateQueueCommand)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
-      .on(GetQueueAttributesCommand, { QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .resolvesOnce({
-        Attributes: {
-          CreatedTimestamp: '1442426968',
-          DelaySeconds: '0',
-          LastModifiedTimestamp: '1442426968',
-          MaximumMessageSize: '262144',
-          MessageRetentionPeriod: '345600',
-          QueueArn: 'arn:aws:sqs:us-east-1:123456789101:qdone_testQueue_failed',
-          ReceiveMessageWaitTimeSeconds: '0',
-          VisibilityTimeout: '30'
-        }
-      })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
-  })
-
-  afterEach(() => {
-    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
-    expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
-    expect(sqsMock).toHaveReceivedNthCommandWith(3, CreateQueueCommand, {
-      QueueName: 'qdone_testQueue_failed',
-      Attributes: {
-        MessageRetentionPeriod: opt.messageRetentionPeriod + ''
-      }
-    })
-    expect(sqsMock).toHaveReceivedNthCommandWith(4, GetQueueAttributesCommand, {
-      QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed',
-      AttributeNames: ['All']
-    })
-    expect(sqsMock).toHaveReceivedNthCommandWith(5, CreateQueueCommand, {
-      QueueName: 'qdone_testQueue',
-      Attributes: {
-        MessageRetentionPeriod: opt.messageRetentionPeriod + '',
-        RedrivePolicy: JSON.stringify({
-          deadLetterTargetArn: 'arn:aws:sqs:us-east-1:123456789101:qdone_testQueue_failed',
-          maxReceiveCount: '1'
-        })
-      }
-    })
-    expect(sqsMock).toHaveReceivedNthCommandWith(6, SendMessageCommand, {
-      QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue',
-      MessageBody: 'true'
-    })
-  })
-
-  test('--verbose should create queues, print the id of enqueued message and exit 0', async () => {
-    await run(['enqueue', '--verbose', 'testQueue', 'true'])
-    const stderr = spy.error.mock.calls.join()
-    expect(stderr).toContain('da68f62c-0c07-4bee-bf5f-7e856EXAMPLE')
-    expect(stderr).toContain('Creating fail queue', 'testQueue_failed')
-    expect(stderr).toContain('Creating queue', 'testQueue')
-    // expect(stderr).toContain('Creating dead letter queue', 'testQueue_dead')
-  })
-
-  test('--quiet should create queues, print nothing and exit 0', async () => {
-    await run(['enqueue', '--quiet', 'testQueue', 'true'])
-    const stderr = spy.error.mock.calls.join()
-    const stdout = spy.log.mock.calls.join()
-    expect(stderr).toBe('')
-    expect(stdout).toBe('')
-  })
-})
-
-describe('qdone enqueue testQueue true # (unhandled error on fail queue creation)', function () {
-  test('should print traceback and exit 1 with error', async () => {
-    const err = new Error('Queue cannot be created.')
-    err.name = 'SomeOtherError'
-    err.Code = 'AWS.SimpleQueueService.SomeOtherError'
-    const sqsMock = mockClient(client)
-    setSQSClient(sqsMock)
-    sqsMock
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
-      .rejectsOnce(err)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
-      .rejectsOnce(err)
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
-      .on(CreateQueueCommand)
-      .rejects(err)
-      .on(GetQueueAttributesCommand, { QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .resolvesOnce({
-        Attributes: {
-          CreatedTimestamp: '1442426968',
-          DelaySeconds: '0',
-          LastModifiedTimestamp: '1442426968',
-          MaximumMessageSize: '262144',
-          MessageRetentionPeriod: '345600',
-          QueueArn: 'arn:aws:sqs:us-east-1:123456789101:qdone_testQueue_failed',
-          ReceiveMessageWaitTimeSeconds: '0',
-          VisibilityTimeout: '30'
-        }
-      })
-      .on(SendMessageCommand)
-      .resolvesOnce({
-        MD5OfMessageAttributes: '00484c68...59e48f06',
-        MD5OfMessageBody: '51b0a325...39163aa0',
-        MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
-      })
+// Batch loading
+describe('loadBatchFiles', () => {
+  test('test/fixtures/test-unique01-x24.batch', async () => {
     await expect(
-      run(['enqueue', '--verbose', 'testQueue', 'true'])
-    ).rejects.toThrow('cannot be created')
+      loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
+    ).resolves.toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
   })
 })
 
-/*
 // Enqueue batch
-describe('qdone enqueue-batch', function () {
-  test('should print usage and exit 1 with error', async () => {
-    await expect(
-      run(['enqueue-batch'])
-    ).resolves.toEqual()
+describe('enqueue-batch', function () {
+  test('qdone enqueue-batch # should print usage and exit 1 with error', async () => {
+    await expect(run(['enqueue-batch'])).rejects.toThrow()
     const stdout = spy.log.mock.calls.join()
     expect(stdout).toContain('usage: ')
     const stderr = spy.error.mock.calls.join()
     expect(stderr).toContain('<file>')
-      expect(err).to.be.an('error')
-    }))
-})
+  })
 
-describe('qdone enqueue-batch --help', function () {
-  test('should print usage and exit 0', async () => {
-    await expect(
-      run(['enqueue-batch', '--help'])
-    ).resolves.toEqual()
+  test('qdone enqueue-batch --help # should print usage and exit 0', async () => {
+    await expect(run(['enqueue-batch', '--help'])).resolves.toEqual()
     const stdout = spy.log.mock.calls.join()
     expect(stdout).toContain('usage: ')
-    const stdout = spy.log.mock.calls.join()
     expect(stdout).toContain('enqueue-batch')
-    }))
-})
+  })
 
-describe('qdone enqueue-batch some_non_existent_file', function () {
-  test('should exit 1 with error', async () => {
-    await expect(
-      run(['enqueue-batch', 'some_non_existent_file'])
-    ).resolves.toEqual()
+  test('qdone enqueue-batch <nonexistent-file> # should exit 1 with error', async () => {
+    await expect(run(['enqueue-batch', 'some_non_existent_file'])).rejects.toThrow()
     const stderr = spy.error.mock.calls.join()
     expect(stderr).toContain('no such file or directory')
-      expect(err).to.be.an('error')
-    }))
+  })
+
+  test('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # pairs should be correct', async () => {
+    const opt = getOptionsWithDefaults({ verbose: true })
+    const enqueueBatch = jest.fn()
+    await run(['enqueue-batch', '--verbose', 'test/fixtures/test-unique01-x24.batch'], enqueueBatch)
+    expect(enqueueBatch).toHaveBeenCalledWith(
+      Array(24).fill({ command: 'true', queue: 'test' }), opt)
+  })
 })
 
-describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (with no credentials)', function () {
-  beforeAll(function () {
-    sqsMock
-      .on(GetQueueUrlCommand)
-      const err = new Error('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
-      err.code = 'AccessDenied'
-      callback(err)
-    })
-  })
-  test('should print usage and exit 1 with error', async () => {
-    await expect(
-      run(['enqueue-batch', 'test/fixtures/test-unique01-x24.batch'])
-    ).resolves.toEqual()
-    const stdout = spy.log.mock.calls.join()
-    expect(stdout).toContain('You must provide')
-    const stderr = spy.error.mock.calls.join()
-    expect(stderr).toContain('Access to the resource https://sqs.us-east-1.amazonaws.com/ is denied.')
-      expect(err).to.be.an('error')
-    }))
-})
+/*
 
 describe('qdone enqueue-batch test/fixtures/test-unique01-x24.batch # (queue exists)', function () {
   beforeAll(function () {
