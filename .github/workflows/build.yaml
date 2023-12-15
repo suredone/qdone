@@ -1,0 +1,39 @@
+name: Build
+
+on: [push]
+
+env:
+  NODE_OPTIONS: --max_old_space_size=4096
+
+jobs:
+
+  test:
+    name: Test
+    strategy:
+      matrix:
+        version: [16, 18, 20]
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3
+      with:
+        node-version: {{ $matrix.version }}
+    - uses: pnpm/action-setup@v2
+      name: Install pnpm
+      with:
+        version: 8
+        run_install: false
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+    - uses: actions/cache@v3
+      name: Setup pnpm cache
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+    - run: pnpm install
+    - run: npm test
+    - run: npm test -- --coverage

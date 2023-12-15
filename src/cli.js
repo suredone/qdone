@@ -131,7 +131,7 @@ export async function monitor (argv) {
     setupVerbose(options)
     debug('enqueue options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
-    if (!options._unknown || options._unknown.length !== 1) throw new UsageError('monitor requires the <queue> argument')
+    if (!options._unknown || options._unknown.length !== 1) throw new UsageError('monitor requires the <queuePattern> argument')
     queue = options._unknown[0]
     debug('queue', queue)
   } catch (e) {
