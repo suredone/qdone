@@ -1,8 +1,9 @@
 /**
  * Command line interface implementation
  */
-import { createReadStream, openSync, readFileSync } from 'node:fs'
+import { createReadStream, openSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { createRequire } from 'module'
 import getUsage from 'command-line-usage'
 import commandLineCommands from 'command-line-commands'
 import commandLineArgs from 'command-line-args'
@@ -14,8 +15,8 @@ import { shutdownCache } from './cache.js'
 import { withSentry } from './sentry.js'
 
 const debug = Debug('qdone:cli')
-const packageJson = JSON.parse(readFileSync('./package.json'))
-
+const require = createRequire(import.meta.url)
+const packageJson = require('../package.json')
 class UsageError extends Error {}
 
 const awsUsageHeader = { content: 'AWS SQS Authentication', raw: true, long: true }

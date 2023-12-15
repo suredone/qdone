@@ -30,7 +30,7 @@
   },
   "scripts": {
     "start": "./src/bin.js",
-    "test": "NODE_OPTIONS='--experimental-vm-modules --no-warnings' jest",
+    "test": "NODE_OPTIONS='--experimental-json-modules --experimental-vm-modules --no-warnings' jest",
     "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
     "standard": "standard",
