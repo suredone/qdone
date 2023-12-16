@@ -31,6 +31,14 @@ export function requestShutdown () {
 export async function executeJob (job, qname, qrl, options) {
   debug('executeJob', job)
   const cmd = 'nice ' + job.Body
+  if (options.archive) {
+    await getSQSClient().send(new DeleteMessageCommand({
+      QueueUrl: qrl,
+      ReceiptHandle: job.ReceiptHandle
+    }))
+    console.log(cmd)
+    return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
+  }
   if (options.verbose) console.error(chalk.blue('  Executing job command:'), cmd)
 
   const jobStart = new Date()

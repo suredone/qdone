@@ -237,6 +237,7 @@ export async function worker (argv, testHook) {
     { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues.' },
     { name: 'active-only', type: Boolean, description: 'Listen only to queues with pending messages.' },
     { name: 'drain', type: Boolean, description: 'Run until no more work is found and quit. NOTE: if used with  --wait-time 0, this option will not drain queues.' },
+    { name: 'archive', type: Boolean, description: 'Does not run jobs, just prints commands to stdout. Use this flag for draining a queue and recording the commands that were in it.' },
     { name: 'fifo', alias: 'f', type: Boolean, description: 'Automatically adds .fifo to queue names. Only listens to fifo queues when using \'*\'.' }
   ].concat(globalOptionDefinitions)
 
