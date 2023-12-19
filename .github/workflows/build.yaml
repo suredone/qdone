@@ -43,6 +43,37 @@ jobs:
           ${{ runner.os }}-pnpm-store-
     - run: pnpm install
     - run: npm test
+
+  sentry:
+    needs: [test]
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.version }}
+    - uses: pnpm/action-setup@v2
+      name: Install pnpm
+      with:
+        version: 8
+        run_install: false
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+    - uses: actions/cache@v3
+      name: Setup pnpm cache
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+    - run: pnpm install
     - run: npm test -- --coverage
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
@@ -55,4 +86,4 @@ jobs:
         SENTRY_ORG: suredone
         SENTRY_PROJECT: qdone
       with:
-        version: ${{ github.ref }}
+        version: ${{ github.sha }}
