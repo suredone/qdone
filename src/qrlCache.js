@@ -110,20 +110,18 @@ export function ingestQRLs (qrls) {
 /**
  * Returns qrls for queues matching the given prefix and regex.
  */
-export async function getMatchingQueues (prefix) {
+export async function getMatchingQueues (prefix, nextToken) {
+  debug('getMatchingQueues', prefix, nextToken)
   const input = { QueueNamePrefix: prefix, MaxResults: 1000 }
+  if (nextToken) input.NextToken = nextToken
   const client = getSQSClient()
-  async function processQueues (nextToken) {
-    if (nextToken) input.NextToken = nextToken
-    const command = new ListQueuesCommand(input)
-    // debug({ nextToken, input, command })
-    const result = await client.send(command)
-    debug({ result })
-    const { QueueUrls: qrls, NextToken: nextToken2 } = result ?? { QueueUrls: [] }
-    // debug({ qrls, nextToken2 })
-    return qrls.concat(nextToken2 ? await processQueues(nextToken2) : [])
-  }
-  return processQueues()
+  const command = new ListQueuesCommand(input)
+  const result = await client.send(command)
+  debug({ result })
+  const { QueueUrls: qrls, NextToken: keepGoing } = result ?? { QueueUrls: [] }
+  debug({ qrls, keepGoing })
+  if (keepGoing) qrls.push(...await getMatchingQueues(prefix, keepGoing))
+  return qrls
 }
 
 //

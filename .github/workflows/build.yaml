@@ -44,7 +44,8 @@ jobs:
     - run: pnpm install
     - run: npm test
 
-  sentry:
+  build:
+    name: Coverage and Sentry
     needs: [test]
     runs-on: ubuntu-latest
     services:
