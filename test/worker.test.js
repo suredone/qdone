@@ -1,3 +1,4 @@
+/*
 import {
   GetQueueUrlCommand,
   GetQueueAttributesCommand,
@@ -24,6 +25,7 @@ const client = getSQSClient()
 
 // Always clear qrl cache at the beginning of each test
 beforeEach(qrlCacheClear)
+*/
 
 describe('mock', () => {
   test('all attributes get queried', async () => {

@@ -313,7 +313,7 @@ describe('cli', function () {
 
   describe('qdone enqueue testQueue true # (unhandled error on fail queue creation)', function () {
     before(function () {
-      var code = 'AWS.SimpleQueueService.NonExistentQueue'
+      let code = 'AWS.SimpleQueueService.NonExistentQueue'
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         const err = new Error('Queue does not exist.')
         err.code = code
@@ -405,7 +405,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -419,7 +419,7 @@ describe('cli', function () {
     })
     it('should print id of enqueued messages, use 3 requests, print total count and exit 0',
       cliTest(['enqueue-batch', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
-        for (var messageId = 0; messageId < 24; messageId++) {
+        for (let messageId = 0; messageId < 24; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(stderr).to.contain('Enqueued 24 jobs')
@@ -436,7 +436,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         params.Entries.forEach(message => {
           groupIds[message.MessageGroupId] = true
@@ -453,7 +453,7 @@ describe('cli', function () {
     })
     it('should print id of enqueued messages, use 3 requests, use unique group ids for every message, print total count and exit 0',
       cliTest(['enqueue-batch', '--fifo', '--group-id-per-message', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
-        for (var messageId = 0; messageId < 24; messageId++) {
+        for (let messageId = 0; messageId < 24; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(Object.keys(groupIds).length).to.equal(24)
@@ -469,7 +469,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: params.Entries.slice(0, 2).map(message => ({
@@ -490,7 +490,7 @@ describe('cli', function () {
         expect(stderr).to.contain('Error: One or more message failures')
         expect(err).to.be.an('error')
         // Expect some ids of failed messages
-        for (var messageId = 0; messageId < 2; messageId++) {
+        for (let messageId = 0; messageId < 2; messageId++) {
           expect(stderr).to.contain('da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
       }))
@@ -501,7 +501,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -550,7 +550,7 @@ describe('cli', function () {
           }
         })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -564,7 +564,7 @@ describe('cli', function () {
     })
     it('should print id of enqueued messages, use 3 requests, print total count and exit 0',
       cliTest(['enqueue-batch', '--verbose', '--fifo', 'test/fixtures/test-fifo01-x24.batch'], function (result, stdout, stderr) {
-        for (var messageId = 0; messageId < 24; messageId++) {
+        for (let messageId = 0; messageId < 24; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(stderr).to.contain('Enqueued 24 jobs')
@@ -603,7 +603,7 @@ describe('cli', function () {
           }
         })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -619,7 +619,7 @@ describe('cli', function () {
       cliTest(['enqueue-batch', 'test/fixtures/test-unique01-x24.batch'], function (result, stdout, stderr) {
         expect(stderr).to.contain('Creating fail queue test_failed')
         expect(stderr).to.contain('Creating queue test')
-        for (var messageId = 0; messageId < 24; messageId++) {
+        for (let messageId = 0; messageId < 24; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(stderr).to.contain('Enqueued 24 jobs')
@@ -634,7 +634,7 @@ describe('cli', function () {
       AWS.mock('SQS', 'getQueueUrl', function (params, callback) {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -654,7 +654,7 @@ describe('cli', function () {
         'test/fixtures/test-unique24-x24.batch',
         'test/fixtures/test-unique24-x240.batch'
       ], function (result, stdout, stderr) {
-        for (var messageId = 0; messageId < 312; messageId++) {
+        for (let messageId = 0; messageId < 312; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(stderr).to.contain('Enqueued 312 jobs')
@@ -692,7 +692,7 @@ describe('cli', function () {
           }
         })
       })
-      var messageId = 0
+      let messageId = 0
       AWS.mock('SQS', 'sendMessageBatch', function (params, callback) {
         callback(null, {
           Failed: [],
@@ -706,7 +706,7 @@ describe('cli', function () {
     })
     it('should print ids of enqueued messages, use 5 requests, print total count and exit 0',
       cliTest(['enqueue-batch', 'test/fixtures/test-too-big-1.batch'], function (result, stdout, stderr) {
-        for (var messageId = 0; messageId < 10; messageId++) {
+        for (let messageId = 0; messageId < 10; messageId++) {
           expect(stderr).to.contain('Enqueued job da68f62c-0c07-4bee-bf5f-56EXAMPLE-' + messageId)
         }
         expect(stderr).to.contain('Enqueued 10 jobs')
@@ -781,9 +781,11 @@ describe('cli', function () {
         callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -812,9 +814,11 @@ describe('cli', function () {
         callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'false', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'false', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -844,9 +848,11 @@ describe('cli', function () {
         callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'bash test/fixtures/test-child-kill-linux.sh', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'bash test/fixtures/test-child-kill-linux.sh', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -874,7 +880,8 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
@@ -884,12 +891,15 @@ describe('cli', function () {
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}7`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}8`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}9`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         if (params.QueueUrl === params.QueueUrl.slice(0, -1) + '9') {
           AWS.restore('SQS', 'receiveMessage')
           // Subsequent calls return no message
@@ -924,9 +934,11 @@ describe('cli', function () {
         callback(null, {})
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -962,9 +974,11 @@ describe('cli', function () {
         callback(null, {})
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -991,12 +1005,14 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}1`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}2`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}3`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}4`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         const lastLetter = params.QueueUrl.slice(-1)
@@ -1018,9 +1034,11 @@ describe('cli', function () {
         })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE-' + params.QueueUrl.slice(-1), Body: 'true', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         if (params.QueueUrl === params.QueueUrl.slice(0, -1) + '2') {
           AWS.restore('SQS', 'receiveMessage')
           // Subsequent calls return no message
@@ -1052,9 +1070,11 @@ describe('cli', function () {
         callback(null, { QueueUrls: [`https://q.amazonaws.com/123456789101/${params.QueueName}`] })
       })
       AWS.mock('SQS', 'receiveMessage', function (params, callback) {
-        callback(null, { Messages: [
-          { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
-        ] })
+        callback(null, {
+          Messages: [
+            { MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE', Body: 'sleep 1', ReceiptHandle: 'AQEBzbVv...fqNzFw==' }
+          ]
+        })
         AWS.restore('SQS', 'receiveMessage')
         // Subsequent calls return no message
         AWS.mock('SQS', 'receiveMessage', function (params, callback) {
@@ -1377,10 +1397,12 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1425,10 +1447,12 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed.fifo`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1473,10 +1497,12 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         callback(null, {
@@ -1527,10 +1553,12 @@ describe('cli', function () {
         callback(null, { QueueUrl: `https://q.amazonaws.com/123456789101/${params.QueueName}` })
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`,
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'getQueueAttributes', function (params, callback) {
         const err = new Error('Queue does not exist.')
@@ -1557,10 +1585,12 @@ describe('cli', function () {
         }
       })
       AWS.mock('SQS', 'listQueues', function (params, callback) {
-        callback(null, { QueueUrls: [
+        callback(null, {
+          QueueUrls: [
           `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}`
           // `https://q.amazonaws.com/123456789101/${params.QueueNamePrefix}_failed`
-        ] })
+          ]
+        })
       })
       AWS.mock('SQS', 'deleteQueue', function (params, callback) {
         if (params.QueueUrl === 'https://q.amazonaws.com/123456789101/qdone_test_failed') {
