@@ -5,6 +5,7 @@
 import { v1 as uuidv1 } from 'uuid'
 
 export const defaults = Object.freeze({
+  // Shared
   prefix: 'qdone_',
   failSuffix: '_failed',
   region: 'us-east-1',
@@ -14,6 +15,9 @@ export const defaults = Object.freeze({
   cachePrefix: 'qdone:',
   cacheTtlSeconds: 10,
   fifo: false,
+  disableLog: false,
+
+  // Enqueue
   groupId: uuidv1(),
   groupIdPerMessage: false,
   deduplicationId: uuidv1(),
@@ -22,7 +26,14 @@ export const defaults = Object.freeze({
   archive: false,
   dlq: false,
   dlqSuffix: '_dead',
-  dlqAfter: 3
+  dlqAfter: 3,
+
+  // Worker
+  waitTime: 20,
+  killAfter: 30,
+  archive: false,
+  activeOnly: false,
+  includeFailed: false
 })
 
 /**
@@ -41,6 +52,7 @@ export function getOptionsWithDefaults (options) {
   const dlq = options.dlq || !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'])
 
   const opt = {
+    // Shared
     prefix: options.prefix === '' ? options.prefix : defaults.prefix,
     failSuffix: options.failSuffix || options['fail-suffix'] || defaults.failSuffix,
     region: options.region || process.env.AWS_REGION || defaults.region,
@@ -49,6 +61,10 @@ export function getOptionsWithDefaults (options) {
     cachePrefix: options.cachePrefix || options['cache-prefix'] || defaults.cachePrefix,
     cacheTtlSeconds: options.cacheTtlSeconds || options['cache-ttl-seconds'] || defaults.cacheTtlSeconds,
     fifo: options.fifo || defaults.fifo,
+    sentryDsn: options.sentryDsn || options['sentry-dsn'],
+    disableLog: options['disable-log'] || defaults.disableLog,
+
+    // Enqueue
     groupId: options.groupId || options['group-id'] || defaults.groupId,
     groupIdPerMessage: false,
     deduplicationId: options.deduplicationId || options['deduplication-id'] || defaults.deduplicationId,
@@ -58,7 +74,13 @@ export function getOptionsWithDefaults (options) {
     dlq: dlq || defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || defaults.dlqSuffix,
     dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter,
-    sentryDsn: options.sentryDsn || options['sentry-dsn']
+
+    // Worker
+    waitTime: options['wait-time'] || defaults.waitTime,
+    killAfter: options['kill-after'] || defaults.killAfter,
+    archive: options.archive || defaults.archive,
+    activeOnly: options['active-only'] || defaults.activeOnly,
+    includeFailed: options['include-failed'] || defaults.includeFailed
   }
 
   // TODO: validate options

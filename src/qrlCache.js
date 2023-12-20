@@ -5,7 +5,7 @@
 
 import { URL } from 'url'
 import { basename } from 'path'
-import { ListQueuesCommand, GetQueueUrlCommand } from '@aws-sdk/client-sqs'
+import { ListQueuesCommand, GetQueueUrlCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { getSQSClient } from './sqs.js'
 import Debug from 'debug'
 const debug = Debug('qdone:qrlCache')
@@ -14,7 +14,7 @@ const debug = Debug('qdone:qrlCache')
 const qcache = new Map()
 
 //
-// Normalizes a queue name to end with .fifo if options.fifo is set
+// Normalizes a queue name to end with .fifo if opt.fifo is set
 //
 export const fifoSuffix = '.fifo'
 export function normalizeQueueName (qname, opt) {
@@ -26,7 +26,7 @@ export function normalizeQueueName (qname, opt) {
 }
 
 //
-// Normalizes fail queue name, appending both --fail-suffix and .fifo depending on options
+// Normalizes fail queue name, appending both --fail-suffix and .fifo depending on opt
 //
 export function normalizeFailQueueName (fqname, opt) {
   const newopt = Object.assign({}, opt, { fifo: false })
@@ -37,7 +37,7 @@ export function normalizeFailQueueName (fqname, opt) {
 }
 
 //
-// Normalizes dlq queue name, appending both --dlq-suffix and .fifo depending on options
+// Normalizes dlq queue name, appending both --dlq-suffix and .fifo depending on opt
 //
 export function normalizeDLQName (dqname, opt) {
   const newopt = Object.assign({}, opt, { fifo: false })
@@ -127,7 +127,7 @@ export async function getMatchingQueues (prefix, nextToken) {
 //
 // Resolves into a flattened aray of {qname: ..., qrl: ...} objects.
 //
-export async function getQnameUrlPairs (qnames, options) {
+export async function getQnameUrlPairs (qnames, opt) {
   const promises = qnames.map(
     async function getQueueUrlOrUrls (qname) {
       if (qname.slice(-1) === '*') {
@@ -135,7 +135,7 @@ export async function getQnameUrlPairs (qnames, options) {
         const prefix = qname.slice(0, -1)
         const queues = await getMatchingQueues(prefix)
         debug('listQueues return', queues)
-        if (options.fifo) {
+        if (opt.fifo) {
           // Remove non-fifo queues
           const filteredQueues = queues.filter(url => url.slice(-fifoSuffix.length) === fifoSuffix)
           return ingestQRLs(filteredQueues)
@@ -144,7 +144,11 @@ export async function getQnameUrlPairs (qnames, options) {
         }
       } else {
         // Normal, non wildcard queue support
-        return { qname, qrl: await qrlCacheGet(qname) }
+        try {
+          return { qname, qrl: await qrlCacheGet(qname) }
+        } catch (err) {
+          if (err instanceof QueueDoesNotExist) return
+        }
       }
     }
   )
