@@ -82,6 +82,7 @@ export function getOptionsWithDefaults (options) {
     activeOnly: options['active-only'] || defaults.activeOnly,
     includeFailed: options['include-failed'] || defaults.includeFailed
   }
+  process.env.AWS_REGION = opt.region
 
   // TODO: validate options
   return opt

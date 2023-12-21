@@ -17,6 +17,8 @@ import { cheapIdleCheck } from './idleQueues.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { getSQSClient } from './sqs.js'
 
+export class DoNotProcess extends Error {}
+
 const debug = Debug('qdone:worker')
 
 // Global flag for shutdown request
@@ -68,7 +70,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
         ReceiptHandle: message.ReceiptHandle,
         VisibilityTimeout: visibilityTimeout
       }))
-      debug('ChangeMessageVisibility.then returned', result)
+      debug('ChangeMessageVisibility returned', result)
       if (
         jobRunTime + visibilityTimeout >= maxJobRun ||
         jobRunTime + visibilityTimeout >= opt.killAfter
@@ -79,7 +81,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
         timeoutExtender = setTimeout(extendTimeout, visibilityTimeout * 1000 * 0.5)
       }
     } catch (err) {
-      debug('changeMessageVisibility.catch returned', err)
+      debug('ChangeMessageVisibility threw', err)
       // Rejection means we're ouuta time, whatever, let the job die
       if (opt.verbose) {
         console.error(chalk.red('  failed to extend job: ') + err)
@@ -104,7 +106,8 @@ export async function processMessage (message, callback, qname, qrl, opt) {
 
   try {
     // Process message
-    const result = await callback(qname, payload)
+    const queue = qname.slice(opt.prefix.length)
+    const result = await callback(queue, payload)
     debug('processMessage callback finished', { payload, result })
     clearTimeout(timeoutExtender)
     if (opt.verbose) {
@@ -128,9 +131,21 @@ export async function processMessage (message, callback, qname, qrl, opt) {
     }
     return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
   } catch (err) {
-    // Fail path for job execution
     debug('exec.catch')
     clearTimeout(timeoutExtender)
+
+    // If the callback does not want to process this message, return to queue
+    if (err instanceof DoNotProcess) {
+      const result = await getSQSClient().send(new ChangeMessageVisibilityCommand({
+        QueueUrl: qrl,
+        ReceiptHandle: message.ReceiptHandle,
+        VisibilityTimeout: 0
+      }))
+      debug('ChangeMessageVisibility returned', result)
+      return { noJobs: 1, jobsSucceeded: 0, jobsFailed: 0 }
+    }
+
+    // Fail path for job execution
     if (opt.verbose) {
       console.error(chalk.red('  FAILED'))
       console.error(chalk.blue('  error : ') + err)
@@ -214,8 +229,6 @@ export async function resolveQueues (queues, opt) {
   return selectedPairs
 }
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-
 //
 // Consumer
 //
@@ -223,9 +236,18 @@ export async function processMessages (queues, callback, options) {
   const opt = getOptionsWithDefaults(options)
   debug('processMessages', {queues, callback, options, opt })
 
+
   const stats = { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }
   const activeLoops = {}
 
+  // This delay function keeps a timeout reference around so it can be
+  // cancelled at shutdown
+  let delayTimeout
+  const delay = (ms) => new Promise(resolve => {
+    delayTimeout = setTimeout(resolve, ms)
+  })
+
+  // Callback to help facilitate better UX at shutdown
   function shutdownCallback () {
     if (opt.verbose) {
       debug({ activeLoops })
@@ -233,6 +255,7 @@ export async function processMessages (queues, callback, options) {
       if (activeQueues.length) {
         console.error(chalk.blue('Waiting for work to finish on the following queues: ') + activeQueues.join(chalk.blue(', ')))
       }
+      clearTimeout(delayTimeout)
     }
   } 
   shutdownCallbacks.push(shutdownCallback)
@@ -278,6 +301,9 @@ export async function processMessages (queues, callback, options) {
 
     // But only if we have queues to listen on
     if (selectedPairs.length) {
+      // Randomize order
+      selectedPairs.sort(() => 0.5 - Math.random())
+
       if (opt.verbose) {
         console.error(chalk.blue('Listening to queues (in this order):'))
         console.error(selectedPairs.map(({ qname, qrl }) =>

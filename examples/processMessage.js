@@ -2,7 +2,7 @@
 // 
 // This example enqueues three messages and processes them.
 //
-import { enqueue, processMessages, requestShutdown } from 'qdone'
+import { enqueue, processMessages, requestShutdown } from '../index.mjs' // from 'qdone' for standalone example
 
 await enqueue('test1', JSON.stringify({one: 1}))
 await enqueue('test2', JSON.stringify({two: 2}))
@@ -13,4 +13,4 @@ async function callback (queue, payload) {
   if (payload.three) requestShutdown()
 }
 
-await processMessages(['rtest1', 'rtest2', 'rtest3'], callback)
+await processMessages(['test1', 'test2', 'test3'], callback)
