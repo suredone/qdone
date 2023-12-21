@@ -166,6 +166,44 @@ describe('getOrCreateQueue', () => {
       }
     })
   })
+
+  test('tag variant of above', async () => {
+    console.error('fifo variant')
+    const tags = { Role: 'app', Environment: 'production' }
+    const opt = getOptionsWithDefaults({ prefix: '', dlq: true, fifo: true, verbose: true, tags })
+    const basename = 'testqueue'
+    const qname = basename + '.fifo'
+    const baseurl = `https://sqs.us-east-1.amazonaws.com/foobar/${basename}`
+    const qrl = baseurl + '.fifo'
+    const fqname = basename + opt.failSuffix + '.fifo'
+    const fqrl = baseurl + opt.failSuffix + '.fifo'
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .rejectsOnce(new QueueDoesNotExist())
+      .on(GetQueueUrlCommand, { QueueName: fqname })
+      .resolvesOnce({ QueueUrl: fqrl })
+      .on(GetQueueAttributesCommand, { QueueUrl: fqrl })
+      .resolvesOnce({ Attributes: { QueueArn: 'foobar' } })
+      .on(CreateQueueCommand, { QueueName: qname })
+      .resolvesOnce({ QueueUrl: qrl })
+    await expect(
+      getOrCreateQueue(basename, opt)
+    ).resolves.toBe(qrl)
+    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
+    expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: fqname })
+    expect(sqsMock).toHaveReceivedNthCommandWith(3, GetQueueAttributesCommand, { QueueUrl: fqrl })
+    expect(sqsMock).toHaveReceivedNthCommandWith(4, CreateQueueCommand, {
+      QueueName: qname,
+      Attributes: {
+        FifoQueue: 'true',
+        MessageRetentionPeriod: '1209600',
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"1"}'
+      },
+      tags
+    })
+  })
 })
 
 describe('getOrCreateFailQueue', () => {

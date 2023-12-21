@@ -10,6 +10,7 @@ import commandLineArgs from 'command-line-args'
 import Debug from 'debug'
 import chalk from 'chalk'
 
+import { QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { defaults, setupAWS, setupVerbose, getOptionsWithDefaults } from './defaults.js'
 import { shutdownCache } from './cache.js'
 import { withSentry } from './sentry.js'
@@ -53,7 +54,8 @@ const enqueueOptionDefinitions = [
   { name: 'delay', alias: 'd', type: Number, description: 'Delays delivery of each message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
   { name: 'dlq', type: Boolean, description: 'Send messages from the failed queue to a DLQ.' },
   { name: 'dql-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
-  { name: 'dql-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` }
+  { name: 'dql-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` },
+  { name: 'tag', type: String, multiple: true, description: 'Adds an AWS tag to queue creation. Use the format Key=Value. Can specify multiple times.' }
 ]
 
 export async function enqueue (argv, testHook) {
@@ -87,6 +89,19 @@ export async function enqueue (argv, testHook) {
   } catch (err) {
     console.log(getUsage(usageSections.filter(s => !s.long)))
     throw err
+  }
+
+  // Process tags
+  if (options.tag && options.tag.length) {
+    options.tags = {}
+    for (const input of options.tag) {
+      debug({ input })
+      if (input.indexOf('=') === -1) throw new UsageError('Tags must be separated with the "=" character.')
+      const [key, ...rest] = input.split('=')
+      const value = rest.join('=')
+      debug({ input, key, rest, value, tags: options.tags })
+      options.tags[key] = value
+    }
   }
 
   // Load module after AWS global load
@@ -352,7 +367,7 @@ export async function worker (argv, testHook) {
 
 export async function idleQueues (argv, testHook) {
   const optionDefinitions = [
-    { name: 'idle-for', alias: 'o', type: Number, defaultValue: 60, description: 'Minutes of inactivity after which a queue is considered idle. [default: 60]' },
+    { name: 'idle-for', alias: 'o', type: Number, defaultValue: defaults.idleFor, description: `Minutes of inactivity after which a queue is considered idle. [default: ${defaults.idleFor}]` },
     { name: 'delete', type: Boolean, description: 'Delete the queue if it is idle. The fail queue also must be idle unless you use --unpair.' },
     { name: 'unpair', type: Boolean, description: 'Treat queues and their fail queues as independent. By default they are treated as a unit.' },
     { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues. This option only applies if you use --unpair. Otherwise, queues and fail queues are treated as a unit.' }
@@ -407,24 +422,26 @@ export async function idleQueues (argv, testHook) {
   setupAWS(options)
   const { idleQueues: idleQueuesOriginal } = await import('./idleQueues.js')
   const idleQueues = testHook || idleQueuesOriginal
+  const opt = getOptionsWithDefaults(options)
+  try {
+    const result = (
+      await withSentry(async () => idleQueues(queues, opt), opt)
+    )
+    debug('idleQueues returned', result)
+    if (result === 'noQueues') return Promise.resolve()
+    const callsSQS = result.map(a => a.apiCalls.SQS).reduce((a, b) => a + b, 0)
+    const callsCloudWatch = result.map(a => a.apiCalls.CloudWatch).reduce((a, b) => a + b, 0)
+    if (options.verbose) console.error(chalk.blue('Used ') + callsSQS + chalk.blue(' SQS and ') + callsCloudWatch + chalk.blue(' CloudWatch API calls.'))
 
-  return idleQueues(queues, options)
-    .then(function (result) {
-      debug('idleQueues returned', result)
-      if (result === 'noQueues') return Promise.resolve()
-      const callsSQS = result.map(a => a.apiCalls.SQS).reduce((a, b) => a + b, 0)
-      const callsCloudWatch = result.map(a => a.apiCalls.CloudWatch).reduce((a, b) => a + b, 0)
-      if (options.verbose) console.error(chalk.blue('Used ') + callsSQS + chalk.blue(' SQS and ') + callsCloudWatch + chalk.blue(' CloudWatch API calls.'))
-      // Print idle queues to stdout
-      result.filter(a => a.idle).map(a => a.queue).forEach(q => console.log(q))
-      return result
-    })
-    .catch(err => {
-      if (err.Code === 'AWS.SimpleQueueService.NonExistentQueue') {
-        console.error(chalk.yellow('This error can occur when you run this command immediately after deleting a queue. Wait 60 seconds and try again.'))
-        return Promise.reject(err)
-      }
-    })
+    // Print idle queues to stdout
+    result.filter(a => a.idle).map(a => a.queue).forEach(q => console.log(q))
+    return result
+  } catch (err) {
+    if (err instanceof QueueDoesNotExist) {
+      console.error(chalk.yellow('This error can occur when you run this command immediately after deleting a queue. Wait 60 seconds and try again.'))
+    }
+    throw err
+  }
 }
 
 export async function root (originalArgv, testHook) {

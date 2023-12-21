@@ -4,6 +4,7 @@
 import chalk from 'chalk'
 import { getSQSClient } from './sqs.js'
 import { getCloudWatchClient } from './cloudWatch.js'
+import { getOptionsWithDefaults } from './defaults.js'
 import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
 import { normalizeFailQueueName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
@@ -35,13 +36,13 @@ const metricNames = [
 /**
  * Actual SQS call, used in conjunction with cache.
  */
-export async function _cheapIdleCheck (qname, qrl, options) {
+export async function _cheapIdleCheck (qname, qrl, opt) {
   const client = getSQSClient()
   const cmd = new GetQueueAttributesCommand({ AttributeNames: attributeNames, QueueUrl: qrl })
   const data = await client.send(cmd)
   // debug('data', data)
   const result = data.Attributes
-  result.queue = qname.slice(options.prefix.length)
+  result.queue = qname.slice(opt.prefix.length)
   // We are idle if all the messages attributes are zero
   result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
   return { result, SQS: 1 }
@@ -51,13 +52,13 @@ export async function _cheapIdleCheck (qname, qrl, options) {
  * Gets queue attributes from the SQS api and assesses whether queue is idle
  * at this immediate moment.
  */
-export async function cheapIdleCheck (qname, qrl, options) {
+export async function cheapIdleCheck (qname, qrl, opt) {
   // Just call the API if we don't have a cache
-  if (!options['cache-uri']) return _cheapIdleCheck(qname, qrl, options)
+  if (!opt.cacheUri) return _cheapIdleCheck(qname, qrl, opt)
 
   // Otherwise check cache
   const key = 'cheap-idle-check:' + qrl
-  const cacheResult = await getCache(key, options)
+  const cacheResult = await getCache(key, opt)
   debug({ cacheResult })
   if (cacheResult) {
     debug({ action: 'return resolved' })
@@ -65,9 +66,9 @@ export async function cheapIdleCheck (qname, qrl, options) {
   } else {
     // Cache miss, make call
     debug({ action: 'do real check' })
-    const { result, SQS } = await _cheapIdleCheck(qname, qrl, options)
+    const { result, SQS } = await _cheapIdleCheck(qname, qrl, opt)
     debug({ action: 'setCache', key, result })
-    const ok = await setCache(key, result, options)
+    const ok = await setCache(key, result, opt)
     debug({ action: 'return result of set cache', ok })
     return { result, SQS }
   }
@@ -76,11 +77,11 @@ export async function cheapIdleCheck (qname, qrl, options) {
 /**
  * Gets a single metric from the CloudWatch api.
  */
-export async function getMetric (qname, qrl, metricName, options) {
+export async function getMetric (qname, qrl, metricName, opt) {
   debug('getMetric', qname, qrl, metricName)
   const now = new Date()
   const params = {
-    StartTime: new Date(now.getTime() - 1000 * 60 * options['idle-for']),
+    StartTime: new Date(now.getTime() - 1000 * 60 * opt.idleFor),
     EndTime: now,
     MetricName: metricName,
     Namespace: 'AWS/SQS',
@@ -109,16 +110,16 @@ export async function getMetric (qname, qrl, metricName, options) {
  * We could randomize the order, but for my test use case, it's always cheaper
  * to check NumberOfMessagesSent first, and is the primary indicator of use.
  */
-export async function checkIdle (qname, qrl, options) {
+export async function checkIdle (qname, qrl, opt) {
   // Do the cheap check first to make sure there is no data in flight at the moment
   debug('checkIdle', qname, qrl)
-  const { result: cheapResult, SQS } = await cheapIdleCheck(qname, qrl, options)
+  const { result: cheapResult, SQS } = await cheapIdleCheck(qname, qrl, opt)
   debug('cheapResult', cheapResult)
 
   // Short circuit further calls if cheap result shows data
   if (cheapResult.idle === false) {
     return {
-      queue: qname.slice(options.prefix.length),
+      queue: qname.slice(opt.prefix.length),
       cheap: cheapResult,
       idle: false,
       apiCalls: { SQS, CloudWatch: 0 }
@@ -132,7 +133,7 @@ export async function checkIdle (qname, qrl, options) {
   let idle = true
   for (const metricName of metricNames) {
     // Check metrics in order
-    const result = await getMetric(qname, qrl, metricName, options)
+    const result = await getMetric(qname, qrl, metricName, opt)
     results.push(result)
     debug('getMetric result', result)
     apiCalls.CloudWatch++
@@ -145,7 +146,7 @@ export async function checkIdle (qname, qrl, options) {
   // Calculate stats
   const stats = Object.assign(
     {
-      queue: qname.slice(options.prefix.length),
+      queue: qname.slice(opt.prefix.length),
       cheap: cheapResult,
       apiCalls,
       idle
@@ -159,11 +160,11 @@ export async function checkIdle (qname, qrl, options) {
 /**
  * Just deletes a queue.
  */
-export async function deleteQueue (qname, qrl, options) {
+export async function deleteQueue (qname, qrl, opt) {
   const cmd = new DeleteQueueCommand({ QueueUrl: qrl })
   const result = await getSQSClient().send(cmd)
   debug(result)
-  if (options.verbose) console.error(chalk.blue('Deleted ') + qname.slice(options.prefix.length))
+  if (opt.verbose) console.error(chalk.blue('Deleted ') + qname.slice(opt.prefix.length))
   return {
     deleted: true,
     apiCalls: { SQS: 1, CloudWatch: 0 }
@@ -173,21 +174,21 @@ export async function deleteQueue (qname, qrl, options) {
 /**
  * Processes a single queue, checking for idle, deleting if applicable.
  */
-export async function processQueue (qname, qrl, options) {
-  const result = await checkIdle(qname, qrl, options)
+export async function processQueue (qname, qrl, opt) {
+  const result = await checkIdle(qname, qrl, opt)
   debug(qname, result)
 
   // Queue is active
   if (!result.idle) {
     // Notify and return
-    if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+    if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + opt.idleFor + chalk.blue(' minutes.'))
     return result
   }
 
   // Queue is idle
-  if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-  if (options.delete) {
-    const deleteResult = await deleteQueue(qname, qrl, options)
+  if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
+  if (opt.delete) {
+    const deleteResult = await deleteQueue(qname, qrl, opt)
     const resultIncludingDelete = Object.assign(result, {
       deleted: deleteResult.deleted,
       apiCalls: {
@@ -202,30 +203,30 @@ export async function processQueue (qname, qrl, options) {
 /**
  * Processes a queue and its fail queue, treating them as a unit.
  */
-export async function processQueuePair (qname, qrl, options) {
+export async function processQueuePair (qname, qrl, opt) {
   const isFifo = qname.endsWith('.fifo')
-  const normalizeOptions = Object.assign({}, options, { fifo: isFifo })
+  const normalizeOptions = Object.assign({}, opt, { fifo: isFifo })
   // Generate fail queue name/url
   const fqname = normalizeFailQueueName(qname, normalizeOptions)
   const fqrl = normalizeFailQueueName(qrl, normalizeOptions)
 
   // Idle check
-  const result = await checkIdle(qname, qrl, options)
+  const result = await checkIdle(qname, qrl, opt)
   debug('result', result)
 
   // Queue is active
   const active = !result.idle
   if (active) {
-    if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+    if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + opt.idleFor + chalk.blue(' minutes.'))
     return result
   }
 
   // Queue is idle
-  if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+  if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
 
   // Check fail queue
   try {
-    const fresult = await checkIdle(fqname, fqrl, options)
+    const fresult = await checkIdle(fqname, fqrl, opt)
     debug('fresult', fresult)
     const idleCheckResult = Object.assign(
       result,
@@ -241,18 +242,18 @@ export async function processQueuePair (qname, qrl, options) {
     // Queue is active
     const factive = !fresult.idle
     if (factive) {
-      if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+      if (opt.verbose) console.error(chalk.blue('Queue ') + fqname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + opt.idleFor + chalk.blue(' minutes.'))
       return idleCheckResult
     }
 
     // Queue is idle
-    if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+    if (opt.verbose) console.error(chalk.blue('Queue ') + fqname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
 
     // Trigger a delete if the user wants it
-    if (!options.delete) return idleCheckResult
+    if (!opt.delete) return idleCheckResult
     const [dresult, dfresult] = await Promise.all([
-      deleteQueue(qname, qrl, options),
-      deleteQueue(fqname, fqrl, options)
+      deleteQueue(qname, qrl, opt),
+      deleteQueue(fqname, fqrl, opt)
     ])
     return Object.assign(idleCheckResult, {
       apiCalls: {
@@ -272,11 +273,11 @@ export async function processQueuePair (qname, qrl, options) {
     if (!(e instanceof QueueDoesNotExist)) throw e
 
     // Fail queue doesn't exist if we get here
-    if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
+    if (opt.verbose) console.error(chalk.blue('Queue ') + fqname.slice(opt.prefix.length) + chalk.blue(' does not exist.'))
 
     // Handle delete
-    if (!options.delete) return result
-    const deleteResult = await deleteQueue(qname, qrl, options)
+    if (!opt.delete) return result
+    const deleteResult = await deleteQueue(qname, qrl, opt)
     const resultIncludingDelete = Object.assign(result, {
       deleted: deleteResult.deleted,
       apiCalls: {
@@ -292,36 +293,37 @@ export async function processQueuePair (qname, qrl, options) {
 // Resolve queues for listening loop listen
 //
 export async function idleQueues (queues, options) {
-  if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(queue => options.prefix + queue)
-  const entries = await getQnameUrlPairs(qnames, options)
+  const opt = getOptionsWithDefaults(options)
+  if (opt.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
+  const qnames = queues.map(queue => opt.prefix + queue)
+  const entries = await getQnameUrlPairs(qnames, opt)
   debug('getQnameUrlPairs.then')
-  if (options.verbose) {
+  if (opt.verbose) {
     console.error(chalk.blue('  done'))
     console.error()
   }
 
   // Filter out any queue ending in suffix unless --include-failed is set
   const filteredEntries = entries.filter(entry => {
-    const suf = options['fail-suffix']
-    const sufFifo = options['fail-suffix'] + fifoSuffix
+    const suf = opt.failSuffix
+    const sufFifo = opt.failSuffix + fifoSuffix
     const isFail = entry.qname.endsWith(suf)
     const isFifoFail = entry.qname.endsWith(sufFifo)
-    return options['include-failed'] ? true : (!isFail && !isFifoFail)
+    return opt.includeFailed ? true : (!isFail && !isFifoFail)
   })
 
   // But only if we have queues to remove
   if (filteredEntries.length) {
-    if (options.verbose) {
+    if (opt.verbose) {
       console.error(chalk.blue('Checking queues (in this order):'))
       console.error(filteredEntries.map(e =>
-        '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)
+        '  ' + e.qname.slice(opt.prefix.length) + chalk.blue(' - ' + e.qrl)
       ).join('\n'))
       console.error()
     }
     // Check each queue in parallel
-    if (options.unpair) return Promise.all(filteredEntries.map(e => processQueue(e.qname, e.qrl, options)))
-    return Promise.all(filteredEntries.map(e => processQueuePair(e.qname, e.qrl, options)))
+    if (opt.unpair) return Promise.all(filteredEntries.map(e => processQueue(e.qname, e.qrl, opt)))
+    return Promise.all(filteredEntries.map(e => processQueuePair(e.qname, e.qrl, opt)))
   }
 
   // Otherwise, let caller know

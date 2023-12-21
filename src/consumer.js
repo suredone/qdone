@@ -17,6 +17,16 @@ import { cheapIdleCheck } from './idleQueues.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { getSQSClient } from './sqs.js'
 
+//
+// Throwing an instance of this Error allows the processMessages callback to
+// refuse a message which then gets immediately returned to the queue.
+//
+// This has the side effect of throtting the queue since it stops polling on
+// the queue until the next queue resolution in processMessages.
+//
+// This is useful for implementing schedulers on top of qdone, for example, to
+// look at the queue name and decide whether to take on a new message.
+//
 export class DoNotProcess extends Error {}
 
 const debug = Debug('qdone:worker')
@@ -136,6 +146,10 @@ export async function processMessage (message, callback, qname, qrl, opt) {
 
     // If the callback does not want to process this message, return to queue
     if (err instanceof DoNotProcess) {
+      if (opt.verbose) {
+        console.error(chalk.blue('  callback ') + chalk.yellow('REFUSED'))
+        console.error(chalk.blue('  cleaning up (removing message) ...'))
+      }
       const result = await getSQSClient().send(new ChangeMessageVisibilityCommand({
         QueueUrl: qrl,
         ReceiptHandle: message.ReceiptHandle,

@@ -11,19 +11,19 @@ beforeEach(shutdownCache)
 afterAll(shutdownCache)
 
 const options = {
-  'cache-uri': 'redis://localhost',
-  'cache-ttl-seconds': 10,
-  'cache-prefix': 'qdone:'
+  cacheUri: 'redis://localhost',
+  cacheTtlSeconds: 10,
+  cachePrefix: 'qdone:'
 }
 
 describe('getCacheClient', () => {
   test('throws an error for invalid cache uri', () => {
-    const badOptions = Object.assign({}, options, { 'cache-uri': 'bob://foo' })
+    const badOptions = Object.assign({}, options, { cacheUri: 'bob://foo' })
     expect(() => getCacheClient(badOptions)).toThrow('currently supported')
   })
   test('throws an error when --cache-uri is missing', () => {
     const badOptions = Object.assign({}, options)
-    delete badOptions['cache-uri']
+    delete badOptions.cacheUri
     expect(() => getCacheClient(badOptions)).toThrow(/--cache-uri/)
   })
   test('supports redis:// URIs', () => {
@@ -31,7 +31,7 @@ describe('getCacheClient', () => {
   })
   test('supports redis-cache:// URIs', () => {
     expect(() => getCacheClient(
-      Object.assign({}, options, { 'cache-uri': 'redis-cluster://' })
+      Object.assign({}, options, { cacheUri: 'redis-cluster://' })
     )).not.toThrow()
   })
   test('returns an identical client on subsequent calls', () => {

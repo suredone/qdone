@@ -12,10 +12,12 @@ export const defaults = Object.freeze({
   quiet: false,
   verbose: false,
   cache: false,
+  cacheUri: undefined,
   cachePrefix: 'qdone:',
   cacheTtlSeconds: 10,
   fifo: false,
   disableLog: false,
+  includeFailed: false,
 
   // Enqueue
   groupId: uuidv1(),
@@ -33,7 +35,11 @@ export const defaults = Object.freeze({
   killAfter: 30,
   archive: false,
   activeOnly: false,
-  includeFailed: false
+
+  // Idle Queues
+  idleFor: 60,
+  delete: false,
+  unpair: false
 })
 
 /**
@@ -58,29 +64,38 @@ export function getOptionsWithDefaults (options) {
     region: options.region || process.env.AWS_REGION || defaults.region,
     quiet: options.quiet || defaults.quiet,
     verbose: options.verbose || defaults.verbose,
-    cachePrefix: options.cachePrefix || options['cache-prefix'] || defaults.cachePrefix,
-    cacheTtlSeconds: options.cacheTtlSeconds || options['cache-ttl-seconds'] || defaults.cacheTtlSeconds,
     fifo: options.fifo || defaults.fifo,
     sentryDsn: options.sentryDsn || options['sentry-dsn'],
-    disableLog: options['disable-log'] || defaults.disableLog,
+    disableLog: options.disableLog || options['disable-log'] || defaults.disableLog,
+
+    // Cache
+    cacheUri: options.cacheUri || options['cache-uri'] || defaults.cacheUri,
+    cachePrefix: options.cachePrefix || options['cache-prefix'] || defaults.cachePrefix,
+    cacheTtlSeconds: options.cacheTtlSeconds || options['cache-ttl-seconds'] || defaults.cacheTtlSeconds,
 
     // Enqueue
     groupId: options.groupId || options['group-id'] || defaults.groupId,
     groupIdPerMessage: false,
     deduplicationId: options.deduplicationId || options['deduplication-id'] || defaults.deduplicationId,
-    messageRetentionPeriod: options['message-retention-period'] || defaults.messageRetentionPeriod,
+    messageRetentionPeriod: options.messageRetentionPeriod || options['message-retention-period'] || defaults.messageRetentionPeriod,
     delay: options.delay || defaults.delay,
     archive: options.archive || defaults.archive,
     dlq: dlq || defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || defaults.dlqSuffix,
     dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter,
+    tags: options.tags || undefined,
 
     // Worker
-    waitTime: options['wait-time'] || defaults.waitTime,
-    killAfter: options['kill-after'] || defaults.killAfter,
+    waitTime: options.waitTime || options['wait-time'] || defaults.waitTime,
+    killAfter: options.killAfter || options['kill-after'] || defaults.killAfter,
     archive: options.archive || defaults.archive,
-    activeOnly: options['active-only'] || defaults.activeOnly,
-    includeFailed: options['include-failed'] || defaults.includeFailed
+    activeOnly: options.activeOnly || options['active-only'] || defaults.activeOnly,
+    includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
+
+    // Idle Queues
+    idleFor: options.idleFor || options['idle-for'] || defaults.idleFor,
+    delete: options.delete || defaults.delete,
+    unpair: options.delete || defaults.unpair
   }
   process.env.AWS_REGION = opt.region
 

@@ -44,6 +44,7 @@ export async function getOrCreateDLQ (queue, opt) {
       Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
       QueueName: dqname
     }
+    if (opt.tags) params.tags = opt.tags
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     if (opt.verbose) console.error(chalk.blue('Creating dead letter queue ') + dqname)
@@ -81,6 +82,7 @@ export async function getOrCreateFailQueue (queue, opt) {
         maxReceiveCount: opt.dlqAfter + ''
       })
     }
+    if (opt.tags) params.tags = opt.tags
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     if (opt.verbose) console.error(chalk.blue('Creating fail queue ') + fqname)
@@ -121,6 +123,7 @@ export async function getOrCreateQueue (queue, opt) {
       },
       QueueName: qname
     }
+    if (opt.tags) params.tags = opt.tags
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     debug({ params })

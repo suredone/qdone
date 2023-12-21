@@ -11,11 +11,11 @@ let client
  * Internal function to setup redis client. Parses URI to figure out
  * how to connect.
  */
-export function getCacheClient (options) {
+export function getCacheClient (opt) {
   if (client) {
     return client
-  } else if (options['cache-uri']) {
-    const url = new URL(options['cache-uri'])
+  } else if (opt.cacheUri) {
+    const url = new URL(opt.cacheUri)
     if (url.protocol === 'redis:') {
       client = new Redis(url.toString())
     } else if (url.protocol === 'redis-cluster:') {
@@ -39,9 +39,9 @@ export function shutdownCache () {
  * Returns a promise for the item. Resolves to false if cache is empty, object
  * if it is found.
  */
-export async function getCache (key, options) {
-  const client = getCacheClient(options)
-  const cacheKey = options['cache-prefix'] + key
+export async function getCache (key, opt) {
+  const client = getCacheClient(opt)
+  const cacheKey = opt.cachePrefix + key
   debug({ action: 'getCache', cacheKey })
   const result = await client.get(cacheKey)
   debug({ action: 'getCache got', cacheKey, result })
@@ -51,12 +51,12 @@ export async function getCache (key, options) {
 /**
  * Returns a promise for the status. Encodes object as JSON
  */
-export async function setCache (key, value, options) {
-  const client = getCacheClient(options)
+export async function setCache (key, value, opt) {
+  const client = getCacheClient(opt)
   const encoded = JSON.stringify(value)
-  const cacheKey = options['cache-prefix'] + key
+  const cacheKey = opt.cachePrefix + key
   debug({ action: 'setCache', cacheKey, value })
-  return client.setex(cacheKey, options['cache-ttl-seconds'], encoded)
+  return client.setex(cacheKey, opt.cacheTtlSeconds, encoded)
 }
 
 debug('loaded')
