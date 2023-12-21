@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --experimental-json-modules
 
-// 
+//
 // This example implements a basic scheduler on top of qdone. The
 // processMessages callback looks at the queue name throws a DoNotProcess
 // error if there are already two messages processing on this queue.
@@ -13,9 +13,9 @@ import {
   DoNotProcess
 } from '../index.mjs' // from 'qdone' for standalone example
 
-const randomEnqueue = setTimeout(function () {
-  const queue = ['rtest1', 'rtest2', 'rtest3'][Math.round(Math.random()*2)]
-  const payload = {foo: Math.round(Math.random() * 10)}
+const randomEnqueue = setInterval(function () {
+  const queue = ['rtest1', 'rtest2', 'rtest3'][Math.round(Math.random() * 2)]
+  const payload = { foo: Math.round(Math.random() * 10) }
   console.log({ enqueue: { queue, payload } })
   enqueue(queue, JSON.stringify(payload))
 }, 200)

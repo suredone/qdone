@@ -318,50 +318,53 @@ export async function worker (argv, testHook) {
   process.on('SIGINT', handleShutdown)
   process.on('SIGTERM', handleShutdown)
 
-  function workLoop () {
+  async function workLoop () {
     if (shutdownRequested) {
       if (options.verbose) console.error(chalk.blue('Shutting down as requested.'))
       return Promise.resolve()
     }
-    return listen(queues, options)
-      .then(function (result) {
-        debug('listen returned', result)
+    // const result = await listen(queues, options)
+    const opt = getOptionsWithDefaults(options)
+    const result = (
+      await withSentry(async () => listen(queues, opt), opt)
+    )
+    debug('listen returned', result)
 
-        // Handle delay in the case we don't have any queues
-        if (result === 'noQueues') {
-          const roundDelay = Math.max(1000, options['wait-time'] * 1000)
-          if (options.verbose) console.error(chalk.yellow('No queues to listen on!'))
-          if (options.drain) {
-            console.error(chalk.blue('Shutting down because we are in drain mode and no work is available.'))
-            return Promise.resolve()
-          }
-          console.error(chalk.yellow('Retrying in ' + (roundDelay / 1000) + 's'))
-          const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-          return delay(roundDelay).then(workLoop)
-        }
+    // Handle delay in the case we don't have any queues
+    if (result === 'noQueues') {
+      const roundDelay = Math.max(1000, options['wait-time'] * 1000)
+      if (options.verbose) console.error(chalk.yellow('No queues to listen on!'))
+      if (options.drain) {
+        console.error(chalk.blue('Shutting down because we are in drain mode and no work is available.'))
+        return Promise.resolve()
+      }
+      console.error(chalk.yellow('Retrying in ' + (roundDelay / 1000) + 's'))
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+      return delay(roundDelay).then(workLoop)
+    }
 
-        const ranJob = (result.jobsSucceeded + result.jobsFailed) > 0
-        jobCount += result.jobsSucceeded + result.jobsFailed
-        jobsFailed += result.jobsFailed
-        jobsSucceeded += result.jobsSucceeded
-        // Draining continues to listen as long as there is work
-        if (options.drain) {
-          if (ranJob) return workLoop()
-          if (options.verbose) {
-            console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs: ') + jobsSucceeded + chalk.blue(' succeeded ') + jobsFailed + chalk.blue(' failed'))
-          }
-          // return Promise.resolve(jobCount)
-        } else {
-          // If we're not draining, loop forever
-          // We can go immediately if we just ran a job
-          if (ranJob) return workLoop()
-          // Otherwise, we could do backoff logic here to slow down requests when
-          // work is not happening (at the expense of latency)
-          // But we won't do that now.
-          return workLoop()
-        }
-      })
+    const ranJob = (result.jobsSucceeded + result.jobsFailed) > 0
+    jobCount += result.jobsSucceeded + result.jobsFailed
+    jobsFailed += result.jobsFailed
+    jobsSucceeded += result.jobsSucceeded
+    // Draining continues to listen as long as there is work
+    if (options.drain) {
+      if (ranJob) return workLoop()
+      if (options.verbose) {
+        console.error(chalk.blue('Ran ') + jobCount + chalk.blue(' jobs: ') + jobsSucceeded + chalk.blue(' succeeded ') + jobsFailed + chalk.blue(' failed'))
+      }
+      // return Promise.resolve(jobCount)
+    } else {
+      // If we're not draining, loop forever
+      // We can go immediately if we just ran a job
+      if (ranJob) return workLoop()
+      // Otherwise, we could do backoff logic here to slow down requests when
+      // work is not happening (at the expense of latency)
+      // But we won't do that now.
+      return workLoop()
+    }
   }
+
   return workLoop()
 }
 

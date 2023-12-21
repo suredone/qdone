@@ -52,7 +52,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
       event: 'MESSAGE_PROCESSING_START',
       timestamp: new Date(),
       messageId: message.MessageId,
-      payload: payload
+      payload
     }))
   }
 
@@ -102,7 +102,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
           reason: 'ran longer than --kill-after',
           timestamp: new Date(),
           messageId: message.MessageId,
-          payload: payload,
+          payload,
           errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined,
           err
         }))
@@ -136,7 +136,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
         event: 'MESSAGE_PROCESSING_COMPLETE',
         timestamp: new Date(),
         messageId: message.MessageId,
-        payload: payload
+        payload
       }))
     }
     return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
@@ -170,7 +170,7 @@ export async function processMessage (message, callback, qname, qrl, opt) {
         reason: 'exception thrown',
         timestamp: new Date(),
         messageId: message.MessageId,
-        payload: payload,
+        payload,
         errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined,
         err
       }))
@@ -248,8 +248,7 @@ export async function resolveQueues (queues, opt) {
 //
 export async function processMessages (queues, callback, options) {
   const opt = getOptionsWithDefaults(options)
-  debug('processMessages', {queues, callback, options, opt })
-
+  debug('processMessages', { queues, callback, options, opt })
 
   const stats = { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }
   const activeLoops = {}
@@ -271,7 +270,7 @@ export async function processMessages (queues, callback, options) {
       }
       clearTimeout(delayTimeout)
     }
-  } 
+  }
   shutdownCallbacks.push(shutdownCallback)
 
   // Listen to a queue until it is out of messages
@@ -296,12 +295,10 @@ export async function processMessages (queues, callback, options) {
 
       // Otherwise keep going
       return listenLoop(qname, qrl)
-
     } catch (err) {
       // TODO: Sentry
       console.error(chalk.red('  ERROR in listenLoop'))
       console.error(chalk.blue('  error : ') + err)
-
     } finally {
       delete activeLoops[qname]
     }
