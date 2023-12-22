@@ -59,7 +59,7 @@ export function getOptionsWithDefaults (options) {
 
   const opt = {
     // Shared
-    prefix: options.prefix === '' ? options.prefix : defaults.prefix,
+    prefix: options.prefix || defaults.prefix,
     failSuffix: options.failSuffix || options['fail-suffix'] || defaults.failSuffix,
     region: options.region || process.env.AWS_REGION || defaults.region,
     quiet: options.quiet || defaults.quiet,

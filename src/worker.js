@@ -91,12 +91,12 @@ export async function executeJob (job, qname, qrl, opt) {
   // it does not seem to work for child processes of the shell, so we'll create our
   // own timeout and use tree-kill to catch all of the child processes.
 
-  let child
+  let child, sigKillTimeout
   function killTree () {
     debug('killTree', child.pid)
     treeKill(child.pid, 'SIGTERM')
     setTimeout(function () {
-      treeKill(child.pid, 'SIGKILL')
+      sigKillTimeout = treeKill(child.pid, 'SIGKILL')
     }, 1000)
   }
   const treeKiller = setTimeout(killTree, opt.killAfter * 1000)
@@ -117,6 +117,7 @@ export async function executeJob (job, qname, qrl, opt) {
     debug('exec.then', Date.now())
     clearTimeout(timeoutExtender)
     clearTimeout(treeKiller)
+    clearTimeout(sigKillTimeout)
     if (opt.verbose) {
       console.error(chalk.green('  SUCCESS'))
       if (stdout) console.error(chalk.blue('  stdout: ') + stdout)
@@ -137,6 +138,7 @@ export async function executeJob (job, qname, qrl, opt) {
     debug('exec.catch')
     clearTimeout(timeoutExtender)
     clearTimeout(treeKiller)
+    clearTimeout(sigKillTimeout)
     if (opt.verbose) {
       const { code, signal, stdout, stderr } = err
       console.error(chalk.red('  FAILED'))
@@ -193,6 +195,7 @@ export async function pollForJobs (qname, qrl, opt) {
 //
 export async function listen (queues, options) {
   const opt = getOptionsWithDefaults(options)
+  debug({ opt, options })
   // Function to listen to all queues in order
   async function oneRound (queues) {
     const stats = { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }
