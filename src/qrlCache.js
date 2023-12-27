@@ -118,10 +118,10 @@ export async function getMatchingQueues (prefix, nextToken) {
   const command = new ListQueuesCommand(input)
   const result = await client.send(command)
   debug({ result })
-  const { QueueUrls: qrls, NextToken: keepGoing } = result
+  const { QueueUrls: qrls, NextToken: keepGoing } = result ?? {}
   debug({ qrls, keepGoing })
-  if (keepGoing) (qrls || []).push(...await getMatchingQueues(prefix, keepGoing))
-  return qrls || []
+  if (keepGoing) (qrls ?? []).push(...await getMatchingQueues(prefix, keepGoing))
+  return qrls ?? []
 }
 
 //
