@@ -276,6 +276,24 @@ describe('getMatchingQueues', () => {
     ])
     expect(sqsMock).toHaveReceivedCommandTimes(ListQueuesCommand, 3)
   })
+
+  test('handles no results', async () => {
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand)
+      .resolves({
+        QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/foobar'
+      })
+      .on(ListQueuesCommand, { QueueNamePrefix: 'foobar' })
+      .resolvesOnce({
+        $metadata: {}
+      })
+    const qname = 'foobar'
+    const qrl = 'https://sqs.us-east-1.amazonaws.com/foobar/foobar_1'
+    expect(await getMatchingQueues(qname)).toEqual([])
+    expect(sqsMock).toHaveReceivedCommandTimes(ListQueuesCommand, 1)
+  })
 })
 
 describe('getQnameUrlPairs', () => {
