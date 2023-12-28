@@ -7,7 +7,6 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand
 } from '@aws-sdk/client-sqs'
-import { exec } from 'node:child_process'
 import treeKill from 'tree-kill'
 import chalk from 'chalk'
 import Debug from 'debug'

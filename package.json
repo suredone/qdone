@@ -3,13 +3,14 @@
   "version": "2.0.0-alpha",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
-  "main": "./index.mjs",
+  "main": "./index.js",
+  "module": "./index.js",
   "bin": "./src/bin.js",
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.465.0",
     "@aws-sdk/client-sqs": "^3.465.0",
     "@sentry/node": "^7.87.0",
-    "chalk": "^5.3.0",
+    "chalk": "^4.1.2",
     "command-line-args": "^5.2.1",
     "command-line-commands": "^3.0.2",
     "command-line-usage": "^7.0.1",
@@ -22,7 +23,8 @@
   "devDependencies": {
     "aws-sdk-client-mock": "^3.0.0",
     "aws-sdk-client-mock-jest": "^3.0.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "typescript": "^5.3.3"
   },
   "preferGlobal": true,
   "engines": {
@@ -31,9 +33,12 @@
   "scripts": {
     "start": "./src/bin.js",
     "test": "NODE_OPTIONS='--experimental-json-modules --experimental-vm-modules --no-warnings' jest",
+    "build": "tsc --allowJs index.js --outdir commonjs --esModuleInterop --module commonjs",
+    "clean": "rm -rf commonjs/src commonjs/*.js coverage",
     "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
     "standard": "standard",
+    "prepare": "pnpm run build",
     "prep-for-publish": "npm shrinkwrap && echo now commit shrinkwrap and use npm run publish-{next,latest}",
     "publish-latest": "npm publish --tag latest",
     "publish-next": "npm publish --tag next"
