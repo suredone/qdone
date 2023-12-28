@@ -6,6 +6,10 @@
   "main": "./index.js",
   "module": "./index.js",
   "bin": "./src/bin.js",
+  "files": [
+    "src",
+    "commonjs"
+  ],
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.465.0",
     "@aws-sdk/client-sqs": "^3.465.0",
@@ -38,8 +42,8 @@
     "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
     "standard": "standard",
-    "prepare": "pnpm run build",
-    "prep-for-publish": "npm shrinkwrap && echo now commit shrinkwrap and use npm run publish-{next,latest}",
+    "prepare": "pnpm run clean && pnpm run build && npm shrinkwrap",
+    "prep-for-publish": "echo now commit shrinkwrap and use npm run publish-{next,latest}",
     "publish-latest": "npm publish --tag latest",
     "publish-next": "npm publish --tag next"
   },
