@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "2.0.0-alpha",
+  "version": "2.0.1-alpha",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
   "main": "./index.js",
@@ -8,7 +8,8 @@
   "bin": "./src/bin.js",
   "files": [
     "src",
-    "commonjs"
+    "commonjs",
+    "index.js"
   ],
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.465.0",
