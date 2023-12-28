@@ -147,7 +147,7 @@ export async function getQnameUrlPairs (qnames, opt) {
         try {
           return { qname, qrl: await qrlCacheGet(qname) }
         } catch (err) {
-          if (err instanceof QueueDoesNotExist) return
+          if (!(err instanceof QueueDoesNotExist)) throw err
         }
       }
     }

@@ -290,7 +290,6 @@ describe('getMatchingQueues', () => {
         $metadata: {}
       })
     const qname = 'foobar'
-    const qrl = 'https://sqs.us-east-1.amazonaws.com/foobar/foobar_1'
     expect(await getMatchingQueues(qname)).toEqual([])
     expect(sqsMock).toHaveReceivedCommandTimes(ListQueuesCommand, 1)
   })

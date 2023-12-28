@@ -7,7 +7,6 @@ import {
   ReceiveMessageCommand,
   DeleteMessageCommand
 } from '@aws-sdk/client-sqs'
-import treeKill from 'tree-kill'
 import chalk from 'chalk'
 import Debug from 'debug'
 
@@ -304,7 +303,7 @@ export async function processMessages (queues, callback, options) {
   }
 
   // Resolve loop
-  while (!shutdownRequested) {
+  while (!shutdownRequested) { // eslint-disable-line
     const start = new Date()
     const selectedPairs = await resolveQueues(queues, opt)
     if (shutdownRequested) break
