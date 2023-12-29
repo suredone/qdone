@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "2.0.2-alpha",
+  "version": "2.0.3-alpha",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
   "main": "./index.js",
@@ -43,7 +43,7 @@
     "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
     "standard": "standard",
-    "prep-for-publish": "pnpm run clean && pnpm run build && npm shrinkwrap --production && echo now commit shrinkwrap and use npm run publish-{next,latest}",
+    "prep-for-publish": "echo YOU MUST USE NPM TO PREP FOR PUBLISH && pnpm run clean && pnpm run build && npm shrinkwrap --production && echo now commit shrinkwrap and use npm run publish-{next,latest}",
     "publish-latest": "npm publish --tag latest",
     "publish-next": "npm publish --tag next"
   },
