@@ -227,7 +227,7 @@ export async function listen (queues, options) {
   if (opt.activeOnly) {
     debug({ pairsBeforeCheck: pairs })
     await Promise.all(pairs.map(async pair => {
-      const { idle } = await cheapIdleCheck(pair.qname, pair.qrl, opt)
+      const { result: { idle } } = await cheapIdleCheck(pair.qname, pair.qrl, opt)
       if (!idle) activePairs.push(pair)
     }))
   }
