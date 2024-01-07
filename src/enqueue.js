@@ -1,10 +1,4 @@
-// const Q = require('q')
-// const debug = require('debug')('qdone:enqueue')
-// const chalk = require('chalk')
-// const uuid = require('uuid')
-// const qrlCache = require('./qrlCache')
-// const AWS = require('aws-sdk')
-
+import { addBreadcrumb } from '@sentry/node'
 import { v1 as uuidV1 } from 'uuid'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -13,7 +7,9 @@ import {
   GetQueueAttributesCommand,
   SendMessageCommand,
   SendMessageBatchCommand,
-  QueueDoesNotExist
+  QueueDoesNotExist,
+  RequestThrottled,
+  KmsThrottled
 } from '@aws-sdk/client-sqs'
 
 import {
@@ -25,6 +21,7 @@ import {
 } from './qrlCache.js'
 import { getSQSClient } from './sqs.js'
 import { getOptionsWithDefaults } from './defaults.js'
+import { ExponentialBackoff } from './exponentialBackoff.js'
 
 const debug = Debug('qdone:enqueue')
 
@@ -162,21 +159,46 @@ export function formatMessage (command, id) {
   return message
 }
 
+
+// Retry happens within the context of the send functions
+const retryableExceptions = [
+  RequestThrottled,
+  KmsThrottled,
+  QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
+]
+
 export async function sendMessage (qrl, command, opt) {
   debug('sendMessage(', qrl, command, ')')
   const params = Object.assign({ QueueUrl: qrl }, formatMessage(command))
-  // Add in group id if we're using fifo
   if (opt.fifo) {
     params.MessageGroupId = opt.groupId
-    params.MessageDeduplicationId = opt.deduplicationId
+    params.MessageDeduplicationId = opt.deduplicationId || uuidV1()
   }
   if (opt.delay) params.DelaySeconds = opt.delay
+
+  // Send it
   const client = getSQSClient()
   const cmd = new SendMessageCommand(params)
   debug({ cmd })
-  const data = await client.send(cmd)
-  debug('sendMessage returned', data)
-  return data
+  const backoff = new ExponentialBackoff(opt.sendRetries)
+  const send = async (attemptNumber) => {
+    cmd.input.attemptNumber = attemptNumber
+    const data = await client.send(cmd)
+    debug('sendMessage returned', data)
+    return data
+  }
+  const shouldRetry = async (result, error) => {
+    for (const exceptionClass of retryableExceptions) {
+      if (error instanceof exceptionClass) {
+        debug({ sendMessageRetryingBecause: { error, result } })
+        return true
+      }
+    }
+    return false
+  }
+  const result = await backoff.run(send, shouldRetry)
+  debug({ sendMessageResult: result })
+  return result
 }
 
 export async function sendMessageBatch (qrl, messages, opt) {
@@ -196,12 +218,35 @@ export async function sendMessageBatch (qrl, messages, opt) {
     params.Entries = params.Entries.map(message =>
       Object.assign({ DelaySeconds: opt.delay }, message))
   }
+  if (opt.sentryDsn) {
+    addBreadcrumb({ category: 'sendMessageBatch', 'message': JSON.stringify({ params }), level: 'debug' })
+  }
+  debug({ params })
+
+  // Send them
   const client = getSQSClient()
   const cmd = new SendMessageBatchCommand(params)
   debug({ cmd })
-  const data = await client.send(cmd)
-  debug('sendMessageBatch returned', data)
-  return data
+  const backoff = new ExponentialBackoff(opt.sendRetries)
+  const send = async (attemptNumber) => {
+    debug({ sendMessageBatchSend: { attemptNumber, params } })
+    const data = await client.send(cmd)
+    return data
+  }
+  const shouldRetry = (result, error) => {
+    debug({ shouldRetry: { error, result } })
+    if (opt.sentryDsn) {
+      addBreadcrumb({ category: 'sendMessageBatch', 'message': JSON.stringify({ error }), level: 'error' })
+    }
+    for (const exceptionClass of retryableExceptions) {
+      debug({ exceptionClass, retryableExceptions })
+      if (error instanceof exceptionClass) {
+        debug({ sendMessageRetryingBecause: { error, result } })
+        return true
+      }
+    }
+  }
+  return backoff.run(send, shouldRetry)
 }
 
 const messages = {}
@@ -263,6 +308,7 @@ export async function addMessage (qrl, command, opt) {
   const message = formatMessage(command, messageIndex++)
   messages[qrl] = messages[qrl] || []
   messages[qrl].push(message)
+  debug({ location: 'addMessage', messages })
   if (messages[qrl].length >= 10) {
     return flushMessages(qrl, opt)
   }
@@ -306,16 +352,12 @@ export async function enqueueBatch (pairs, options) {
   // After we've prefetched, all qrls are in cache
   // so go back through the list of pairs and fire off messages
   requestCount = 0
+  let initialFlushTotal = 0
   const addMessagePromises = []
   for (const { qname, command } of normalizedPairs) {
     const qrl = await getOrCreateQueue(qname, opt)
-    addMessagePromises.push(addMessage(qrl, command, opt))
+    initialFlushTotal += await addMessage(qrl, command, opt)
   }
-  const flushCounts = await Promise.all(addMessagePromises)
-
-  // Count up how many were flushed during add
-  debug('flushCounts', flushCounts)
-  const initialFlushTotal = flushCounts.reduce((a, b) => a + b, 0)
 
   // And flush any remaining messages
   const extraFlushPromises = []

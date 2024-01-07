@@ -1,10 +1,13 @@
+import { jest } from '@jest/globals'
 import {
   CreateQueueCommand,
   GetQueueUrlCommand,
   GetQueueAttributesCommand,
   SendMessageCommand,
   SendMessageBatchCommand,
-  QueueDoesNotExist
+  QueueDoesNotExist,
+  RequestThrottled,
+  KmsThrottled
 } from '@aws-sdk/client-sqs'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
@@ -29,6 +32,7 @@ import { loadBatchFiles } from '../src/cli.js'
 
 getSQSClient()
 const client = getSQSClient()
+jest.useFakeTimers()
 
 // Always clear qrl cache at the beginning of each test
 beforeEach(qrlCacheClear)
@@ -547,6 +551,52 @@ describe('sendMessage', () => {
           QueueUrl: qrl,
           MessageGroupId: groupId,
           DelaySeconds: options.delay
+        }, formatMessage(cmd))
+      )
+  })
+
+  test('retryable exceptions cause retry', async () => {
+    const groupId = 'foo'
+    const deduplicationId = 'bar'
+    const options = {
+      delay: 15,
+      fifo: true,
+      'group-id': groupId,
+      'deduplication-id': deduplicationId
+    }
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const md5 = 'foobar'
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(SendMessageCommand, { QueueUrl: qrl })
+      .rejectsOnce(new RequestThrottled())
+      // .rejectsOnce(new KmsThrottled())
+      // .rejectsOnce(new QueueDoesNotExist())
+      .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId })
+    const promise = sendMessage(qrl, cmd, opt)
+
+    await Promise.resolve() // shouldRetry()
+    await Promise.resolve() // await this.delay(attemptNumber)
+    jest.runAllTimers() // delay() -> setTimeout()
+
+    await Promise.resolve() // await action
+    jest.runAllTimers() // not sure why here
+
+    await expect(promise).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(
+        2,
+        SendMessageCommand,
+        Object.assign({
+          QueueUrl: qrl,
+          MessageGroupId: groupId,
+          DelaySeconds: options.delay,
+          MessageDeduplicationId: deduplicationId
         }, formatMessage(cmd))
       )
   })
