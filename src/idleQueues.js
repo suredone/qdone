@@ -208,7 +208,7 @@ export async function processQueuePair (qname, qrl, opt) {
   const normalizeOptions = Object.assign({}, opt, { fifo: isFifo })
   // Generate fail queue name/url
   const fqname = normalizeFailQueueName(qname, normalizeOptions)
-  const fqrl = normalizeFailQueueName(qrl, normalizeOptions)
+  const fqrl = normalizeFailQueueName(fqname, normalizeOptions)
 
   // Idle check
   const result = await checkIdle(qname, qrl, opt)
