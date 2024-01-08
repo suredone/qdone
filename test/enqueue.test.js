@@ -6,8 +6,7 @@ import {
   SendMessageCommand,
   SendMessageBatchCommand,
   QueueDoesNotExist,
-  RequestThrottled,
-  KmsThrottled
+  RequestThrottled
 } from '@aws-sdk/client-sqs'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'

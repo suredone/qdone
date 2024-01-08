@@ -5,7 +5,8 @@
 import {
   ChangeMessageVisibilityCommand,
   ReceiveMessageCommand,
-  DeleteMessageCommand
+  DeleteMessageCommand,
+  QueueDoesNotExist
 } from '@aws-sdk/client-sqs'
 import { exec } from 'child_process' // node:child_process
 import treeKill from 'tree-kill'
@@ -208,11 +209,25 @@ export async function listen (queues, options) {
           chalk.blue(' (' + qrl + ')')
         )
       }
-      // Aggregate the results
-      const { noJobs, jobsSucceeded, jobsFailed } = await pollForJobs(qname, qrl, opt)
-      stats.noJobs += noJobs
-      stats.jobsFailed += jobsFailed
-      stats.jobsSucceeded += jobsSucceeded
+      try {
+        // Aggregate the results
+        const { noJobs, jobsSucceeded, jobsFailed } = await pollForJobs(qname, qrl, opt)
+        stats.noJobs += noJobs
+        stats.jobsFailed += jobsFailed
+        stats.jobsSucceeded += jobsSucceeded
+      } catch (e) {
+        if (e instanceof QueueDoesNotExist) {
+          if (opt.verbose) {
+            console.error(
+              chalk.yellow('Warning: Queue ') +
+              qname.slice(opt.prefix.length) +
+              chalk.yellow(' does not exist.')
+            )
+          }
+        } else {
+          throw e
+        }
+      }
     }
     return stats
   }

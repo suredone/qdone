@@ -2,7 +2,6 @@ import { jest } from '@jest/globals'
 import { ExponentialBackoff } from '../src/exponentialBackoff.js'
 
 describe('ExpontentialBackoff', () => {
-
   beforeAll(() => {
     jest.useFakeTimers()
     jest.spyOn(global, 'setTimeout')

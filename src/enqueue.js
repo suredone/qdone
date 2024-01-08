@@ -159,7 +159,6 @@ export function formatMessage (command, id) {
   return message
 }
 
-
 // Retry happens within the context of the send functions
 const retryableExceptions = [
   RequestThrottled,
@@ -219,7 +218,7 @@ export async function sendMessageBatch (qrl, messages, opt) {
       Object.assign({ DelaySeconds: opt.delay }, message))
   }
   if (opt.sentryDsn) {
-    addBreadcrumb({ category: 'sendMessageBatch', 'message': JSON.stringify({ params }), level: 'debug' })
+    addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ params }), level: 'debug' })
   }
   debug({ params })
 
@@ -235,14 +234,33 @@ export async function sendMessageBatch (qrl, messages, opt) {
   }
   const shouldRetry = (result, error) => {
     debug({ shouldRetry: { error, result } })
-    if (opt.sentryDsn) {
-      addBreadcrumb({ category: 'sendMessageBatch', 'message': JSON.stringify({ error }), level: 'error' })
+    if (result) {
+      // Handle failed result of one or more messages in the batch
+      if (result.Failed && result.Failed.length) {
+        for (const failed of result.Failed) {
+          // Find corresponding messages
+          const original = params.Entries.find((e) => e.Id === failed.Id)
+          const info = { failed, original, opt }
+          if (opt.sentryDsn) {
+            addBreadcrumb({ category: 'sendMessageBatch', message: 'Failed message: ' + JSON.stringify(info), level: 'error' })
+          } else {
+            console.error(info)
+          }
+        }
+        throw new Error('One or more message failures: ' + JSON.stringify(result.Failed))
+      }
     }
-    for (const exceptionClass of retryableExceptions) {
-      debug({ exceptionClass, retryableExceptions })
-      if (error instanceof exceptionClass) {
-        debug({ sendMessageRetryingBecause: { error, result } })
-        return true
+    if (error) {
+      // Handle a failed result from an overall error on request
+      if (opt.sentryDsn) {
+        addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ error }), level: 'error' })
+      }
+      for (const exceptionClass of retryableExceptions) {
+        debug({ exceptionClass, retryableExceptions })
+        if (error instanceof exceptionClass) {
+          debug({ sendMessageRetryingBecause: { error, result } })
+          return true
+        }
       }
     }
   }
@@ -353,7 +371,6 @@ export async function enqueueBatch (pairs, options) {
   // so go back through the list of pairs and fire off messages
   requestCount = 0
   let initialFlushTotal = 0
-  const addMessagePromises = []
   for (const { qname, command } of normalizedPairs) {
     const qrl = await getOrCreateQueue(qname, opt)
     initialFlushTotal += await addMessage(qrl, command, opt)
