@@ -1,42 +1,49 @@
 {
   "name": "qdone",
-  "version": "1.7.0",
+  "version": "2.0.6-alpha",
   "description": "Language agnostic job queue for SQS",
-  "main": "index.js",
+  "type": "module",
+  "main": "./index.js",
+  "module": "./index.js",
+  "bin": "./src/bin.js",
+  "files": [
+    "src",
+    "commonjs",
+    "index.js"
+  ],
   "dependencies": {
-    "aws-sdk": "^2.580.0",
-    "chalk": "^2.4.1",
-    "command-line-args": "^5.0.2",
-    "command-line-commands": "^2.0.1",
-    "command-line-usage": "5.0.5",
-    "debug": "^4.1.0",
-    "ioredis": "^4.14.0",
-    "q": "^1.5.1",
-    "tree-kill": "^1.2.0",
-    "uuid": "^3.3.2"
+    "@aws-sdk/client-cloudwatch": "^3.465.0",
+    "@aws-sdk/client-sqs": "^3.465.0",
+    "@sentry/node": "^7.87.0",
+    "chalk": "^4.1.2",
+    "command-line-args": "^5.2.1",
+    "command-line-commands": "^3.0.2",
+    "command-line-usage": "^7.0.1",
+    "debug": "^4.3.4",
+    "ioredis": "^5.3.2",
+    "standard": "^17.1.0",
+    "tree-kill": "^1.2.2",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "aws-sdk-mock": "^4.5.0",
-    "chai": "^4.2.0",
-    "chai-as-promised": "^7.1.1",
-    "coveralls": "^3.0.4",
-    "mocha": "^6.1.4",
-    "mock-stdin": "^0.3.1",
-    "nyc": "^14.1.1",
-    "sinon": "^7.3.2",
-    "standard": "*",
-    "strip-ansi": "^5.0.0"
+    "aws-sdk-client-mock": "^3.0.0",
+    "aws-sdk-client-mock-jest": "^3.0.0",
+    "jest": "^29.7.0",
+    "typescript": "^5.3.3"
   },
-  "bin": "./qdone",
   "preferGlobal": true,
   "engines": {
-    "node": ">=6"
+    "node": ">=16"
   },
   "scripts": {
-    "test": "standard && nyc mocha",
+    "start": "./src/bin.js",
+    "test": "NODE_OPTIONS='--experimental-json-modules --experimental-vm-modules --no-warnings' jest",
+    "build": "tsc --allowJs index.js --outdir commonjs --esModuleInterop --module commonjs",
+    "clean": "rm -rf commonjs/src commonjs/*.js coverage",
+    "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",
     "standard": "standard",
-    "prep-for-publish": "npm shrinkwrap && echo now commit shrinkwrap and use npm run publish-{next,latest}",
+    "prep-for-publish": "echo YOU MUST USE NPM TO PREP FOR PUBLISH && pnpm run clean && pnpm run build && npm shrinkwrap --production && echo now commit shrinkwrap and use npm run publish-{next,latest}",
     "publish-latest": "npm publish --tag latest",
     "publish-next": "npm publish --tag next"
   },
@@ -57,9 +64,14 @@
     "consumer",
     "amazon"
   ],
-  "greenkeeper": {
-    "ignore": [
-      "command-line-usage"
+  "jest": {
+    "testEnvironment": "jest-environment-node",
+    "transform": {}
+  },
+  "standard": {
+    "env": [
+      "jest",
+      "es6"
     ]
   },
   "bugs": {

@@ -25,11 +25,26 @@ qdone was inspired, in part, by experiences with [RQ](http://python-rq.org) in p
 
     npm install -g qdone
 
+If you're project is CommonJS, then you have to do a deep import of `qdone/commonjs`:
+
+```javascript
+// Node CommonJS
+const { enqueue } = require('qdone/commonjs')
+```
+
+If your project is ESM, you can import directly:
+
+```javascript
+// Node ESM
+import { enqueue } from 'qdone'
+````
+
 ## Examples
 
 Enqueue a job and run it:
 
 ```bash
+# Command line
 $ qdone enqueue myQueue "echo hello world"
 Enqueued job 030252de-8a3c-42c6-9278-c5a268660384
 
@@ -40,6 +55,16 @@ Looking for work on myQueue (https://sqs.us-east-1ld...)
   Executing job command: nice echo hello world
   SUCCESS
   stdout: hello world
+```
+
+```javascript
+// Node ESM
+import { enqueue } from 'qdone'
+await enqueue('myQueue', 'echo hello world')
+
+// Node CommonJS
+const { enqueue } = require('qdone/commonjs')
+enqueue('myQueue', 'echo hello world').then(console.log).catch(console.error)
 ```
 
 Queues are automatically created when you use them:
@@ -53,11 +78,11 @@ Enqueued job d0077713-11e1-4de6-8f26-49ad51e008b9
 
 Notice that qdone also created a failed queue. More on that later.
 
-
 To queue many jobs at once, put a queue name and command on each line of
 stdin or a file:
-  
+
 ```bash
+# Command line
 $ qdone enqueue-batch -  # use stdin
 queue_0 echo hi
 queue_1 echo hi
@@ -83,9 +108,28 @@ Enqueued job 5dfe1008-9a1e-41df-b3bc-614ec5f34660 request 10
 Enqueued 10 jobs
 ```
 
+```javascript
+// Node ESM
+import { enqueueBatch } from 'qdone'
+await enqueueBatch(
+  [
+    { queue: 'queue_1', command: 'echo hi' },
+    { queue: 'queue_2', command: 'echo hi' },
+    { queue: 'queue_3', command: 'echo hi' },
+    { queue: 'queue_4', command: 'echo hi' },
+    { queue: 'queue_5', command: 'echo hi' },
+    { queue: 'queue_6', command: 'echo hi' },
+    { queue: 'queue_7', command: 'echo hi' },
+    { queue: 'queue_8', command: 'echo hi' },
+    { queue: 'queue_9', command: 'echo hi' }
+  ]
+)
+```
+
 If you are using the same queue, requests to SQS will be batched:
 
 ```bash
+# Command line
 $ qdone enqueue-batch -  # use stdin
 queue_one echo hi
 queue_one echo hi
@@ -105,6 +149,24 @@ Enqueued job 6dac2e4d... request 2      # request
 Enqueued job 0252ae4b... request 2      # for queue_two
 Enqueued job 95567365... request 2      #
 Enqueued 8 jobs
+```
+
+```javascript
+// Node ESM
+import { enqueueBatch } from 'qdone'
+await enqueueBatch(
+  [
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' },
+    { queue: 'queue_one', command: 'echo hi' }
+  ]
+)
 ```
 
 ### Failed jobs
@@ -184,6 +246,7 @@ default SQS visibility timeout (30 seconds) as long as the job is still
 running. You can see this when running a long job:
 
 ```bash
+# Command line
 $ qdone enqueue test "sleep 35"
 Enqueued job d8e8927f-5e42-48ae-a1a8-b91e42700942
 
@@ -194,6 +257,12 @@ $ qdone worker test --kill-after 300
   Ran for 15.009 seconds, requesting another 60 seconds
   SUCCESS
 ...
+```
+
+```javascript
+// Node ESM
+import { enqueue } from 'qdone'
+await enqueue('test', 'sleep 25', { killAfter: 300 })
 ```
 
 The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
@@ -252,9 +321,9 @@ The `equeue` and `enqueue-batch` commands can create FIFO queues with limited fe
 
 Using the `--fifo` option with `enqueue` or `enqueue-batch`:
 
-- causes any new queues to be created as FIFO queues
-- causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
-- causes failed queues to take the form `${name}_failed.fifo`
+- Causes any new queues to be created as FIFO queues
+- Causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
+- Causes failed queues to take the form `${name}_failed.fifo`
 
 Using the `--group-id` option with `enqueue` or `enqueue-batch` implies that:
 
@@ -270,8 +339,8 @@ Enqueue limitations:
 
 Using the `--fifo` option with `worker`:
 
-- causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
-- causes the worker to only listen to queues with a `.fifo` suffix when wildcard names are specified (e.g. `test_*` or `*`)
+- Causes the `.fifo` suffix to be appended to any queue names that do not explicitly have them
+- Causes the worker to only listen to queues with a `.fifo` suffix when wildcard names are specified (e.g. `test_*` or `*`)
 
 Worker limitations:
 
@@ -300,7 +369,7 @@ The output examples in this readme assume you are running qdone from an interact
 
 Each field in the above JSON except `event` and `timestamp` is optional and only appears when it contains data. Note that log events other than `JOB_FAILED` may be added in the future. Also note that warnings and errors not in the above JSON format will appear on stderr.
 
-## Shutdown Behavior
+## Worker Shutdown Behavior
 
 Send a SIGTERM or SIGINT to qdone and it will exit successfully after any running jobs complete. A second SIGTERM or SIGINT will immediately kill the entire process group, including any running jobs.
 
@@ -356,11 +425,11 @@ Example IAM policy allowing qdone to use queues with its prefix in any region:
                 "sqs:GetQueueAttributes",
                 "sqs:GetQueueUrl",
                 "sqs:SendMessage",
-                "sqs:SendMessageBatch",
                 "sqs:ReceiveMessage",
                 "sqs:DeleteMessage",
                 "sqs:CreateQueue",
-                "sqs:ChangeMessageVisibility"
+                "sqs:ChangeMessageVisibility",
+                "sqs:TagQueue"
             ],
             "Effect": "Allow",
             "Resource": "arn:aws:sqs:*:YOUR_ACCOUNT_ID:qdone_*"
@@ -399,49 +468,72 @@ not possible to narrow the scope):
 
 Commands
 
-    enqueue         Enqueue a single command                       
-    enqueue-batch   Enqueue multiple commands from stdin or a file 
-    worker          Execute work on one or more queues             
+    enqueue         Enqueue a single command
+    enqueue-batch   Enqueue multiple commands from stdin or a file
+    worker          Execute work on one or more queues
+    idle-queues     Write a list of idle queues to stdout
+    monitor         Monitor multiple queues at once
 
 Global Options
 
-    --prefix string        Prefix to place at the front of each SQS queue name [default: qdone_]
-    --fail-suffix string   Suffix to append to each queue to generate fail queue name [default: _failed]
-    --region string        AWS region for Queues [default: us-east-1]
-    -q, --quiet            Turn on production logging. Automatically set if stderr is not a tty.
-    -v, --verbose          Turn on verbose output. Automatically set if stderr is a tty.
-    -V, --version          Show version number
-    --help                 Print full help message.
+    --prefix string              Prefix to place at the front of each SQS queue name [default: qdone_]
+    --fail-suffix string         Suffix to append to each queue to generate fail queue name [default: _failed]
+    --region string              AWS region for Queues [default: us-east-1]
+    -q, --quiet                  Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose                Turn on verbose output. Automatically set if stderr is a tty.
+    -V, --version                Show version number
+    --cache-uri string           URL to caching cluster. Only redis://... currently supported.
+    --cache-prefix string        Prefix for all keys in cache. [default: qdone:]
+    --cache-ttl-seconds number   Number of seconds to cache GetQueueAttributes calls. [default: 10]
+    --help                       Print full help message.
+    --sentry-dsn string          Optional Sentry DSN to track unhandled errors.
 
 ### Enqueue Usage
 
     usage: qdone enqueue [options] <queue> <command>
     usage: qdone enqueue-batch [options] <file...>
 
-`<file...>` can be one ore more filenames or - for stdin 
+`<file...>` can be one ore more filenames or - for stdin
 
 Options
 
-    -f, --fifo                Create new queues as FIFOs
-    -g, --group-id string     FIFO Group ID to use for all messages enqueued in current command. Defaults to an string unique to this invocation.
-    --group-id-per-message    Use a unique Group ID for every message, even messages in the same batch.
-    --deduplication-id string A Message Deduplication ID to give SQS when sending a message. Use this
-                              option if you are managing retries outside of qdone, and make sure the ID is
-                              the same for each retry in the deduplication window. Defaults to a string
-                              unique to this invocation.
-    --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]
-    --fail-suffix string      Suffix to append to each queue to generate fail queue name [default: _failed]
-    --region string           AWS region for Queues [default: us-east-1]
-    -q, --quiet               Turn on production logging. Automatically set if stderr is not a tty.
-    -v, --verbose             Turn on verbose output. Automatically set if stderr is a tty.
-    -V, --version             Show version number
-    --help                    Print full help message.
+    -f, --fifo                          Create new queues as FIFOs
+    -g, --group-id string               FIFO Group ID to use for all messages enqueued in current command.
+                                        Defaults to a string unique to this invocation.
+    --group-id-per-message              Use a unique Group ID for every message, even messages in the same
+                                        batch.
+    --deduplication-id string           A Message Deduplication ID to give SQS when sending a message. Use
+                                        this option if you are managing retries outside of qdone, and make
+                                        sure the ID is the same for each retry in the deduplication window.
+                                        Defaults to a string unique to this invocation.
+    --message-retention-period number   Number of seconds to retain jobs (up to 14 days). [default: 1209600]
+    -d, --delay number                  Delays delivery of each message by the given number of seconds
+                                        (up to 900 seconds, or 15 minutes). Defaults to immediate delivery
+                                        (no delay).
+    --dlq                               Send messages from the failed queue to a DLQ.
+    --dql-suffix string                 Suffix to append to each queue to generate DLQ name [default: _dead]
+    --dql-after string                  Drives message to the DLQ after this many failures in the failed
+                                        queue. [default: 3]
+    --tag string[]                      Adds an AWS tag to queue creation. Use the format Key=Value. Can
+                                        specify multiple times.
+    --prefix string                     Prefix to place at the front of each SQS queue name [default: qdone_]
+    --fail-suffix string                Suffix to append to each queue to generate fail queue name
+                                        [default: _failed]
+    --region string                     AWS region for Queues [default: us-east-1]
+    -q, --quiet                         Turn on production logging. Automatically set if stderr is not a tty.
+    -v, --verbose                       Turn on verbose output. Automatically set if stderr is a tty.
+    -V, --version                       Show version number
+    --cache-uri string                  URL to caching cluster. Only redis://... currently supported.
+    --cache-prefix string               Prefix for all keys in cache. [default: qdone:]
+    --cache-ttl-seconds number          Number of seconds to cache GetQueueAttributes calls. [default: 10]
+    --help                              Print full help message.
+    --sentry-dsn string                 Optional Sentry DSN to track unhandled errors.
 
 ### Worker Usage
 
     usage: qdone worker [options] <queue...>
 
-`<queue...>` one or more queue names to listen on for jobs 
+`<queue...>` one or more queue names to listen on for jobs
 
 If a queue name ends with the * (wildcard) character, worker will listen on all queues that match the name up-to the wildcard. Place arguments like this inside quotes to keep the shell from globbing local files.
 
@@ -450,7 +542,7 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     -k, --kill-after number   Kill job after this many seconds [default: 30]
     -w, --wait-time number    Listen at most this long on each queue [default: 20]
     --include-failed          When using '*' do not ignore fail queues.
-    --active-only             Listen only to queues with pending messages.                                  
+    --active-only             Listen only to queues with pending messages.
     --drain                   Run until no more work is found and quit. NOTE: if used with
                              --wait-time 0, this option will not drain queues.
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]

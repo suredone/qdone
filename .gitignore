@@ -1,2 +1,7 @@
 node_modules/
 .nyc_output/
+coverage
+.DS_Store
+*.swp
+commonjs/src
+commonjs/*.js

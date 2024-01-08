@@ -1,6 +1,2 @@
-
-module.exports = {
-  enqueue: require('./src/enqueue'),
-  worker: require('./src/worker'),
-  cli: require('./src/cli')
-}
+export { enqueue, enqueueBatch } from './src/enqueue.js'
+export { processMessages, requestShutdown, DoNotProcess } from './src/consumer.js'
