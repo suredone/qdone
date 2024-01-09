@@ -209,7 +209,7 @@ export async function sendMessageBatch (qrl, messages, opt) {
     params.Entries = params.Entries.map(
       message => Object.assign({
         MessageGroupId: opt.groupIdPerMessage ? uuidFunction() : opt.groupId,
-        MessageDeduplicationId: uuidFunction()
+        MessageDeduplicationId: opt.deduplicationId || uuidFunction()
       }, message)
     )
   }
@@ -267,7 +267,6 @@ export async function sendMessageBatch (qrl, messages, opt) {
   return backoff.run(send, shouldRetry)
 }
 
-const messages = {}
 let requestCount = 0
 
 //
@@ -275,20 +274,20 @@ let requestCount = 0
 // If the message is too large, batch is retried with half the messages.
 // Returns number of messages flushed.
 //
-export async function flushMessages (qrl, opt) {
+export async function flushMessages (qrl, opt, sendBuffer) {
   debug('flushMessages', qrl)
   // Flush until empty
   let numFlushed = 0
   async function whileNotEmpty () {
-    if (!(messages[qrl] && messages[qrl].length)) return numFlushed
+    if (!(sendBuffer[qrl] && sendBuffer[qrl].length)) return numFlushed
     // Construct batch until full
     const batch = []
-    let nextSize = JSON.stringify(messages[qrl][0]).length
+    let nextSize = JSON.stringify(sendBuffer[qrl][0]).length
     let totalSize = 0
-    while ((totalSize + nextSize) < 262144 && messages[qrl].length && batch.length < 10) {
-      batch.push(messages[qrl].shift())
+    while ((totalSize + nextSize) < 262144 && sendBuffer[qrl].length && batch.length < 10) {
+      batch.push(sendBuffer[qrl].shift())
       totalSize += nextSize
-      if (messages[qrl].length) nextSize = JSON.stringify(messages[qrl][0]).length
+      if (sendBuffer[qrl].length) nextSize = JSON.stringify(sendBuffer[qrl][0]).length
       else nextSize = 0
     }
 
@@ -321,14 +320,13 @@ export async function flushMessages (qrl, opt) {
 // Automaticaly flushes if queue has >= 10 messages.
 // Returns number of messages flushed.
 //
-let messageIndex = 0
-export async function addMessage (qrl, command, opt) {
-  const message = formatMessage(command, messageIndex++)
-  messages[qrl] = messages[qrl] || []
-  messages[qrl].push(message)
-  debug({ location: 'addMessage', messages })
-  if (messages[qrl].length >= 10) {
-    return flushMessages(qrl, opt)
+export async function addMessage (qrl, command, messageIndex, opt, sendBuffer) {
+  const message = formatMessage(command, messageIndex)
+  sendBuffer[qrl] = sendBuffer[qrl] || []
+  sendBuffer[qrl].push(message)
+  debug({ location: 'addMessage', sendBuffer })
+  if (sendBuffer[qrl].length >= 10) {
+    return flushMessages(qrl, opt, sendBuffer)
   }
   return 0
 }
@@ -370,16 +368,18 @@ export async function enqueueBatch (pairs, options) {
   // After we've prefetched, all qrls are in cache
   // so go back through the list of pairs and fire off messages
   requestCount = 0
+  const sendBuffer = {}
+  let messageIndex = 0
   let initialFlushTotal = 0
   for (const { qname, command } of normalizedPairs) {
     const qrl = await getOrCreateQueue(qname, opt)
-    initialFlushTotal += await addMessage(qrl, command, opt)
+    initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer)
   }
 
   // And flush any remaining messages
   const extraFlushPromises = []
-  for (const qrl in messages) {
-    extraFlushPromises.push(flushMessages(qrl, opt))
+  for (const qrl in sendBuffer) {
+    extraFlushPromises.push(flushMessages(qrl, opt, sendBuffer))
   }
   const extraFlushCounts = await Promise.all(extraFlushPromises)
   const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)

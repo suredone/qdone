@@ -753,17 +753,18 @@ describe('addMessage / flushMessages', () => {
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
+    const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -792,14 +793,14 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toBe(10)
 
     // And add three more
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toBe(0)
     // should flush those three
-    await expect(flushMessages(qrl, options)).resolves.toBe(3)
+    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toBe(3)
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -843,17 +844,18 @@ describe('addMessage / flushMessages', () => {
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
+    const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -884,14 +886,14 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toBe(10)
 
     // And add three more
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, options)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toBe(0)
     // should flush those three
-    await expect(flushMessages(qrl, options))
+    await expect(flushMessages(qrl, options, sendBuffer))
       .rejects.toThrow('One or more message failures')
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -900,16 +902,16 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 0 + 13),
-            formatMessage(cmd, 1 + 13),
-            formatMessage(cmd, 2 + 13),
-            formatMessage(cmd, 3 + 13),
-            formatMessage(cmd, 4 + 13),
-            formatMessage(cmd, 5 + 13),
-            formatMessage(cmd, 6 + 13),
-            formatMessage(cmd, 7 + 13),
-            formatMessage(cmd, 8 + 13),
-            formatMessage(cmd, 9 + 13)
+            formatMessage(cmd, 0),
+            formatMessage(cmd, 1),
+            formatMessage(cmd, 2),
+            formatMessage(cmd, 3),
+            formatMessage(cmd, 4),
+            formatMessage(cmd, 5),
+            formatMessage(cmd, 6),
+            formatMessage(cmd, 7),
+            formatMessage(cmd, 8),
+            formatMessage(cmd, 9)
           ]
         })
       )
@@ -920,9 +922,9 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 10 + 13),
-            formatMessage(cmd, 11 + 13),
-            formatMessage(cmd, 12 + 13)
+            formatMessage(cmd, 10),
+            formatMessage(cmd, 11),
+            formatMessage(cmd, 12)
           ]
         })
       )
@@ -1098,8 +1100,8 @@ describe('enqueueBatch', () => {
       .toHaveReceivedNthCommandWith(2, SendMessageBatchCommand, {
         QueueUrl: qrl,
         Entries: [
-          { MessageBody: cmd, Id: '26' },
-          { MessageBody: cmd, Id: '27' }
+          { MessageBody: cmd, Id: '0' },
+          { MessageBody: cmd, Id: '1' }
         ]
       })
   })
@@ -1189,5 +1191,112 @@ describe('enqueueBatch', () => {
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
+  })
+
+  test('should fail if requests share message buffers (bug suredone/suredone#9742)', async () => {
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const opt = getOptionsWithDefaults({
+      prefix: '',
+      uuidFunction: () => messageId,
+      groupId: messageId,
+      deduplicationId: messageId
+    })
+    const qname1 = 'one'
+    const qname2 = 'two'
+    const qname3 = 'three.fifo'
+    const qrlBase = 'https://sqs.us-east-1.amazonaws.com/foobar/'
+    const qrl1 = qrlBase + qname1
+    const qrl2 = qrlBase + qname2
+    const qrl3 = qrlBase + qname3
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const md5 = 'foobar'
+    const pairs = [
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname1, command: cmd },
+      { queue: qname2, command: cmd },
+      { queue: qname2, command: cmd },
+      { queue: qname2, command: cmd },
+      { queue: qname2, command: cmd },
+      { queue: qname2, command: cmd }
+    ]
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand)
+      .callsFake(({ QueueName: qname }) => {
+        // console.log({ GetQueueUrlCommand: { QueueName: qname } })
+        return { QueueUrl: qrlBase + qname }
+      })
+      .on(SendMessageBatchCommand)
+      .callsFake(async ({ Entries: entries, QueueUrl: qrl }) => {
+        // console.log({ SendMessageBatchCommand: { Entries: entries,  QueueUrl: qrl } })
+        // console.log(entries)
+        return {
+          Successful: entries
+            .filter(({ MessageGroupId, MessageDeduplicationId }) =>
+              !(!qrl.endsWith('.fifo') && (MessageGroupId || MessageDeduplicationId))
+            )
+            .map(({ Id }) => ({
+              Id,
+              MD5OfMessageBody: md5,
+              ...qrl.endsWith('.fifo')
+                ? {
+                    MessageId: messageId,
+                    SequenceNumber: '110101010101' + Id
+                  }
+                : {}
+            })),
+          Failed: entries
+            .filter(({ MessageGroupId, MessageDeduplicationId }) =>
+              !qrl.endsWith('.fifo') && (MessageGroupId || MessageDeduplicationId)
+            )
+            .map(({ Id }) => ({
+              Id, SenderFault: true, Code: 'InvalidParameterValue', Message: 'The request include parameter that is not valid for this queue type'
+            }))
+        }
+      })
+    const first = enqueueBatch(pairs, opt)
+    const second = enqueueBatch(pairs.map(p => ({ queue: qname3, command: cmd })), { ...opt, fifo: true })
+    await expect(first).resolves.toBe(15)
+    await expect(second).resolves.toBe(15)
+    expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname1 })
+    expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: qname2 })
+    expect(sqsMock).toHaveReceivedNthCommandWith(3, GetQueueUrlCommand, { QueueName: qname3 })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(4, SendMessageBatchCommand, {
+        QueueUrl: qrl1,
+        Entries: (Array.apply(null, Array(10))).map((e, i) => (
+          { MessageBody: cmd, Id: i + '' }
+        ))
+      })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(5, SendMessageBatchCommand, {
+        QueueUrl: qrl3,
+        Entries: (Array.apply(null, Array(10))).map((e, i) => (
+          { MessageBody: cmd, Id: i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }
+        ))
+      })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(6, SendMessageBatchCommand, {
+        QueueUrl: qrl2,
+        Entries: (Array.apply(null, Array(5))).map((e, i) => (
+          { MessageBody: cmd, Id: 10 + i + '' }
+        ))
+      })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(7, SendMessageBatchCommand, {
+        QueueUrl: qrl3,
+        Entries: (Array.apply(null, Array(5))).map((e, i) => (
+          { MessageBody: cmd, Id: 10 + i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }
+        ))
+      })
   })
 })
