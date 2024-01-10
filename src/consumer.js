@@ -27,22 +27,26 @@ import { getSQSClient } from './sqs.js'
 //
 export class DoNotProcess extends Error {}
 
-const debug = Debug('qdone:worker')
+const debug = Debug('qdone:consumer')
 
 // Global flag for shutdown request
 let shutdownRequested = false
 const shutdownCallbacks = []
 
 export function requestShutdown () {
+  debug('requestShutdown')
   shutdownRequested = true
   for (const callback of shutdownCallbacks) {
-    try { callback() } catch (e) { }
+    debug('callback', callback)
+    callback()
+    // try { callback() } catch (e) { }
   }
+  debug('requestShutdown done')
 }
 
 export async function processMessage (message, callback, qname, qrl, opt) {
   debug('processMessage', message, qname, qrl)
-  const payload = JSON.parse(message.Body)
+  const payload = opt.json ? JSON.parse(message.Body) : message.Body
   if (opt.verbose) {
     console.error(chalk.blue('  Processing payload:'), payload)
   } else if (!opt.disableLog) {
@@ -248,8 +252,11 @@ export async function processMessages (queues, callback, options) {
   const opt = getOptionsWithDefaults(options)
   debug('processMessages', { queues, callback, options, opt })
 
+  let loopCounter = 0
   const stats = { noJobs: 0, jobsSucceeded: 0, jobsFailed: 0 }
-  const activeLoops = {}
+  const maxActiveLoops = 10
+  const activeLoops = new Map()
+  const completedLoops = new Map()
 
   // This delay function keeps a timeout reference around so it can be
   // cancelled at shutdown
@@ -261,18 +268,20 @@ export async function processMessages (queues, callback, options) {
   // Callback to help facilitate better UX at shutdown
   function shutdownCallback () {
     if (opt.verbose) {
-      debug({ activeLoops })
-      const activeQueues = Object.keys(activeLoops).filter(q => activeLoops[q]).map(q => q.slice(opt.prefix.length))
-      if (activeQueues.length) {
-        console.error(chalk.blue('Waiting for work to finish on the following queues: ') + activeQueues.join(chalk.blue(', ')))
+      debug({ activeLoops, completedLoops })
+      if (activeLoops.length) {
+        console.error(chalk.blue('Waiting for work to finish on the following queues: '))
+        for (const [id, { qname, qrl, promise }] of activeLoops) {
+          console.error('    ' + qname + `job ${id}`)
+        }
       }
-      clearTimeout(delayTimeout)
+      // clearTimeout(delayTimeout)
     }
   }
   shutdownCallbacks.push(shutdownCallback)
 
   // Listen to a queue until it is out of messages
-  async function listenLoop (qname, qrl) {
+  async function listenLoop (qname, qrl, loopId) {
     try {
       if (shutdownRequested) return
       if (opt.verbose) {
@@ -284,12 +293,15 @@ export async function processMessages (queues, callback, options) {
       }
       // Aggregate the results
       const { noJobs, jobsSucceeded, jobsFailed } = await pollSingleQueue(qname, qrl, callback, opt)
+      debug('pollSingleQueue return')
       stats.noJobs += noJobs
       stats.jobsFailed += jobsFailed
       stats.jobsSucceeded += jobsSucceeded
+      debug({ stats, noJobs })
 
-      // No work? return to outer loop
-      if (noJobs) return
+      // No work? Shutdown requested? Return to outer loop
+      debug({ noJobs, shutdownRequested })
+      if (noJobs || shutdownRequested) return
 
       // Otherwise keep going
       return listenLoop(qname, qrl)
@@ -298,7 +310,7 @@ export async function processMessages (queues, callback, options) {
       console.error(chalk.red('  ERROR in listenLoop'))
       console.error(chalk.blue('  error : ') + err)
     } finally {
-      delete activeLoops[qname]
+      completedLoops.set(loopId, activeLoops.get(loopId))
     }
   }
 
@@ -306,6 +318,7 @@ export async function processMessages (queues, callback, options) {
   while (!shutdownRequested) { // eslint-disable-line
     const start = new Date()
     const selectedPairs = await resolveQueues(queues, opt)
+    debug({ selectedPairs })
     if (shutdownRequested) break
 
     // But only if we have queues to listen on
@@ -323,24 +336,43 @@ export async function processMessages (queues, callback, options) {
 
       // Launch listen loop for each queue
       for (const { qname, qrl } of selectedPairs) {
-        if (!activeLoops[qname]) activeLoops[qname] = listenLoop(qname, qrl)
+        // Bail if we already have too many
+        if (activeLoops.size >= maxActiveLoops) {
+          if (opt.verbose) console.error(chalk.yellow('Hit active worker limit of ') + maxActiveLoops)
+          break
+        }
+        const loopId = loopCounter++
+        activeLoops.set(loopId, { qname, qrl, promise: listenLoop(qname, qrl, loopId) })
       }
     }
+
     // Wait until the next time we need to resolve
     if (!shutdownRequested) {
       const msSoFar = Math.max(0, new Date() - start)
-      const msUntilNextResolve = Math.max(0, opt.waitTime * 1000 - msSoFar)
+      const msUntilNextResolve = Math.max(0, /*opt.waitTime **/ 1000 - msSoFar)
       debug({ msSoFar, msUntilNextResolve })
       if (msUntilNextResolve) {
         if (opt.verbose) console.error(chalk.blue('Will resolve queues again in ' + Math.round(msUntilNextResolve / 1000) + ' seconds'))
         await delay(msUntilNextResolve)
       }
     }
+
+    // Cleanup completed loops
+    for (const [id, { qname, qrl, promise }] of completedLoops) {
+      await promise // make sure the promise resolves
+      debug('Cleaning up', { id, qname, qrl, promise })
+      activeLoops.delete(id)
+    }
   }
+  debug('out here', { activeLoops })
 
   // Wait on all work to finish
   // shutdownCallback()
-  await Promise.all(Object.values(activeLoops))
+  for (const [id, { qname, qrl, promise }] of activeLoops) {
+    debug('Waiting on active loop', id)
+    await promise // make sure the promise resolves
+  }
+  debug('after all')
 }
 
 debug('loaded')
