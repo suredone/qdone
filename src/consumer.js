@@ -33,8 +33,52 @@ const debug = Debug('qdone:consumer')
 let shutdownRequested = false
 const shutdownCallbacks = []
 
+
+//
+// Latency
+//
+
+let latencyTimeout
+let latencyMeasurements = []
+let reportLatencyTimeout
+
+function reportLatency () {
+  clearTimeout(reportLatencyTimeout)
+  reportLatencyTimeout = setTimeout(() => {
+    //console.log(latencyMeasurements)
+    const meanLatency = latencyMeasurements.length ? latencyMeasurements.reduce((a, b) => a + b, 0) / latencyMeasurements.length : 0
+    console.log({ meanLatency })
+    reportLatency()
+  }, 5000)
+}
+
+function measureLoopLatency (callCount) {
+  clearTimeout(latencyTimeout)
+  const start = new Date()
+  latencyTimeout = setTimeout(() => {
+    const latency = new Date() - start
+    latencyMeasurements.push(latency)
+    if (latencyMeasurements.length > 1000) {
+      latencyMeasurements.shift()
+    }
+    // console.log(`Loop ${callCount} took\t${latency} ms`)
+    if (!reportLatencyTimeout) reportLatency()
+    measureLoopLatency(callCount + 1)
+  })
+}
+function shutdownLatency () {
+  console.log(latencyMeasurements)
+  clearTimeout(latencyTimeout)
+  clearTimeout(reportLatencyTimeout)
+}
+
+//
+// Latency
+//
+
 export function requestShutdown () {
   debug('requestShutdown')
+  shutdownLatency()
   shutdownRequested = true
   for (const callback of shutdownCallbacks) {
     debug('callback', callback)
@@ -249,6 +293,7 @@ export async function resolveQueues (queues, opt) {
 // Consumer
 //
 export async function processMessages (queues, callback, options) {
+  measureLoopLatency()
   const opt = getOptionsWithDefaults(options)
   debug('processMessages', { queues, callback, options, opt })
 
