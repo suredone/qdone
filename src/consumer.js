@@ -98,7 +98,7 @@ export async function processMessages (queues, callback, options) {
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
       jobsLeft -= maxMessages
-      if (this.opt.verbose) {
+      if (opt.verbose) {
         console.error(chalk.blue('Listening on: '), qname)
       }
       debug({ listenedTo: { qname, maxMessages, jobsLeft } })

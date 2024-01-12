@@ -49,29 +49,29 @@ export class JobExecutor {
   async maintainVisibility () {
     debug('maintainVisibility', this.jobs)
     const now = new Date()
-    const jobsToExtendByQrl = new Map()
-    const jobsToDeleteByQrl = new Map()
+    const jobsToExtendByQrl = {}
+    const jobsToDeleteByQrl = {}
     const jobsToCleanup = new Set()
 
     if (this.opt.verbose) {
       console.error(chalk.blue('Stats: '), this.stats)
-      console.error(chalk.blue('Running: '), this.jobs.map(({ qname, message }) => ({ qname, payload: message.Body })))
+      console.error(chalk.blue('Running: '), this.jobs.filter(j => j.status === 'processing').map(({ qname, message }) => ({ qname, payload: message.Body })))
     }
 
     // Build list of jobs we need to deal with
     for (const job of this.jobs) {
       const jobRunTime = (now - job.start) / 1000
       if (job.status === 'complete') {
-        const jobsToDelete = jobsToDeleteByQrl.get(job.qrl) || []
+        const jobsToDelete = jobsToDeleteByQrl[job.qrl] || []
         jobsToDelete.push(job)
-        jobsToDeleteByQrl.set(job.qrl, jobsToDelete)
+        jobsToDeleteByQrl[job.qrl] = jobsToDelete
       } else if (job.status === 'failed') {
         jobsToCleanup.add(job)
       } else if (jobRunTime >= job.exendAtSecond) {
         // Add it to our organized list of jobs
-        const jobsToExtend = jobsToExtendByQrl.get(job.qrl) || []
+        const jobsToExtend = jobsToExtendByQrl[job.qrl] || []
         jobsToExtend.push(job)
-        jobsToExtendByQrl.set(job.qrl, jobsToExtend)
+        jobsToExtendByQrl[job.qrl] = jobsToExtend
 
         // Update the visibility timeout, double every time, up to max
         const doubled = job.visibilityTimeout * 2
@@ -84,7 +84,9 @@ export class JobExecutor {
     debug('maintainVisibility', { jobsToDeleteByQrl, jobsToExtendByQrl })
 
     // Extend in batches for each queue
-    for (const [qrl, jobsToExtend] of jobsToExtendByQrl) {
+    for (const qrl in jobsToExtendByQrl) {
+      const jobsToExtend = jobsToExtendByQrl[qrl]
+      debug({ qrl, jobsToExtend })
       while (jobsToExtend.length) {
         // Build list of messages to go in this batch
         const entries = []
@@ -120,7 +122,8 @@ export class JobExecutor {
     }
 
     // Delete in batches for each queue
-    for (const [qrl, jobsToDelete] of jobsToDeleteByQrl) {
+    for (const qrl in jobsToDeleteByQrl) {
+      const jobsToDelete = jobsToDeleteByQrl[qrl]
       while (jobsToDelete.length) {
         // Build list of messages to go in this batch
         const entries = []
