@@ -169,7 +169,7 @@ export class JobExecutor {
     const visibilityTimeout = 30
     const job = {
       status: 'processing',
-      start: new Date(), 
+      start: new Date(),
       visibilityTimeout: 30,
       extendAtSecond: visibilityTimeout / 2,
       payload: this.opt.json ? JSON.parse(message.Body) : message.Body,
@@ -239,5 +239,4 @@ export class JobExecutor {
     }
     this.stats.activeJobs--
   }
-
 }

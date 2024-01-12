@@ -101,7 +101,7 @@ export async function processMessages (queues, callback, options) {
       if (this.opt.verbose) {
         console.error(chalk.blue('Listening on: '), qname)
       }
-      debug({ listenedTo: { qname, maxMessages, jobsLeft }})
+      debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
     await delay(1000)
   }

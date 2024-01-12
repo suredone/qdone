@@ -86,4 +86,3 @@ export class QueueManager {
     this.shutdownRequested = true
   }
 }
-

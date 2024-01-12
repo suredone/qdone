@@ -56,4 +56,3 @@ export class SystemMonitor {
     for (const k in this.timeouts) clearTimeout(this.timeouts[k])
   }
 }
-
