@@ -107,7 +107,7 @@ export class JobExecutor {
         const result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
         debug('ChangeMessageVisibilityBatch returned', result)
         this.stats.sqsCalls++
-        this.stats.timeoutsExtended += 10
+        if (result.Successful) this.stats.timeoutsExtended += result.Successful.length || 0
         // TODO Sentry
       }
       if (this.opt.verbose) {
@@ -143,7 +143,7 @@ export class JobExecutor {
         debug({ DeleteMessageBatch: input })
         const result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
         this.stats.sqsCalls++
-        this.stats.jobsDeleted += 10
+        if (result.Successful) this.stats.jobsDeleted += result.Successful.length || 0
         debug('DeleteMessageBatch returned', result)
         // TODO Sentry
       }
