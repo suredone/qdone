@@ -1,12 +1,12 @@
 {
   "name": "qdone",
-  "version": "2.0.12-alpha",
+  "version": "2.0.13-alpha",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "qdone",
-      "version": "2.0.12-alpha",
+      "version": "2.0.13-alpha",
       "license": "MIT",
       "dependencies": {
         "@aws-sdk/client-cloudwatch": "^3.465.0",

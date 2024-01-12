@@ -34,9 +34,9 @@ export class JobExecutor {
 
   shutdown () {
     this.shutdownRequested = true
-    if (this.stats.activeJobs === 0 && this.jobs.length === 0) {
-      clearTimeout(this.maintainVisibilityTimeout)
-    }
+    // Trigger a maintenance run right away in case it speeds us up
+    clearTimeout(this.maintainVisibilityTimeout)
+    this.maintainVisibility()
   }
 
   activeJobCount () {
@@ -107,17 +107,16 @@ export class JobExecutor {
         const result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
         debug('ChangeMessageVisibilityBatch returned', result)
         this.stats.sqsCalls++
-        if (result.Successful) this.stats.timeoutsExtended += result.Successful.length || 0
+        if (result.Successful) {
+          const count = result.Successful.length || 0
+          this.stats.timeoutsExtended += count
+          if (this.opt.verbose) {
+            console.error(chalk.blue('Extended'), count, chalk.blue('jobs'))
+          } else if (!this.opt.disableLog) {
+            console.log(JSON.stringify({ event: 'EXTEND_VISIBILITY_TIMEOUTS', timestamp: now, count, qrl }))
+          }
+        }
         // TODO Sentry
-      }
-      if (this.opt.verbose) {
-        console.error(chalk.blue('Extended these jobs: '), jobsToExtend)
-      } else if (!this.opt.disableLog) {
-        console.log(JSON.stringify({
-          event: 'EXTEND_VISIBILITY_TIMEOUTS',
-          timestamp: now,
-          messageIds: jobsToExtend.map(({ message }) => message.MessageId)
-        }))
       }
     }
 
@@ -143,18 +142,17 @@ export class JobExecutor {
         debug({ DeleteMessageBatch: input })
         const result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
         this.stats.sqsCalls++
-        if (result.Successful) this.stats.jobsDeleted += result.Successful.length || 0
+        if (result.Successful) {
+          const count = result.Successful.length || 0
+          this.stats.jobsDeleted += count
+          if (this.opt.verbose) {
+            console.error(chalk.blue('Deleted'), count, chalk.blue('jobs'))
+          } else if (!this.opt.disableLog) {
+            console.log(JSON.stringify({ event: 'DELETE_MESSAGES', timestamp: now, count, qrl }))
+          }
+        }
         debug('DeleteMessageBatch returned', result)
         // TODO Sentry
-      }
-      if (this.opt.verbose) {
-        console.error(chalk.blue('Deleted these finished jobs: '), jobsToDelete)
-      } else if (!this.opt.disableLog) {
-        console.log(JSON.stringify({
-          event: 'DELETE_MESSAGES',
-          timestamp: now,
-          messageIds: jobsToDelete.map(({ message }) => message.MessageId)
-        }))
       }
     }
 
@@ -163,7 +161,8 @@ export class JobExecutor {
 
     // Check again later, unless we are shutting down and nothing's left
     if (this.shutdownRequested && this.stats.activeJobs === 0 && this.jobs.length === 0) return
-    this.maintainVisibilityTimeout = setTimeout(() => this.maintainVisibility(), 10 * 1000)
+    const nextCheckInMs = this.shutdownRequested ? 1 * 1000 : 10 * 1000
+    this.maintainVisibilityTimeout = setTimeout(() => this.maintainVisibility(), nextCheckInMs)
   }
 
   async executeJob (message, callback, qname, qrl) {
@@ -190,7 +189,7 @@ export class JobExecutor {
       console.log(JSON.stringify({
         event: 'MESSAGE_PROCESSING_START',
         timestamp: new Date(),
-        qname,
+        qrl,
         messageId: message.MessageId,
         payload: job.payload
       }))
@@ -229,7 +228,7 @@ export class JobExecutor {
         console.log(JSON.stringify({
           event: 'MESSAGE_PROCESSING_FAILED',
           reason: 'exception thrown',
-          qname,
+          qrl,
           timestamp: new Date(),
           messageId: message.MessageId,
           payload,

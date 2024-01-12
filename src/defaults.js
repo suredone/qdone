@@ -36,6 +36,7 @@ export const defaults = Object.freeze({
   killAfter: 30,
   archive: false,
   activeOnly: false,
+  maxConcurrentJobs: 100,
 
   // Idle Queues
   idleFor: 60,
@@ -93,6 +94,7 @@ export function getOptionsWithDefaults (options) {
     archive: options.archive || defaults.archive,
     activeOnly: options.activeOnly || options['active-only'] || defaults.activeOnly,
     includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
+    maxConcurrentJobs: options.maxConcurrentJobs || defaults.maxConcurrentJobs,
 
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || defaults.idleFor,

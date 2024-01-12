@@ -53,7 +53,6 @@ export async function processMessages (queues, callback, options) {
   const systemMonitor = new SystemMonitor(opt)
   const jobExecutor = new JobExecutor(opt)
   const queueManager = new QueueManager(opt, queues)
-  const maxActiveJobs = 100
   debug({ systemMonitor, jobExecutor, queueManager })
 
   shutdownCallbacks.push(() => {
@@ -85,7 +84,7 @@ export async function processMessages (queues, callback, options) {
 
   while (!shutdownRequested) { // eslint-disable-line
     // Figure out how we are running
-    const allowedJobs = maxActiveJobs - jobExecutor.activeJobCount() - maxReturnCount
+    const allowedJobs = opt.maxConcurrentJobs - jobExecutor.activeJobCount() - maxReturnCount
     const maxLatency = 100
     const latency = systemMonitor.getLatency().setTimeout
     const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
