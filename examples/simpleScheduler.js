@@ -9,9 +9,8 @@
 import {
   enqueue,
   processMessages,
-  requestShutdown,
-  DoNotProcess
-} from '../index.mjs' // from 'qdone' for standalone example
+  requestShutdown
+} from '../index.js' // from 'qdone' for standalone example
 
 const randomEnqueue = setInterval(function () {
   const queue = ['rtest1', 'rtest2', 'rtest3'][Math.round(Math.random() * 2)]
@@ -36,7 +35,6 @@ async function callback (queue, payload) {
     // Limit to 2 active tasks per queue
     if (numActive > 2) {
       console.log({ refusing: { queue, payload } })
-      throw new DoNotProcess()
     }
 
     console.log({ processing: { queue, payload } })
