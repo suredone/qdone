@@ -20,6 +20,7 @@ export class JobExecutor {
   constructor (opt) {
     this.opt = opt
     this.jobs = []
+    this.jobsByMessageId = {}
     this.stats = {
       activeJobs: 0,
       sqsCalls: 0,
@@ -28,15 +29,16 @@ export class JobExecutor {
       jobsFailed: 0,
       jobsDeleted: 0
     }
-    this.maintainVisibility()
+    this.maintainPromise = this.maintainVisibility()
     debug({ this: this })
   }
 
-  shutdown () {
+  async shutdown () {
     this.shutdownRequested = true
     // Trigger a maintenance run right away in case it speeds us up
     clearTimeout(this.maintainVisibilityTimeout)
-    this.maintainVisibility()
+    await this.maintainPromise
+    await this.maintainVisibility()
   }
 
   activeJobCount () {
@@ -47,8 +49,9 @@ export class JobExecutor {
    * Changes message visibility on all running jobs using as few calls as possible.
    */
   async maintainVisibility () {
-    debug('maintainVisibility', this.jobs)
-    const now = new Date()
+    clearTimeout(this.maintainVisibilityTimeout)
+    // debug('maintainVisibility', this.jobs)
+    const start = new Date()
     const jobsToExtendByQrl = {}
     const jobsToDeleteByQrl = {}
     const jobsToCleanup = new Set()
@@ -59,29 +62,36 @@ export class JobExecutor {
     }
 
     // Build list of jobs we need to deal with
-    for (const job of this.jobs) {
-      const jobRunTime = (now - job.start) / 1000
+    for (let i = 0; i < this.jobs.length; i++) {
+      const job = this.jobs[i]
+      const jobRunTime = Math.round((start - job.start) / 1000)
+      // debug('considering job', job)
       if (job.status === 'complete') {
         const jobsToDelete = jobsToDeleteByQrl[job.qrl] || []
+        job.status = 'deleting'
         jobsToDelete.push(job)
         jobsToDeleteByQrl[job.qrl] = jobsToDelete
       } else if (job.status === 'failed') {
         jobsToCleanup.add(job)
-      } else if (jobRunTime >= job.exendAtSecond) {
-        // Add it to our organized list of jobs
-        const jobsToExtend = jobsToExtendByQrl[job.qrl] || []
-        jobsToExtend.push(job)
-        jobsToExtendByQrl[job.qrl] = jobsToExtend
+      } else if (job.status === 'processing') {
+        debug('processing', { job, jobRunTime })
+        if (jobRunTime >= job.extendAtSecond) {
+          // Add it to our organized list of jobs
+          const jobsToExtend = jobsToExtendByQrl[job.qrl] || []
+          jobsToExtend.push(job)
+          jobsToExtendByQrl[job.qrl] = jobsToExtend
 
-        // Update the visibility timeout, double every time, up to max
-        const doubled = job.visibilityTimeout * 2
-        const secondsUntilMax = maxJobSeconds - jobRunTime
-        const secondsUntilKill = this.opt.killAfter - jobRunTime
-        job.visibilityTimeout = Math.min(double, secondsUntilMax, secondsUntilKill)
-        job.extendAtSecond = jobRunTime + job.visibilityTimeout // this is what we use next time
+          // Update the visibility timeout, double every time, up to max
+          const doubled = job.visibilityTimeout * 2
+          const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
+          // const secondsUntilKill = Math.max(1, this.opt.killAfter - jobRunTime)
+          job.visibilityTimeout = Math.min(doubled, secondsUntilMax) //, secondsUntilKill)
+          job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout) // this is what we use next time
+          debug({ doubled, secondsUntilMax, job })
+        }
       }
     }
-    debug('maintainVisibility', { jobsToDeleteByQrl, jobsToExtendByQrl })
+    // debug('maintainVisibility', { jobsToDeleteByQrl, jobsToExtendByQrl })
 
     // Extend in batches for each queue
     for (const qrl in jobsToExtendByQrl) {
@@ -100,6 +110,7 @@ export class JobExecutor {
           }
           entries.push(entry)
         }
+        debug({ entries })
 
         // Change batch
         const input = { QueueUrl: qrl, Entries: entries }
@@ -113,7 +124,7 @@ export class JobExecutor {
           if (this.opt.verbose) {
             console.error(chalk.blue('Extended'), count, chalk.blue('jobs'))
           } else if (!this.opt.disableLog) {
-            console.log(JSON.stringify({ event: 'EXTEND_VISIBILITY_TIMEOUTS', timestamp: now, count, qrl }))
+            console.log(JSON.stringify({ event: 'EXTEND_VISIBILITY_TIMEOUTS', timestamp: start, count, qrl }))
           }
         }
         // TODO Sentry
@@ -136,6 +147,7 @@ export class JobExecutor {
           }
           entries.push(entry)
         }
+        debug({ entries })
 
         // Delete batch
         const input = { QueueUrl: qrl, Entries: entries }
@@ -148,7 +160,7 @@ export class JobExecutor {
           if (this.opt.verbose) {
             console.error(chalk.blue('Deleted'), count, chalk.blue('jobs'))
           } else if (!this.opt.disableLog) {
-            console.log(JSON.stringify({ event: 'DELETE_MESSAGES', timestamp: now, count, qrl }))
+            console.log(JSON.stringify({ event: 'DELETE_MESSAGES', timestamp: start, count, qrl }))
           }
         }
         debug('DeleteMessageBatch returned', result)
@@ -157,22 +169,40 @@ export class JobExecutor {
     }
 
     // Get rid of deleted and failed jobs
-    this.jobs = this.jobs.filter(j => j.status === 'processing')
+    this.jobs = this.jobs.filter(job => {
+      if (job.status === 'deleting' || job.status === 'failed') {
+        debug('removed', job.message.MessageId)
+        delete this.jobsByMessageId[job.message.MessageId]
+        return false
+      } else {
+        return true
+      }
+    })
 
-    // Check again later, unless we are shutting down and nothing's left
+    // Bail if we are shutting down
     if (this.shutdownRequested && this.stats.activeJobs === 0 && this.jobs.length === 0) return
-    const nextCheckInMs = this.shutdownRequested ? 1 * 1000 : 10 * 1000
-    this.maintainVisibilityTimeout = setTimeout(() => this.maintainVisibility(), nextCheckInMs)
+
+    // Check later, but count the time we spent. Make sure we check at least
+    // every period seconds.
+    const msElapsed = new Date() - start
+    const msPeriod = this.shutdownRequested ? 1 * 1000 : 10 * 1000
+    const msLeft = Math.max(0, msPeriod - msElapsed)
+    const msMin = this.shutdownRequested ? 1000 : 0
+    const nextCheckInMs = Math.max(msMin, msLeft)
+    debug({ msElapsed, msPeriod, msLeft, msMin, nextCheckInMs })
+    this.maintainVisibilityTimeout = setTimeout(() => {
+      this.maintainPromise = this.maintainVisibility()
+    }, nextCheckInMs)
   }
 
   async executeJob (message, callback, qname, qrl) {
     // Create job entry and track it
     const payload = this.opt.json ? JSON.parse(message.Body) : message.Body
-    const visibilityTimeout = 30
+    const visibilityTimeout = 60
     const job = {
       status: 'processing',
       start: new Date(),
-      visibilityTimeout: 30,
+      visibilityTimeout,
       extendAtSecond: visibilityTimeout / 2,
       payload: this.opt.json ? JSON.parse(message.Body) : message.Body,
       message,
@@ -180,8 +210,23 @@ export class JobExecutor {
       qname,
       qrl
     }
-    debug('executeJob', job)
+
+    // See if we are already executing this job
+    const oldJob = this.jobsByMessageId[job.message.MessageId]
+    if (oldJob) {
+      // If we actually see the same job again, we fucked up, probably due to
+      // the system being overloaded and us missing our extension call. So
+      // we'll celebrate this occasion by throwing a big fat error.
+      debug({ oldJob })
+      const e = new Error(`Saw job ${oldJob.message.MessageId} twice`)
+      e.job = oldJob
+      // TODO: sentry breadcrumb
+      throw e
+    }
+
+    // debug('executeJob', job)
     this.jobs.push(job)
+    this.jobsByMessageId[job.message.MessageId] = job
     this.stats.activeJobs++
     if (this.opt.verbose) {
       console.error(chalk.blue('Executing:'), qname, chalk.blue('-->'), job.payload)
@@ -218,7 +263,7 @@ export class JobExecutor {
       }
       this.stats.jobsSucceeded++
     } catch (err) {
-      debug('exec.catch')
+      // debug('exec.catch', err)
       // Fail path for job execution
       if (this.opt.verbose) {
         console.error(chalk.red('FAILED'), message.Body)

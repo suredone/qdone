@@ -40,7 +40,7 @@ export async function _cheapIdleCheck (qname, qrl, opt) {
   const client = getSQSClient()
   const cmd = new GetQueueAttributesCommand({ AttributeNames: attributeNames, QueueUrl: qrl })
   const data = await client.send(cmd)
-  // debug('data', data)
+  debug('data', data)
   const result = data.Attributes
   result.queue = qname.slice(opt.prefix.length)
   // We are idle if all the messages attributes are zero

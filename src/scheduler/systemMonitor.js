@@ -4,55 +4,41 @@
  */
 
 export class SystemMonitor {
-  constructor (opt, smoothingFactor = 0.5, reportSeconds = 5) {
-    this.opt = opt
-    this.smoothingFactor = smoothingFactor
+  constructor (reportCallback, reportSeconds = 1) {
+    this.reportCallback = reportCallback || console.log
     this.reportSeconds = reportSeconds
-    this.measurements = {
-      setTimeout: [],
-      setImmediate: []
-    }
-    this.timeouts = {
-      setTimeout: undefined,
-      setImmediate: undefined,
-      reportLatency: undefined
-    }
-    this.measureLatencySetTimeout()
+    this.measurements = []
+    this.measure()
     this.reportLatency()
   }
 
-  measureLatencySetTimeout () {
+  measure () {
+    clearTimeout(this.measureTimeout)
     const start = new Date()
-    this.timeouts.setTimeout = setTimeout(() => {
+    this.measureTimeout = setTimeout(() => {
       const latency = new Date() - start
-      this.measurements.setTimeout.push(latency)
-      if (this.measurements.setTimeout.length > 1000) this.measurements.setTimeout.shift()
-      this.measureLatencySetTimeout()
+      this.measurements.push(latency)
+      if (this.measurements.length > 1000) this.measurements.shift()
+      this.measure()
     })
   }
 
   getLatency () {
-    const results = {}
-    for (const k in this.measurements) {
-      const values = this.measurements[k]
-      results[k] = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
-    }
-    return results
+    return this.measurements.length ? this.measurements.reduce((a, b) => a + b, 0) / this.measurements.length : 0
   }
 
   reportLatency () {
-    this.timeouts.reportLatency = setTimeout(() => {
-      for (const k in this.measurements) {
-        const values = this.measurements[k]
-        const mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0
-        console.log({ [k]: mean })
-      }
+    clearTimeout(this.reportTimeout)
+    this.reportTimeout = setTimeout(() => {
+      const latency = this.getLatency()
+      // console.log({ latency })
+      if (this.reportCallback) this.reportCallback(latency)
       this.reportLatency()
     }, this.reportSeconds * 1000)
   }
 
   shutdown () {
-    console.log(this.measurements)
-    for (const k in this.timeouts) clearTimeout(this.timeouts[k])
+    clearTimeout(this.measureTimeout)
+    clearTimeout(this.reportTimeout)
   }
 }

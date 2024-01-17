@@ -44,6 +44,12 @@ export const defaults = Object.freeze({
   unpair: false
 })
 
+function validateInteger (opt, name) {
+  const parsed = parseInt(opt[name], 10)
+  if (isNaN(parsed)) throw new Error(`${name} needs to be an integer.`)
+  return parsed
+}
+
 /**
  * This function should be called by each exposed API entry point on the
  * options passed in from the caller. It supports options named in camelCase
@@ -101,9 +107,22 @@ export function getOptionsWithDefaults (options) {
     delete: options.delete || defaults.delete,
     unpair: options.delete || defaults.unpair
   }
+
+  // Setting this env here means we don't have to in AWS SDK constructors
   process.env.AWS_REGION = opt.region
 
-  // TODO: validate options
+  // Validation
+  opt.cacheTtlSeconds = validateInteger(opt, 'cacheTtlSeconds')
+  opt.messageRetentionPeriod = validateInteger(opt, 'messageRetentionPeriod')
+  opt.delay = validateInteger(opt, 'delay')
+  opt.sendRetries = validateInteger(opt, 'sendRetries')
+  opt.failDelay = validateInteger(opt, 'failDelay')
+  opt.dlqAfter = validateInteger(opt, 'dlqAfter')
+  opt.waitTime = validateInteger(opt, 'waitTime')
+  opt.killAfter = validateInteger(opt, 'killAfter')
+  opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
+  opt.idleFor = validateInteger(opt, 'idleFor')
+
   return opt
 }
 
