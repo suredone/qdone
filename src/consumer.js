@@ -60,7 +60,7 @@ export async function processMessages (queues, callback, options) {
     lastLatency = latency
   })
   const jobExecutor = new JobExecutor(opt)
-  const queueManager = new QueueManager(opt, queues)
+  const queueManager = new QueueManager(opt, queues, 60)
   // debug({ systemMonitor, jobExecutor, queueManager })
 
   // This delay function keeps a timeout reference around so it can be
@@ -113,15 +113,15 @@ export async function processMessages (queues, callback, options) {
 
   while (!shutdownRequested) { // eslint-disable-line
     // Figure out how we are running
-    const allowedJobs = opt.maxConcurrentJobs - jobExecutor.activeJobCount() - maxReturnCount
+    const allowedJobs = Math.max(0, opt.maxConcurrentJobs - jobExecutor.activeJobCount() - maxReturnCount)
     const maxLatency = 100
-    const latency = systemMonitor.getLatency().setTimeout
+    const latency = systemMonitor.getLatency() || 10
     const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
     const targetJobs = Math.round(allowedJobs * latencyFactor)
-    // debug({ allowedJobs, maxLatency, latency, latencyFactor, targetJobs, activeQrls })
-
     let jobsLeft = targetJobs
+    debug({ jobCount: jobExecutor.activeJobCount(), maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, targetJobs, activeQrls })
     for (const { qname, qrl } of queueManager.getPairs()) {
+      debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
@@ -129,7 +129,7 @@ export async function processMessages (queues, callback, options) {
       if (opt.verbose) {
         console.error(chalk.blue('Listening on: '), qname)
       }
-      // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
+      debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
     await delay(1000)
   }

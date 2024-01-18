@@ -140,7 +140,8 @@ export class QueueManager {
   }
 
   getPairs () {
-    return this.selectedPairs
+    const now = new Date()
+    return this.selectedPairs.filter(({ qname, qrl }) => !this.keepInIcehouse(qrl, now))
   }
 
   async shutdown () {
