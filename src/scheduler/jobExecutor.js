@@ -3,13 +3,12 @@
  * their visibility timeouts and deleting them when they are successful.
  */
 
-import {
-  ChangeMessageVisibilityBatchCommand,
-  DeleteMessageBatchCommand
-} from '@aws-sdk/client-sqs'
+import { ChangeMessageVisibilityBatchCommand, DeleteMessageBatchCommand } from '@aws-sdk/client-sqs'
+
 import chalk from 'chalk'
 import Debug from 'debug'
 
+import { withSentry } from '../sentry.js'
 import { getSQSClient } from '../sqs.js'
 
 const debug = Debug('qdone:jobExecutor')
@@ -243,7 +242,7 @@ export class JobExecutor {
     // Execute job
     try {
       const queue = qname.slice(this.opt.prefix.length)
-      const result = await callback(queue, payload)
+      const result = await withSentry(() => callback(queue, payload), this.opt, { job })
       debug('executeJob callback finished', { payload, result })
       if (this.opt.verbose) {
         console.error(chalk.green('SUCCESS'), message.Body)
@@ -263,7 +262,6 @@ export class JobExecutor {
       }
       this.stats.jobsSucceeded++
     } catch (err) {
-      // debug('exec.catch', err)
       // Fail path for job execution
       if (this.opt.verbose) {
         console.error(chalk.red('FAILED'), message.Body)

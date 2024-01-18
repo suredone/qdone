@@ -3,12 +3,13 @@
  */
 
 import Debug from 'debug'
-import { init, captureException } from '@sentry/node'
+import { init, withScope, captureException } from '@sentry/node'
 
 const debug = Debug('qdone:sentry')
 
 let sentryWasInit = false
-export async function withSentry (callback, opt) {
+export async function withSentry (callback, opt, contexts) {
+  debug({ withSentry: { callback, opt, contexts } })
   // Bail if sentry isn't enabled
   if (!opt.sentryDsn) return callback()
 
@@ -23,8 +24,20 @@ export async function withSentry (callback, opt) {
     return result
   } catch (err) {
     debug({ err })
-    const sentryResult = await captureException(err)
-    debug({ sentryResult })
+    await withScope(async function (scope) {
+      scope.setContext('opt', opt)
+      if (contexts instanceof Object) {
+        for (const key in contexts) scope.setContext(key, contexts[key])
+        if (err.stdout && err.stderr) {
+          const { stdout, stderr } = err
+          scope.setContext('IO', { stdout, stderr })
+        }
+      }
+      const sentryResult = await captureException(err)
+      debug({ sentryResult })
+    })
     throw err
   }
 }
+
+debug('loaded')
