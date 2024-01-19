@@ -2,6 +2,7 @@
  * Consumer implementation.
  */
 
+import { freemem, totalmem } from 'os'
 import { ReceiveMessageCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -117,9 +118,10 @@ export async function processMessages (queues, callback, options) {
     const maxLatency = 100
     const latency = systemMonitor.getLatency() || 10
     const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
-    const targetJobs = Math.round(allowedJobs * latencyFactor)
+    const freememFactor = Math.min(1, Math.max(0, freemem() - totalmem() / 2) / totalmem())
+    const targetJobs = Math.round(allowedJobs * latencyFactor * freememFactor)
     let jobsLeft = targetJobs
-    debug({ jobCount: jobExecutor.activeJobCount(), maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, targetJobs, activeQrls })
+    debug({ jobCount: jobExecutor.activeJobCount(), maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, targetJobs, activeQrls })
     for (const { qname, qrl } of queueManager.getPairs()) {
       debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
