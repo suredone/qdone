@@ -242,7 +242,7 @@ export class JobExecutor {
     // Execute job
     try {
       const queue = qname.slice(this.opt.prefix.length)
-      const result = await withSentry(() => callback(queue, payload), this.opt, { job })
+      const result = await callback(queue, payload)
       debug('executeJob callback finished', { payload, result })
       if (this.opt.verbose) {
         console.error(chalk.green('SUCCESS'), message.Body)

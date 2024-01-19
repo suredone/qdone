@@ -37,15 +37,24 @@ const metricNames = [
  * Actual SQS call, used in conjunction with cache.
  */
 export async function _cheapIdleCheck (qname, qrl, opt) {
-  const client = getSQSClient()
-  const cmd = new GetQueueAttributesCommand({ AttributeNames: attributeNames, QueueUrl: qrl })
-  const data = await client.send(cmd)
-  debug('data', data)
-  const result = data.Attributes
-  result.queue = qname.slice(opt.prefix.length)
-  // We are idle if all the messages attributes are zero
-  result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
-  return { result, SQS: 1 }
+  try {
+    const client = getSQSClient()
+    const cmd = new GetQueueAttributesCommand({ AttributeNames: attributeNames, QueueUrl: qrl })
+    const data = await client.send(cmd)
+    debug('data', data)
+    const result = data.Attributes
+    result.queue = qname.slice(opt.prefix.length)
+    // We are idle if all the messages attributes are zero
+    result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
+    return { result, SQS: 1 }
+  } catch (e) {
+    if (e instanceof QueueDoesNotExist) {
+      // Count deleted queues as idle
+      return { idle: true, SQS: 1 }
+    } else {
+      throw e
+    }
+  }
 }
 
 /**
