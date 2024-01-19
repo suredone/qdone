@@ -37,6 +37,7 @@ export const defaults = Object.freeze({
   archive: false,
   activeOnly: false,
   maxConcurrentJobs: 100,
+  maxMemoryPercent: 70,
 
   // Idle Queues
   idleFor: 60,
@@ -101,6 +102,7 @@ export function getOptionsWithDefaults (options) {
     activeOnly: options.activeOnly || options['active-only'] || defaults.activeOnly,
     includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
     maxConcurrentJobs: options.maxConcurrentJobs || defaults.maxConcurrentJobs,
+    maxMemoryPercent: options.maxMemoryPercent || defaults.maxMemoryPercent,
 
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || defaults.idleFor,
@@ -121,6 +123,7 @@ export function getOptionsWithDefaults (options) {
   opt.waitTime = validateInteger(opt, 'waitTime')
   opt.killAfter = validateInteger(opt, 'killAfter')
   opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
+  opt.maxMemoryPercent = validateInteger(opt, 'maxMemoryPercent')
   opt.idleFor = validateInteger(opt, 'idleFor')
 
   return opt

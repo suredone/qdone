@@ -116,14 +116,17 @@ export async function processMessages (queues, callback, options) {
     // Figure out how we are running
     const allowedJobs = Math.max(0, opt.maxConcurrentJobs - jobExecutor.activeJobCount() - maxReturnCount)
     const maxLatency = 100
+    const freeMemory = freemem()
+    const totalMemory = totalmem()
+    const memoryThreshold = totalMemory * opt.maxMemoryPercent / 100
     const latency = systemMonitor.getLatency() || 10
     const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
-    const freememFactor = Math.min(1, Math.max(0, freemem() - totalmem() / 2) / totalmem())
+    const freememFactor = Math.min(1, Math.max(0, freeMemory / memoryThreshold))
     const targetJobs = Math.round(allowedJobs * latencyFactor * freememFactor)
     let jobsLeft = targetJobs
-    debug({ jobCount: jobExecutor.activeJobCount(), maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, targetJobs, activeQrls })
+    debug({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, targetJobs, activeQrls })
     for (const { qname, qrl } of queueManager.getPairs()) {
-      debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
+      // debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
@@ -131,7 +134,7 @@ export async function processMessages (queues, callback, options) {
       if (opt.verbose) {
         console.error(chalk.blue('Listening on: '), qname)
       }
-      debug({ listenedTo: { qname, maxMessages, jobsLeft } })
+      // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
     await delay(1000)
   }
