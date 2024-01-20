@@ -8,7 +8,6 @@ import { ChangeMessageVisibilityBatchCommand, DeleteMessageBatchCommand } from '
 import chalk from 'chalk'
 import Debug from 'debug'
 
-import { withSentry } from '../sentry.js'
 import { getSQSClient } from '../sqs.js'
 
 const debug = Debug('qdone:jobExecutor')

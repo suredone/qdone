@@ -3,8 +3,24 @@
  */
 
 import { getMatchingQueues, getQueueAttributes } from './sqs.js'
+import { putAggregateData } from './cloudWatch.js'
+import { getOptionsWithDefaults } from './defaults.js'
 import Debug from 'debug'
 const debug = Debug('sd:utils:qmonitor:index')
+
+/**
+ * Splits a queue name with a single wildcard into prefix and suffix regex.
+ */
+export async function monitor (queue, save, options) {
+  const opt = getOptionsWithDefaults(options)
+  const data = await getAggregateData(queue)
+  console.log(data)
+  if (save) {
+    if (opt.verbose) process.stderr.write('Saving to CloudWatch...')
+    await putAggregateData(data)
+    if (opt.verbose) process.stderr.write('done\n')
+  }
+}
 
 /**
  * Splits a queue name with a single wildcard into prefix and suffix regex.

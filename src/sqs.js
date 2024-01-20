@@ -2,7 +2,7 @@
  * Functions that deal with SQS
  */
 
-import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs'
+import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { basename } from 'path'
 import Debug from 'debug'
 const debug = Debug('qdone:sqs')
@@ -62,9 +62,26 @@ export async function getQueueAttributes (qrls) {
     // debug({ input, command })
     promises.push((async () => {
       const queue = basename(qrl)
-      const result = await client.send(command)
-      // debug({ queue, result })
-      return { queue, result }
+      try {
+        const result = await client.send(command)
+        // debug({ queue, result })
+        return { queue, result }
+      } catch (e) {
+        if (e instanceof QueueDoesNotExist) {
+          // For queues that have been deleted in the meantime for whatever
+          // reason, just show as having no messages instead of failing the
+          // whole batch
+          return {
+            queue,
+            Attributes: {
+              ApproximateNumberOfMessages: '0',
+              ApproximateNumberOfMessagesNotVisible: '0',
+              ApproximateNumberOfMessagesDelayed: '0'
+            }
+          }
+        }
+        throw e
+      }
     })())
   }
   return Promise.all(promises)
