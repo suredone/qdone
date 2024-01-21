@@ -86,10 +86,10 @@ export class QueueManager {
         const isFailQueue = qname.slice(-suf.length) === suf
         return this.opt.includeFailed ? true : !isFailQueue
       })
-      // first fifo
+      // next fifo
       .filter(({ qname, qrl }) => {
         const isFifo = qname.endsWith('.fifo')
-        return this.opt.fifo ? isFifo : !isFifo
+        return this.opt.fifo ? isFifo : true
       })
       // then icehouse
       .filter(({ qname, qrl }) => !this.keepInIcehouse(qrl, now))
