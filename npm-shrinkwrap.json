@@ -1,16 +1,16 @@
 {
   "name": "qdone",
-  "version": "2.0.20-alpha",
+  "version": "2.0.21-alpha",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "qdone",
-      "version": "2.0.20-alpha",
+      "version": "2.0.21-alpha",
       "license": "MIT",
       "dependencies": {
-        "@aws-sdk/client-cloudwatch": "^3.465.0",
-        "@aws-sdk/client-sqs": "^3.465.0",
+        "@aws-sdk/client-cloudwatch": "3.465.0",
+        "@aws-sdk/client-sqs": "3.465.0",
         "@sentry/node": "^7.87.0",
         "chalk": "^4.1.2",
         "command-line-args": "^5.2.1",
@@ -9253,8 +9253,7 @@
       }
     },
     "@aws-sdk/client-cloudwatch": {
-      "version": "3.481.0",
-      "resolved": "https://registry.npmjs.org/@aws-sdk/client-cloudwatch/-/client-cloudwatch-3.481.0.tgz",
+      "version": "https://registry.npmjs.org/@aws-sdk/client-cloudwatch/-/client-cloudwatch-3.481.0.tgz",
       "integrity": "sha512-9cV1kJq5sRv1IqJ0nS2FPpjhTDEFguam1rSMR0jnuDzpyeJF7s93ZbhBO69Zv9HlCiG22g2Pf4Z5TpNPwRT5oQ==",
       "requires": {
         "@aws-crypto/sha256-browser": "3.0.0",
@@ -9302,8 +9301,7 @@
       }
     },
     "@aws-sdk/client-sqs": {
-      "version": "3.481.0",
-      "resolved": "https://registry.npmjs.org/@aws-sdk/client-sqs/-/client-sqs-3.481.0.tgz",
+      "version": "https://registry.npmjs.org/@aws-sdk/client-sqs/-/client-sqs-3.481.0.tgz",
       "integrity": "sha512-OMTJ5zLR1Db+9TKNCCYE55dwqlPOzyVPZaDN5Y7+8rdDO4GZ9eGMFnlPqAb4X/yIjB3V9Nd7IlCey5Y6vY3UAQ==",
       "requires": {
         "@aws-crypto/sha256-browser": "3.0.0",

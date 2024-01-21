@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "2.0.20-alpha",
+  "version": "2.0.21-alpha",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
   "main": "./index.js",
@@ -12,8 +12,8 @@
     "index.js"
   ],
   "dependencies": {
-    "@aws-sdk/client-cloudwatch": "^3.465.0",
-    "@aws-sdk/client-sqs": "^3.465.0",
+    "@aws-sdk/client-cloudwatch": "3.465.0",
+    "@aws-sdk/client-sqs": "3.465.0",
     "@sentry/node": "^7.87.0",
     "chalk": "^4.1.2",
     "command-line-args": "^5.2.1",
@@ -24,6 +24,15 @@
     "standard": "^17.1.0",
     "tree-kill": "^1.2.2",
     "uuid": "^9.0.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "@smithy/util-endpoints": "1.0.8",
+      "@smithy/config-resolver": "2.0.21",
+      "@smithy/middleware-endpoint": "2.2.1",
+      "@smithy/shared-ini-file-loader": "2.2.7",
+      "@smithy/middleware-retry": "2.0.21"
+    }
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^3.0.0",
