@@ -2,7 +2,7 @@
  * Consumer implementation.
  */
 
-import { freemem, totalmem } from 'os'
+import { freemem, totalmem, loadavg, cpus } from 'os'
 import { ReceiveMessageCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -62,6 +62,7 @@ export async function processMessages (queues, callback, options) {
   })
   const jobExecutor = new JobExecutor(opt)
   const queueManager = new QueueManager(opt, queues, 60)
+  const cores = cpus().length
   // debug({ systemMonitor, jobExecutor, queueManager })
 
   // This delay function keeps a timeout reference around so it can be
@@ -115,16 +116,29 @@ export async function processMessages (queues, callback, options) {
   while (!shutdownRequested) { // eslint-disable-line
     // Figure out how we are running
     const allowedJobs = Math.max(0, opt.maxConcurrentJobs - jobExecutor.activeJobCount() - maxReturnCount)
+
+    // Latency
     const maxLatency = 100
+    const latency = systemMonitor.getLatency() || 10
+    const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
+
+    // Memory
     const freeMemory = freemem()
     const totalMemory = totalmem()
     const memoryThreshold = totalMemory * opt.maxMemoryPercent / 100
-    const latency = systemMonitor.getLatency() || 10
-    const latencyFactor = 1 - Math.abs(Math.min(latency / maxLatency, 1)) // 0 if latency is at max, 1 if latency 0
-    const freememFactor = Math.min(1, Math.max(0, freeMemory / memoryThreshold))
-    const targetJobs = Math.round(allowedJobs * latencyFactor * freememFactor)
+    const freememThreshold = totalMemory - memoryThreshold
+    const remainingMemory = Math.max(0, freeMemory - freememThreshold)
+    const freememFactor = Math.min(1, Math.max(0, remainingMemory / memoryThreshold))
+
+    // Load
+    const oneMinuteLoad = loadavg()[0]
+    const loadPerCore = oneMinuteLoad / cores
+    const loadFactor = 1 - Math.min(1, Math.max(0, loadPerCore / 3))
+
+    const overallFactor = Math.min(latencyFactor, freememFactor, loadFactor)
+    const targetJobs = Math.round(allowedJobs * overallFactor)
     let jobsLeft = targetJobs
-    debug({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, targetJobs, activeQrls })
+    debug({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, freememThreshold, remainingMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, oneMinuteLoad, loadPerCore, loadFactor, overallFactor, targetJobs, activeQrls })
     for (const { qname, qrl } of queueManager.getPairs()) {
       // debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
