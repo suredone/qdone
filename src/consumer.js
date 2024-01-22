@@ -91,7 +91,7 @@ export async function processMessages (queues, callback, options) {
       const messages = await getMessages(qrl, opt, maxMessages)
       if (messages.length) {
         for (const message of messages) {
-          jobExecutor.executeJob(message, callback, qname, qrl)
+          jobExecutor.executeJob(message, callback, qname, qrl, () => queueManager.updateIcehouse(qrl, true))
         }
         queueManager.updateIcehouse(qrl, false)
       } else {

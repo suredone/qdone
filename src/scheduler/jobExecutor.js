@@ -193,7 +193,7 @@ export class JobExecutor {
     }, nextCheckInMs)
   }
 
-  async executeJob (message, callback, qname, qrl) {
+  async executeJob (message, callback, qname, qrl, failedCallback) {
     // Create job entry and track it
     const payload = this.opt.json ? JSON.parse(message.Body) : message.Body
     const visibilityTimeout = 60
@@ -261,6 +261,8 @@ export class JobExecutor {
       }
       this.stats.jobsSucceeded++
     } catch (err) {
+      // Notify caller that we failed
+      if (failedCallback) failedCallback(message, qname, qrl)
       // Fail path for job execution
       if (this.opt.verbose) {
         console.error(chalk.red('FAILED'), message.Body)
