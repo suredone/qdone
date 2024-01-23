@@ -69,6 +69,12 @@ export class QueueManager {
   async resolveQueues () {
     clearTimeout(this.resolveTimeout)
     if (this.shutdownRequested) return
+    this.resolveTimeout = setTimeout(() => {
+      this.resolvePromise = this.resolveQueues()
+    }, this.resolveSeconds * 1000)
+    if (this.opt.verbose) {
+      console.error(chalk.blue('Will resolve queues again in ' + this.resolveSeconds + ' seconds'))
+    }
 
     // Start processing
     const qnames = this.queues.map(queue => normalizeQueueName(queue, this.opt))
@@ -120,16 +126,9 @@ export class QueueManager {
 
     // Finished resolving
     if (this.opt.verbose) {
-      console.error(chalk.blue('  done'))
+      console.error(chalk.blue('Done resolving'))
       console.error()
     }
-
-    if (this.opt.verbose) {
-      console.error(chalk.blue('Will resolve queues again in ' + this.resolveSeconds + ' seconds'))
-    }
-    this.resolveTimeout = setTimeout(() => {
-      this.resolvePromise = this.resolveQueues()
-    }, this.resolveSeconds * 1000)
   }
 
   // Return the next queue in the lineup
@@ -147,6 +146,9 @@ export class QueueManager {
   async shutdown () {
     this.shutdownRequested = true
     clearTimeout(this.resolveTimeout)
+    if (this.opt.verbose) {
+      console.error(chalk.blue('Waiting for queues to resolve'))
+    }
     await this.resolvePromise
   }
 }

@@ -35,6 +35,9 @@ export class JobExecutor {
     this.shutdownRequested = true
     // Trigger a maintenance run right away in case it speeds us up
     clearTimeout(this.maintainVisibilityTimeout)
+    if (this.opt.verbose) {
+      console.error(chalk.blue('Shutting down jobExecutor'))
+    }
     await this.maintainPromise
     await this.maintainVisibility()
   }
@@ -47,7 +50,21 @@ export class JobExecutor {
    * Changes message visibility on all running jobs using as few calls as possible.
    */
   async maintainVisibility () {
+    // Bail if we are shutting down
+    if (this.shutdownRequested && this.stats.activeJobs === 0 && this.jobs.length === 0) {
+      if (this.opt.verbose) {
+        console.error(chalk.blue('All workers done, finishing shutdown of jobExecutor'))
+      }
+      return
+    }
+
+    // Reset our timeout
     clearTimeout(this.maintainVisibilityTimeout)
+    const nextCheckInMs = this.shutdownRequested ? 1000 : 10 * 1000
+    this.maintainVisibilityTimeout = setTimeout(() => {
+      this.maintainPromise = this.maintainVisibility()
+    }, nextCheckInMs)
+
     // debug('maintainVisibility', this.jobs)
     const start = new Date()
     const jobsToExtendByQrl = {}
@@ -176,24 +193,10 @@ export class JobExecutor {
         return true
       }
     })
-
-    // Bail if we are shutting down
-    if (this.shutdownRequested && this.stats.activeJobs === 0 && this.jobs.length === 0) return
-
-    // Check later, but count the time we spent. Make sure we check at least
-    // every period seconds.
-    const msElapsed = new Date() - start
-    const msPeriod = this.shutdownRequested ? 1 * 1000 : 10 * 1000
-    const msLeft = Math.max(0, msPeriod - msElapsed)
-    const msMin = this.shutdownRequested ? 1000 : 0
-    const nextCheckInMs = Math.max(msMin, msLeft)
-    debug({ msElapsed, msPeriod, msLeft, msMin, nextCheckInMs })
-    this.maintainVisibilityTimeout = setTimeout(() => {
-      this.maintainPromise = this.maintainVisibility()
-    }, nextCheckInMs)
   }
 
   async executeJob (message, callback, qname, qrl, failedCallback) {
+    if (this.shutdownRequested) throw new Error('jobExecutor is shutting down so cannot execute new job')
     // Create job entry and track it
     const payload = this.opt.json ? JSON.parse(message.Body) : message.Body
     const visibilityTimeout = 60

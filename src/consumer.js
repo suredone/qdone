@@ -86,18 +86,24 @@ export async function processMessages (queues, callback, options) {
   const activeQrls = new Set()
   let maxReturnCount = 0
   const listen = async (qname, qrl, maxMessages) => {
+    if (opt.verbose) {
+      console.error(chalk.blue('Listening on: '), qname)
+    }
     activeQrls.add(qrl)
     maxReturnCount += maxMessages
     try {
       const messages = await getMessages(qrl, opt, maxMessages)
-      if (messages.length) {
-        for (const message of messages) {
-          jobExecutor.executeJob(message, callback, qname, qrl, () => queueManager.updateIcehouse(qrl, true))
+
+      if (!shutdownRequested) {
+        if (messages.length) {
+          for (const message of messages) {
+            jobExecutor.executeJob(message, callback, qname, qrl, () => queueManager.updateIcehouse(qrl, true))
+          }
+          queueManager.updateIcehouse(qrl, false)
+        } else {
+          // If we didn't get any, update the icehouse so we can back off
+          queueManager.updateIcehouse(qrl, true)
         }
-        queueManager.updateIcehouse(qrl, false)
-      } else {
-        // If we didn't get any, update the icehouse so we can back off
-        queueManager.updateIcehouse(qrl, true)
       }
 
       // Max job accounting
@@ -138,16 +144,16 @@ export async function processMessages (queues, callback, options) {
     const overallFactor = Math.min(latencyFactor, freememFactor, loadFactor)
     const targetJobs = Math.round(allowedJobs * overallFactor)
     let jobsLeft = targetJobs
-    debug({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, freememThreshold, remainingMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, oneMinuteLoad, loadPerCore, loadFactor, overallFactor, targetJobs, activeQrls })
+
+    if (opt.verbose) {
+      console.error({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, freememThreshold, remainingMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, oneMinuteLoad, loadPerCore, loadFactor, overallFactor, targetJobs, activeQrls })
+    }
     for (const { qname, qrl } of queueManager.getPairs()) {
       // debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
       jobsLeft -= maxMessages
-      if (opt.verbose) {
-        console.error(chalk.blue('Listening on: '), qname)
-      }
       // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
     await delay(1000)
