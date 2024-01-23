@@ -101,7 +101,7 @@ export class JobExecutor {
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
           // const secondsUntilKill = Math.max(1, this.opt.killAfter - jobRunTime)
           job.visibilityTimeout = Math.min(doubled, secondsUntilMax) //, secondsUntilKill)
-          job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout) // this is what we use next time
+          job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
           debug({ doubled, secondsUntilMax, job })
         }
       }
@@ -119,7 +119,7 @@ export class JobExecutor {
         while (messageId++ < 10 && jobsToExtend.length) {
           const job = jobsToExtend.shift()
           const entry = {
-            Id: '' + messageId,
+            Id: job.message.MessageId,
             ReceiptHandle: job.message.ReceiptHandle,
             VisibilityTimeout: job.visibilityTimeout
           }
@@ -133,6 +133,12 @@ export class JobExecutor {
         const result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
         debug('ChangeMessageVisibilityBatch returned', result)
         this.stats.sqsCalls++
+        if (result.Failed) {
+          console.error('FAILED_MESSAGES', result.Failed)
+          for (const failed of result.Failed) {
+            console.error('FAILED_TO_EXTEND_JOB', this.jobsByMessageId[failed.Id])
+          }
+        }
         if (result.Successful) {
           const count = result.Successful.length || 0
           this.stats.timeoutsExtended += count
@@ -156,7 +162,7 @@ export class JobExecutor {
         while (messageId++ < 10 && jobsToDelete.length) {
           const job = jobsToDelete.shift()
           const entry = {
-            Id: '' + messageId,
+            Id: job.message.MessageId,
             ReceiptHandle: job.message.ReceiptHandle,
             VisibilityTimeout: job.visibilityTimeout
           }
@@ -169,6 +175,12 @@ export class JobExecutor {
         debug({ DeleteMessageBatch: input })
         const result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
         this.stats.sqsCalls++
+        if (result.Failed) {
+          console.error('FAILED_MESSAGES', result.Failed)
+          for (const failed of result.Failed) {
+            console.error('FAILED_TO_DELETE_JOB', this.jobsByMessageId[failed.Id])
+          }
+        }
         if (result.Successful) {
           const count = result.Successful.length || 0
           this.stats.jobsDeleted += count
