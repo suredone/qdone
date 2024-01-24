@@ -57,8 +57,11 @@ export class QueueManager {
       const secondsElapsed = Math.round((now - lastCheck) / 1000)
       debug({ icehouseCheck: { qrl, lastCheck, secondsToWait, secondsElapsed } })
       const letOut = secondsElapsed > secondsToWait
-      if (letOut && this.opt.verbose) {
-        console.error(chalk.blue('Coming out of icehouse:'), qrl)
+      if (letOut) {
+        delete this.icehouse[qrl]
+        if (this.opt.verbose) {
+          console.error(chalk.blue('Coming out of icehouse:'), qrl)
+        }
       }
       return !letOut
     } else {
@@ -79,7 +82,7 @@ export class QueueManager {
     // Start processing
     const qnames = this.queues.map(queue => normalizeQueueName(queue, this.opt))
     const pairs = await getQnameUrlPairs(qnames, this.opt)
-    if (this.opt.verbose) console.error(chalk.blue('Resolving queues:'))
+    if (this.opt.verbose) console.error(chalk.blue('Resolving queues:'), pairs.map(({ qname }) => qname))
 
     if (this.shutdownRequested) return
 
@@ -96,6 +99,12 @@ export class QueueManager {
       .filter(({ qname, qrl }) => {
         const isFifo = qname.endsWith('.fifo')
         return this.opt.fifo ? isFifo : true
+      })
+      // next dead
+      .filter(({ qname, qrl }) => {
+        const isFifo = qname.endsWith('.fifo')
+        const isDead = isFifo ? qname.endsWith('_dead.fifo') : qname.endsWith('_dead')
+        return !isDead
       })
       // then icehouse
       .filter(({ qname, qrl }) => !this.keepInIcehouse(qrl, now))

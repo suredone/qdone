@@ -97,7 +97,7 @@ export async function processMessages (queues, callback, options) {
       if (!shutdownRequested) {
         if (messages.length) {
           for (const message of messages) {
-            jobExecutor.executeJob(message, callback, qname, qrl, () => queueManager.updateIcehouse(qrl, true))
+            jobExecutor.executeJob(message, callback, qname, qrl)
           }
           queueManager.updateIcehouse(qrl, false)
         } else {
@@ -146,7 +146,7 @@ export async function processMessages (queues, callback, options) {
     let jobsLeft = targetJobs
 
     if (opt.verbose) {
-      console.error({ jobCount: jobExecutor.activeJobCount(), freeMemory, totalMemory, freememThreshold, remainingMemory, memoryThreshold, maxReturnCount, allowedJobs, maxLatency, latency, latencyFactor, freememFactor, oneMinuteLoad, loadPerCore, loadFactor, overallFactor, targetJobs, activeQrls })
+      console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, jobCount: jobExecutor.activeJobCount(), allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
     }
     for (const { qname, qrl } of queueManager.getPairs()) {
       // debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
