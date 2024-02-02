@@ -41,10 +41,8 @@ export class JobExecutor {
     if (this.opt.verbose) {
       console.error(chalk.blue('Shutting down jobExecutor'))
     }
-    while (this.stats.activeJobs > 0) {
-      await this.maintainPromise
-      await this.maintainVisibility()
-    }
+    await this.maintainPromise
+    await this.maintainVisibility()
   }
 
   activeJobCount () {
@@ -129,11 +127,13 @@ export class JobExecutor {
       console.error(chalk.blue('Jobs: '))
       for (const [qname, jobs] of this.jobsByQueue.entries()) {
         if (jobs.size) {
+          const stats = {}
+          for (const job of jobs) stats[job.status] = (stats[job.status] || 0) + 1
           console.error(chalk.blue('  queue:'), qname)
-          for (const job of jobs) if (job.status === 'running') console.error(chalk.green('    running: '), job.payload)
-          for (const job of jobs) if (job.status === 'waiting') console.error(chalk.gold('    waiting:'), job.payload)
-          for (const job of jobs) if (job.status === 'complete' || job.status === 'deleting') console.error(chalk.blue('    complete:'), job.payload)
-          for (const job of jobs) if (job.status === 'failed') console.error(chalk.red('    failed:'), job.payload)
+          if (stats.running) console.error(chalk.green('    running: '), stats.running)
+          if (stats.waiting) console.error(chalk.yellow('    waiting: '), stats.waiting)
+          if (stats.deleting) console.error(chalk.blue('    complete: '), stats.deleting)
+          if (stats.failed) console.error(chalk.red('    failed: '), stats.failed)
         }
       }
     }
