@@ -19,6 +19,7 @@ export class JobExecutor {
     this.opt = opt
     this.jobs = []
     this.jobsByMessageId = {}
+    this.jobsByQueue = new Map()
     this.stats = {
       activeJobs: 0,
       waitingJobs: 0,
@@ -46,6 +47,20 @@ export class JobExecutor {
 
   activeJobCount () {
     return this.stats.activeJobs
+  }
+
+  runningJobCount () {
+    return this.stats.runningJobs
+  }
+
+  /**
+   * Returns the number of jobs running in a queue.
+   */
+  runningJobCountForQueue (qname) {
+    const jobs = this.jobsByQueue.get(qname) || new Set()
+    let runningCount = 0
+    for (const job of jobs.values()) runningCount += job.status === 'running'
+    return runningCount
   }
 
   /**
@@ -203,7 +218,9 @@ export class JobExecutor {
     this.jobs = this.jobs.filter(job => {
       if (job.status === 'deleting' || job.status === 'failed') {
         debug('removed', job.message.MessageId)
+        // Accounting
         delete this.jobsByMessageId[job.message.MessageId]
+        this.jobsByQueue.get(job.qname).delete(job)
         return false
       } else {
         return true
@@ -240,8 +257,14 @@ export class JobExecutor {
       throw e
     }
 
+    // Accounting
     this.jobs.push(job)
     this.jobsByMessageId[job.message.MessageId] = job
+
+    // Track all jobs for each queue
+    if (!this.jobsByQueue.has(job.qname)) this.jobsByQueue.set(job.qname, new Set())
+    this.jobsByQueue.get(job.qname).add(job)
+
     this.stats.activeJobs++
     this.stats.waitingJobs++
     if (this.opt.verbose) {
@@ -332,13 +355,10 @@ export class JobExecutor {
     // Begin executing
     for (const [job, i] of jobs.map((job, i) => [job, i])) {
       // Figure out if the next job needs to happen in serial, otherwise we can parallel execute
-      // const job = jobs[i]
       const nextJob = jobs[i + 1]
-      const nextJobIsSerial =
-         isFifo && nextJob &&
-         job.message?.Attributes?.GroupId === nextJob.message?.Attributes?.GroupId
+      const nextJobIsSerial = isFifo && nextJob && job.message?.Attributes?.GroupId === nextJob.message?.Attributes?.GroupId
 
-      console.log({ i, nextJobAtt: nextJob.message.Attributes, nextJobIsSerial })
+      // console.log({ i, nextJobAtt: nextJob?.message?.Attributes, nextJobIsSerial })
       // Execute serial or parallel
       if (nextJobIsSerial) await this.runJob(job)
       else this.runJob(job)
