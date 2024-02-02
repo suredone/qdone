@@ -61,7 +61,7 @@ export async function processMessages (queues, callback, options) {
     lastLatency = latency
   })
   const jobExecutor = new JobExecutor(opt)
-  const queueManager = new QueueManager(opt, queues, 60)
+  const queueManager = new QueueManager(opt, queues, 10)
   const cores = cpus().length
   // debug({ systemMonitor, jobExecutor, queueManager })
 
@@ -105,7 +105,7 @@ export async function processMessages (queues, callback, options) {
       }
 
       // Max job accounting
-      if (messages.length) maxReturnCount -= messages.length
+      maxReturnCount -= maxMessages
       activeQrls.delete(qrl)
     } catch (e) {
       // If the queue has been cleaned up, we should back off anyway
@@ -119,7 +119,8 @@ export async function processMessages (queues, callback, options) {
 
   while (!shutdownRequested) { // eslint-disable-line
     // Figure out how we are running
-    const allowedJobs = Math.max(0, opt.maxConcurrentJobs - jobExecutor.runningJobCount() - maxReturnCount)
+    const runningJobs = jobExecutor.runningJobCount()
+    const allowedJobs = Math.max(0, opt.maxConcurrentJobs - maxReturnCount - runningJobs)
 
     // Latency
     const maxLatency = 100
@@ -144,12 +145,13 @@ export async function processMessages (queues, callback, options) {
     let jobsLeft = targetJobs
 
     if (opt.verbose) {
-      // console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, jobCount: jobExecutor.activeJobCount(), allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
+      console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, maxReturnCount, runningJobs, allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
     }
     for (const { qname, qrl } of queueManager.getPairs()) {
       // const qcount = jobExecutor.runningJobCountForQueue(qname)
       // console.log({ evaluating: { qname, qrl, qcount, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
-      if (jobsLeft <= 0 || activeQrls.has(qrl)) continue
+      if (jobsLeft <= 0) break
+      if (activeQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
       jobsLeft -= maxMessages

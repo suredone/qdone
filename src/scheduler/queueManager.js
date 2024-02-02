@@ -149,6 +149,7 @@ export class QueueManager {
 
   getPairs () {
     const now = new Date()
+    this.selectedPairs.sort(() => 0.5 - Math.random())
     return this.selectedPairs.filter(({ qname, qrl }) => !this.keepInIcehouse(qrl, now))
   }
 
