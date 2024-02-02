@@ -21,6 +21,8 @@ export class JobExecutor {
     this.jobsByMessageId = {}
     this.stats = {
       activeJobs: 0,
+      waitingJobs: 0,
+      runningJobs: 0,
       sqsCalls: 0,
       timeoutsExtended: 0,
       jobsSucceeded: 0,
@@ -71,15 +73,12 @@ export class JobExecutor {
     const jobsToDeleteByQrl = {}
     const jobsToCleanup = new Set()
 
-    if (this.opt.verbose) {
-      console.error(chalk.blue('Stats: '), this.stats)
-      console.error(chalk.blue('Running: '), this.jobs.filter(j => j.status === 'processing').map(({ qname, message }) => ({ qname, payload: message.Body })))
-    }
-
     // Build list of jobs we need to deal with
+    const jobStatuses = {}
     for (let i = 0; i < this.jobs.length; i++) {
       const job = this.jobs[i]
       const jobRunTime = Math.round((start - job.start) / 1000)
+      jobStatuses[job.status] = (jobStatuses[job.status] || 0) + 1
       // debug('considering job', job)
       if (job.status === 'complete') {
         const jobsToDelete = jobsToDeleteByQrl[job.qrl] || []
@@ -88,7 +87,8 @@ export class JobExecutor {
         jobsToDeleteByQrl[job.qrl] = jobsToDelete
       } else if (job.status === 'failed') {
         jobsToCleanup.add(job)
-      } else if (job.status === 'processing') {
+      } else if (job.status !== 'deleting') {
+        // Any other job state gets visibility accounting
         debug('processing', { job, jobRunTime })
         if (jobRunTime >= job.extendAtSecond) {
           // Add it to our organized list of jobs
@@ -106,7 +106,11 @@ export class JobExecutor {
         }
       }
     }
-    // debug('maintainVisibility', { jobsToDeleteByQrl, jobsToExtendByQrl })
+
+    if (this.opt.verbose) {
+      console.error(chalk.blue('Stats: '), { stats: this.stats, jobStatuses })
+      console.error(chalk.blue('Running: '), this.jobs.filter(j => j.status === 'processing').map(({ qname, message }) => ({ qname, payload: message.Body })))
+    }
 
     // Extend in batches for each queue
     for (const qrl in jobsToExtendByQrl) {
@@ -207,20 +211,19 @@ export class JobExecutor {
     })
   }
 
-  async executeJob (message, callback, qname, qrl, failedCallback) {
-    if (this.shutdownRequested) throw new Error('jobExecutor is shutting down so cannot execute new job')
+  addJob (message, callback, qname, qrl) {
     // Create job entry and track it
-    const payload = this.opt.json ? JSON.parse(message.Body) : message.Body
-    const visibilityTimeout = 60
+    const defaultVisibilityTimeout = 60
     const job = {
-      status: 'processing',
+      status: 'waiting',
       start: new Date(),
-      visibilityTimeout,
-      extendAtSecond: visibilityTimeout / 2,
+      visibilityTimeout: defaultVisibilityTimeout,
+      extendAtSecond: defaultVisibilityTimeout / 2,
       payload: this.opt.json ? JSON.parse(message.Body) : message.Body,
       message,
       callback,
       qname,
+      prettyQname: qname.slice(this.opt.prefix.length),
       qrl
     }
 
@@ -237,29 +240,45 @@ export class JobExecutor {
       throw e
     }
 
-    // debug('executeJob', job)
     this.jobs.push(job)
     this.jobsByMessageId[job.message.MessageId] = job
     this.stats.activeJobs++
+    this.stats.waitingJobs++
     if (this.opt.verbose) {
-      console.error(chalk.blue('Executing:'), qname, chalk.blue('-->'), job.payload)
+      console.error(chalk.blue('Got message:'), job.prettyQname, chalk.blue('-->'), job.payload, job.message.MessageId)
     } else if (!this.opt.disableLog) {
       console.log(JSON.stringify({
-        event: 'MESSAGE_PROCESSING_START',
+        event: 'MESSAGE_RECEIVED',
         timestamp: new Date(),
-        qrl,
+        queue: job.qname,
         messageId: message.MessageId,
         payload: job.payload
       }))
     }
+    return job
+  }
 
-    // Execute job
+  async runJob (job) {
     try {
-      const queue = qname.slice(this.opt.prefix.length)
-      const result = await callback(queue, payload)
-      debug('executeJob callback finished', { payload, result })
       if (this.opt.verbose) {
-        console.error(chalk.green('SUCCESS'), message.Body)
+        console.error(chalk.blue('Running:'), job.prettyQname, chalk.blue('-->'), job.payload, job.message.MessageId)
+      } else if (!this.opt.disableLog) {
+        console.log(JSON.stringify({
+          event: 'MESSAGE_PROCESSING_START',
+          timestamp: new Date(),
+          queue: job.qname,
+          messageId: job.message.MessageId,
+          payload: job.payload
+        }))
+      }
+      job.status = 'running'
+      this.stats.runningJobs++
+      this.stats.waitingJobs--
+      const queue = job.qname.slice(this.opt.prefix.length)
+      const result = await job.callback(queue, job.payload)
+      debug('executeJob callback finished', { payload: job.payload, result })
+      if (this.opt.verbose) {
+        console.error(chalk.green('SUCCESS'), job.payload)
       }
       job.status = 'complete'
 
@@ -269,35 +288,60 @@ export class JobExecutor {
       } else if (!this.opt.disableLog) {
         console.log(JSON.stringify({
           event: 'MESSAGE_PROCESSING_COMPLETE',
+          queue: job.qname,
           timestamp: new Date(),
-          messageId: message.MessageId,
-          payload
+          messageId: job.message.MessageId,
+          payload: job.payload
         }))
       }
       this.stats.jobsSucceeded++
     } catch (err) {
-      // Notify caller that we failed
-      if (failedCallback) failedCallback(message, qname, qrl)
+      job.status = 'failed'
+      this.stats.jobsFailed++
       // Fail path for job execution
       if (this.opt.verbose) {
-        console.error(chalk.red('FAILED'), message.Body)
+        console.error(chalk.red('FAILED'), job.payload)
         console.error(chalk.blue('  error : ') + err)
       } else if (!this.opt.disableLog) {
         // Production error logging
         console.log(JSON.stringify({
           event: 'MESSAGE_PROCESSING_FAILED',
           reason: 'exception thrown',
-          qrl,
+          queue: job.qname,
           timestamp: new Date(),
-          messageId: message.MessageId,
-          payload,
+          messageId: job.message.MessageId,
+          payload: job.payload,
           errorMessage: err.toString().split('\n').slice(1).join('\n').trim() || undefined,
           err
         }))
       }
-      job.status = 'failed'
-      this.stats.jobsFailed++
     }
     this.stats.activeJobs--
+    this.stats.runningJobs--
+  }
+
+  async executeJobs (messages, callback, qname, qrl) {
+    if (this.shutdownRequested) throw new Error('jobExecutor is shutting down so cannot execute new jobs')
+
+    // Begin tracking jobs
+    const jobs = messages.map(message => this.addJob(message, callback, qname, qrl))
+    const isFifo = qrl.endsWith('.fifo')
+
+    // console.log(jobs)
+
+    // Begin executing
+    for (const [job, i] of jobs.map((job, i) => [job, i])) {
+      // Figure out if the next job needs to happen in serial, otherwise we can parallel execute
+      // const job = jobs[i]
+      const nextJob = jobs[i + 1]
+      const nextJobIsSerial =
+         isFifo && nextJob &&
+         job.message?.Attributes?.GroupId === nextJob.message?.Attributes?.GroupId
+
+      console.log({ i, nextJobAtt: nextJob.message.Attributes, nextJobIsSerial })
+      // Execute serial or parallel
+      if (nextJobIsSerial) await this.runJob(job)
+      else this.runJob(job)
+    }
   }
 }

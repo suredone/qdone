@@ -79,7 +79,7 @@ export async function getOrCreateFailQueue (queue, opt) {
         maxReceiveCount: opt.dlqAfter + ''
       })
     }
-    if (opt.failDelay) params.Attributes.DelaySeconds = opt.failDelay
+    if (opt.failDelay) params.Attributes.DelaySeconds = opt.failDelay + ''
     if (opt.tags) params.tags = opt.tags
     if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)

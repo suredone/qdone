@@ -96,9 +96,7 @@ export async function processMessages (queues, callback, options) {
 
       if (!shutdownRequested) {
         if (messages.length) {
-          for (const message of messages) {
-            jobExecutor.executeJob(message, callback, qname, qrl)
-          }
+          jobExecutor.executeJobs(messages, callback, qname, qrl)
           queueManager.updateIcehouse(qrl, false)
         } else {
           // If we didn't get any, update the icehouse so we can back off
@@ -107,7 +105,7 @@ export async function processMessages (queues, callback, options) {
       }
 
       // Max job accounting
-      maxReturnCount -= maxMessages
+      if (messages.length) maxReturnCount -= messages.length
       activeQrls.delete(qrl)
     } catch (e) {
       // If the queue has been cleaned up, we should back off anyway
@@ -146,7 +144,7 @@ export async function processMessages (queues, callback, options) {
     let jobsLeft = targetJobs
 
     if (opt.verbose) {
-      console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, jobCount: jobExecutor.activeJobCount(), allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
+      // console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, jobCount: jobExecutor.activeJobCount(), allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
     }
     for (const { qname, qrl } of queueManager.getPairs()) {
       // debug({ evaluating: { qname, qrl, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })

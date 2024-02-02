@@ -35,7 +35,7 @@ export class QueueManager {
       const now = new Date()
       const secondsElapsed = lastCheck - now
       const minWait = 10
-      const maxWait = 600
+      const maxWait = 120
       const baseSeconds = numEmptyReceives ** 2 * 20
       const jitterSeconds = Math.round((Math.random() - 0.5) * baseSeconds)
       const newSecondsToWait = Math.max(minWait, Math.min(maxWait, baseSeconds + jitterSeconds))

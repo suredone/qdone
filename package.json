@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "2.0.29-alpha",
+  "version": "2.0.30-alpha",
   "description": "Language agnostic job queue for SQS",
   "type": "module",
   "main": "./index.js",
@@ -47,7 +47,7 @@
   "scripts": {
     "start": "./src/bin.js",
     "test": "NODE_OPTIONS='--experimental-json-modules --experimental-vm-modules --no-warnings' jest",
-    "build": "tsc --allowJs index.js --outdir commonjs --esModuleInterop --module commonjs",
+    "build": "tsc --allowJs index.js --outdir commonjs --esModuleInterop --module commonjs  --target es2021 --strict --skipLibCheck --forceConsistentCasingInFileNames",
     "clean": "rm -rf commonjs/src commonjs/*.js coverage",
     "lint": "standard",
     "coverage": "nyc report --reporter=text-lcov | coveralls",

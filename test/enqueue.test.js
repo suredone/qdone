@@ -257,6 +257,7 @@ describe('getOrCreateFailQueue', () => {
     expect(sqsMock).toHaveReceivedNthCommandWith(4, CreateQueueCommand, {
       QueueName: fqname,
       Attributes: {
+        DelaySeconds: '120',
         MessageRetentionPeriod: '1209600',
         RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"3"}'
       }
@@ -317,6 +318,7 @@ describe('getOrCreateFailQueue', () => {
     expect(sqsMock).toHaveReceivedNthCommandWith(4, CreateQueueCommand, {
       QueueName: fqname,
       Attributes: {
+        DelaySeconds: '120',
         FifoQueue: 'true',
         MessageRetentionPeriod: '1209600',
         RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"3"}'
@@ -837,7 +839,7 @@ describe('addMessage / flushMessages', () => {
   })
 
   test('failed messages fail the whole batch', async () => {
-    const options = {}
+    const options = { dlq: false }
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -960,7 +962,7 @@ describe('enqueue', () => {
   })
 
   test('enqueue with creation', async () => {
-    const opt = getOptionsWithDefaults()
+    const opt = getOptionsWithDefaults({ dlq: false })
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = '51b0a325...39163aa0'
     const sqsMock = mockClient(client)
@@ -1003,6 +1005,7 @@ describe('enqueue', () => {
     expect(sqsMock).toHaveReceivedNthCommandWith(3, CreateQueueCommand, {
       QueueName: 'qdone_testQueue_failed',
       Attributes: {
+        DelaySeconds: '120',
         MessageRetentionPeriod: opt.messageRetentionPeriod + ''
       }
     })
