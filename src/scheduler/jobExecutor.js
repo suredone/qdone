@@ -41,8 +41,10 @@ export class JobExecutor {
     if (this.opt.verbose) {
       console.error(chalk.blue('Shutting down jobExecutor'))
     }
-    await this.maintainPromise
-    await this.maintainVisibility()
+    while (this.stats.activeJobs > 0) {
+      await this.maintainPromise
+      await this.maintainVisibility()
+    }
   }
 
   activeJobCount () {
@@ -124,7 +126,16 @@ export class JobExecutor {
 
     if (this.opt.verbose) {
       console.error(chalk.blue('Stats: '), { stats: this.stats, jobStatuses })
-      console.error(chalk.blue('Running: '), this.jobs.filter(j => j.status === 'processing').map(({ qname, message }) => ({ qname, payload: message.Body })))
+      console.error(chalk.blue('Jobs: '))
+      for (const [qname, jobs] of this.jobsByQueue.entries()) {
+        if (jobs.size) {
+          console.error(chalk.blue('  queue:'), qname)
+          for (const job of jobs) if (job.status === 'running') console.error(chalk.green('    running: '), job.payload)
+          for (const job of jobs) if (job.status === 'waiting') console.error(chalk.gold('    waiting:'), job.payload)
+          for (const job of jobs) if (job.status === 'complete' || job.status === 'deleting') console.error(chalk.blue('    complete:'), job.payload)
+          for (const job of jobs) if (job.status === 'failed') console.error(chalk.red('    failed:'), job.payload)
+        }
+      }
     }
 
     // Extend in batches for each queue
