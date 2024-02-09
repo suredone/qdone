@@ -104,7 +104,7 @@ export class QueueManager {
       .filter(({ qname, qrl }) => {
         const isFifo = qname.endsWith('.fifo')
         const isDead = isFifo ? qname.endsWith('_dead.fifo') : qname.endsWith('_dead')
-        return !isDead
+        return this.opt.includeDead ? true : !isDead
       })
       // then icehouse
       .filter(({ qname, qrl }) => !this.keepInIcehouse(qrl, now))

@@ -18,6 +18,7 @@ export const defaults = Object.freeze({
   fifo: false,
   disableLog: false,
   includeFailed: false,
+  includeDead: false,
 
   // Enqueue
   groupId: uuidv1(),
@@ -76,6 +77,8 @@ export function getOptionsWithDefaults (options) {
     fifo: options.fifo || defaults.fifo,
     sentryDsn: options.sentryDsn || options['sentry-dsn'],
     disableLog: options.disableLog || options['disable-log'] || defaults.disableLog,
+    includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
+    includeDead: options.includeDead || options['include-dead'] || defaults.includeDead,
 
     // Cache
     cacheUri: options.cacheUri || options['cache-uri'] || defaults.cacheUri,
@@ -100,7 +103,6 @@ export function getOptionsWithDefaults (options) {
     killAfter: options.killAfter || options['kill-after'] || defaults.killAfter,
     archive: options.archive || defaults.archive,
     activeOnly: options.activeOnly || options['active-only'] || defaults.activeOnly,
-    includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
     maxConcurrentJobs: options.maxConcurrentJobs || defaults.maxConcurrentJobs,
     maxMemoryPercent: options.maxMemoryPercent || defaults.maxMemoryPercent,
 
