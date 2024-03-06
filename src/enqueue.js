@@ -31,9 +31,20 @@ import { ExponentialBackoff } from './exponentialBackoff.js'
 
 const debug = Debug('qdone:enqueue')
 
+export function getDLQParams (queue, opt) {
+  const dqname = normalizeDLQName(queue, opt)
+  const params = {
+    Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
+    QueueName: dqname
+  }
+  if (opt.tags) params.tags = opt.tags
+  if (opt.fifo) params.Attributes.FifoQueue = 'true'
+  return { dqname, params }
+}
+
 export async function getOrCreateDLQ (queue, opt) {
   debug('getOrCreateDLQ(', queue, ')')
-  const dqname = normalizeDLQName(queue, opt)
+  const { dqname, params } = getDLQParams(queue, opt)
   try {
     const dqrl = await qrlCacheGet(dqname)
     return dqrl
@@ -43,12 +54,6 @@ export async function getOrCreateDLQ (queue, opt) {
 
     // Create our DLQ
     const client = getSQSClient()
-    const params = {
-      Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
-      QueueName: dqname
-    }
-    if (opt.tags) params.tags = opt.tags
-    if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     if (opt.verbose) console.error(chalk.blue('Creating dead letter queue ') + dqname)
     const data = await client.send(cmd)
@@ -59,35 +64,61 @@ export async function getOrCreateDLQ (queue, opt) {
   }
 }
 
+/**
+ * Returns the parameters needed for creating a failed queue. If DLQ options
+ * are set, it makes an API call to get this DLQ's ARN.
+ */
+export async function getFailParams (queue, opt) {
+  const fqname = normalizeFailQueueName(queue, opt)
+  const params = {
+    Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
+    QueueName: fqname
+  }
+  // If we have a dlq, we grab it and set a redrive policy
+  if (opt.dlq) {
+    const dqname = normalizeDLQName(queue, opt)
+    const dqrl = await qrlCacheGet(dqname)
+    const dqa = await getQueueAttributes(dqrl)
+    debug('dqa', dqa)
+    params.Attributes.RedrivePolicy = JSON.stringify({
+      deadLetterTargetArn: dqa.Attributes.QueueArn,
+      maxReceiveCount: opt.dlqAfter
+    })
+  }
+  if (opt.failDelay) params.Attributes.DelaySeconds = opt.failDelay + ''
+  if (opt.tags) params.tags = opt.tags
+  if (opt.fifo) params.Attributes.FifoQueue = 'true'
+  return { fqname, params }
+}
+
+/**
+ * Returns the qrl for the failed queue for the given queue. Creates the queue
+ * if it does not exist.
+ */
 export async function getOrCreateFailQueue (queue, opt) {
   debug('getOrCreateFailQueue(', queue, ')')
-  const fqname = normalizeFailQueueName(queue, opt)
   try {
+    const fqname = normalizeFailQueueName(queue, opt)
     const fqrl = await qrlCacheGet(fqname)
     return fqrl
   } catch (err) {
     // Anything other than queue doesn't exist gets re-thrown
     if (!(err instanceof QueueDoesNotExist)) throw err
 
-    // Crate our fail queue
+    // Grab params, creating DLQ if needed
+    const { fqname, params } = await (async () => {
+      try {
+        return getFailParams(queue, opt)
+      } catch (e) {
+        // If DLQ doesn't exist, create it
+        if (!(opt.dlq && e instanceof QueueDoesNotExist)) throw e
+        await getOrCreateDLQ(queue, opt)
+        return getFailParams(queue, opt)
+      }
+    })()
+
+    // Create our fail queue
     const client = getSQSClient()
-    const params = {
-      Attributes: { MessageRetentionPeriod: opt.messageRetentionPeriod + '' },
-      QueueName: fqname
-    }
-    // If we have a dlq, we grab it and set a redrive policy
-    if (opt.dlq) {
-      const dqrl = await getOrCreateDLQ(queue, opt)
-      const dqa = await getQueueAttributes(dqrl)
-      debug('dqa', dqa)
-      params.Attributes.RedrivePolicy = JSON.stringify({
-        deadLetterTargetArn: dqa.Attributes.QueueArn,
-        maxReceiveCount: opt.dlqAfter + ''
-      })
-    }
-    if (opt.failDelay) params.Attributes.DelaySeconds = opt.failDelay + ''
-    if (opt.tags) params.tags = opt.tags
-    if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
     if (opt.verbose) console.error(chalk.blue('Creating fail queue ') + fqname)
     const data = await client.send(cmd)
@@ -99,41 +130,60 @@ export async function getOrCreateFailQueue (queue, opt) {
 }
 
 /**
+ * Returns the parameters needed for creating a queue. If fail options
+ * are set, it makes an API call to get the fail queue's ARN.
+ */
+export async function getQueueParams (queue, opt) {
+  const qname = normalizeQueueName(queue, opt)
+  const fqname = normalizeFailQueueName(queue, opt)
+  const fqrl = await qrlCacheGet(fqname, opt)
+  const fqa = await getQueueAttributes(fqrl)
+  const params = {
+    Attributes: {
+      MessageRetentionPeriod: opt.messageRetentionPeriod + '',
+      RedrivePolicy: JSON.stringify({
+        deadLetterTargetArn: fqa.Attributes.QueueArn,
+        maxReceiveCount: 1
+      })
+    },
+    QueueName: qname
+  }
+  if (opt.tags) params.tags = opt.tags
+  if (opt.fifo) params.Attributes.FifoQueue = 'true'
+  return { qname, params }
+}
+
+/**
  * Returns a qrl for a queue that either exists or does not
  */
 export async function getOrCreateQueue (queue, opt) {
   debug('getOrCreateQueue(', queue, ')')
-  const qname = normalizeQueueName(queue, opt)
   try {
+    const qname = normalizeQueueName(queue, opt)
     const qrl = await qrlCacheGet(qname)
     return qrl
   } catch (err) {
     // Anything other than queue doesn't exist gets re-thrown
     if (!(err instanceof QueueDoesNotExist)) throw err
 
-    // Get our fail queue so we can create our own
-    const fqrl = await getOrCreateFailQueue(qname, opt)
-    const fqa = await getQueueAttributes(fqrl)
+    // Grab params, creating DLQ if needed
+    const { qname, params } = await (async () => {
+      try {
+        return getQueueParams(queue, opt)
+      } catch (e) {
+        // If DLQ doesn't exist, create it
+        if (!(opt.dlq && e instanceof QueueDoesNotExist)) throw e
+        await getOrCreateDLQ(queue, opt)
+        return getQueueParams(queue, opt)
+      }
+    })()
 
     // Create our queue
     const client = getSQSClient()
-    const params = {
-      Attributes: {
-        MessageRetentionPeriod: opt.messageRetentionPeriod + '',
-        RedrivePolicy: JSON.stringify({
-          deadLetterTargetArn: fqa.Attributes.QueueArn,
-          maxReceiveCount: '1'
-        })
-      },
-      QueueName: qname
-    }
-    if (opt.tags) params.tags = opt.tags
-    if (opt.fifo) params.Attributes.FifoQueue = 'true'
     const cmd = new CreateQueueCommand(params)
-    debug({ params })
-    if (opt.verbose) console.error(chalk.blue('Creating queue ') + qname)
+    if (opt.verbose) console.error(chalk.blue('Creating fail queue ') + qname)
     const data = await client.send(cmd)
-    debug('createQueue returned', data)
+    debug('AWS createQueue returned', data)
     const qrl = data.QueueUrl
     qrlCacheSet(qname, qrl)
     return qrl

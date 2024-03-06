@@ -47,7 +47,10 @@ export const defaults = Object.freeze({
   // Idle Queues
   idleFor: 60,
   delete: false,
-  unpair: false
+  unpair: false,
+
+  // Check
+  create: false
 })
 
 function validateInteger (opt, name) {
@@ -69,7 +72,7 @@ export function getOptionsWithDefaults (options) {
   if (!options) options = {}
 
   // Activate DLQ if any option is set
-  const dlq = options.dlq || !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'])
+  const dlq = options.dlq || !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'] || options.dlqSuffix || options.dlqAfter || options.dlqName)
 
   const opt = {
     // Shared
@@ -117,7 +120,11 @@ export function getOptionsWithDefaults (options) {
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || defaults.idleFor,
     delete: options.delete || defaults.delete,
-    unpair: options.delete || defaults.unpair
+    unpair: options.delete || defaults.unpair,
+
+    // Check
+    create: options.create || defaults.create,
+    overwrite: options.overwrite || defaults.overwrite
   }
 
   // Setting this env here means we don't have to in AWS SDK constructors
