@@ -20,6 +20,7 @@ import {
   normalizeDLQName
 } from './qrlCache.js'
 import { getSQSClient } from './sqs.js'
+import { dedupShouldEnqueue, dedupShouldEnqueueMulti } from './dedup.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
 
@@ -168,6 +169,11 @@ const retryableExceptions = [
 
 export async function sendMessage (qrl, command, opt) {
   debug('sendMessage(', qrl, command, ')')
+
+  // See if we even have to send it
+  const shouldEnqueue = await dedupShouldEnqueue(command, opt)
+  if (!shouldEnqueue) return { MessageId: 'deduplicated' }
+
   const params = Object.assign({ QueueUrl: qrl }, formatMessage(command))
   if (opt.fifo) {
     params.MessageGroupId = opt.groupId
@@ -204,6 +210,11 @@ export async function sendMessageBatch (qrl, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
   const params = { Entries: messages, QueueUrl: qrl }
   const uuidFunction = opt.uuidFunction || uuidV1
+
+  // See which messages we even have to send
+  const shouldEnqueueMap = await dedupShouldEnqueueMulti(messages.map(m => m.MessageBody), opt)
+  messages = messages.filter(m => shouldEnqueueMap[m.MessageBody])
+
   // Add in group id if we're using fifo
   if (opt.fifo) {
     params.Entries = params.Entries.map(

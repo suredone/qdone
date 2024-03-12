@@ -13,6 +13,7 @@ import treeKill from 'tree-kill'
 import chalk from 'chalk'
 import Debug from 'debug'
 
+import { dedupSuccessfullyProcessed } from './dedup.js'
 import { normalizeQueueName, getQnameUrlPairs } from './qrlCache.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { cheapIdleCheck } from './idleQueues.js'
@@ -129,10 +130,15 @@ export async function executeJob (job, qname, qrl, opt) {
       QueueUrl: qrl,
       ReceiptHandle: job.ReceiptHandle
     }))
+
     if (opt.verbose) {
       console.error(chalk.blue('  done'))
       console.error()
     }
+
+    // Let dedup system know we processed it
+    await dedupSuccessfullyProcessed(job.Body, opt)
+
     return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
   } catch (err) {
     // Fail path for job execution

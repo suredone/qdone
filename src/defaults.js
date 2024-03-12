@@ -19,6 +19,8 @@ export const defaults = Object.freeze({
   disableLog: false,
   includeFailed: false,
   includeDead: false,
+  dedupMethod: 'sqs',
+  dedupPeriod: 60 * 60 * 24,
 
   // Enqueue
   groupId: uuidv1(),
@@ -79,6 +81,8 @@ export function getOptionsWithDefaults (options) {
     disableLog: options.disableLog || options['disable-log'] || defaults.disableLog,
     includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
     includeDead: options.includeDead || options['include-dead'] || defaults.includeDead,
+    dedupMethod: options.dedupMethod || options['dedup-method'] || defaults.dedupMethod,
+    dedupPeriod: options.dedupPeriod || options['dedup-period'] || defaults.dedupPeriod,
 
     // Cache
     cacheUri: options.cacheUri || options['cache-uri'] || defaults.cacheUri,
@@ -120,6 +124,7 @@ export function getOptionsWithDefaults (options) {
   opt.messageRetentionPeriod = validateInteger(opt, 'messageRetentionPeriod')
   opt.delay = validateInteger(opt, 'delay')
   opt.sendRetries = validateInteger(opt, 'sendRetries')
+  opt.dedupPeriod = validateInteger(opt, 'dedupPeriod')
   opt.failDelay = validateInteger(opt, 'failDelay')
   opt.dlqAfter = validateInteger(opt, 'dlqAfter')
   opt.waitTime = validateInteger(opt, 'waitTime')
@@ -127,6 +132,15 @@ export function getOptionsWithDefaults (options) {
   opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
   opt.maxMemoryPercent = validateInteger(opt, 'maxMemoryPercent')
   opt.idleFor = validateInteger(opt, 'idleFor')
+
+  // Validate dedup args
+  const dedupMethods = [
+    'sqs',
+    'redis'
+  ]
+  if (!dedupMethods.includes(opt.dedupMethod)) throw new Error('Invalid dedup method')
+  if (opt.dedupMethod === 'redis' && !opt.cacheUri) throw new Error('dedup-method of redis requires a cache-uri')
+  if (opt.dedupMethod === 'redis' && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('dedup-method of redis requires a dedup-period > 1 second')
 
   return opt
 }
