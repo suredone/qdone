@@ -20,12 +20,13 @@ export const defaults = Object.freeze({
   includeFailed: false,
   includeDead: false,
   dedupMethod: 'sqs',
-  dedupPeriod: 60 * 60 * 24,
+  dedupPeriod: 60 * 5,
 
   // Enqueue
   groupId: uuidv1(),
   groupIdPerMessage: false,
   deduplicationId: undefined,
+  dedupIdPerMessage: false,
   messageRetentionPeriod: 1209600,
   delay: 0,
   sendRetries: 6,
@@ -93,6 +94,7 @@ export function getOptionsWithDefaults (options) {
     groupId: options.groupId || options['group-id'] || defaults.groupId,
     groupIdPerMessage: false,
     deduplicationId: options.deduplicationId || options['deduplication-id'] || defaults.deduplicationId,
+    dedupIdPerMessage: options.dedupIdPerMessage || options['dedup-id-per-message'] || defaults.dedupIdPerMessage,
     messageRetentionPeriod: options.messageRetentionPeriod || options['message-retention-period'] || defaults.messageRetentionPeriod,
     delay: options.delay || defaults.delay,
     sendRetries: options['send-retries'] || defaults.sendRetries,
@@ -141,6 +143,7 @@ export function getOptionsWithDefaults (options) {
   if (!dedupMethods.includes(opt.dedupMethod)) throw new Error('Invalid dedup method')
   if (opt.dedupMethod === 'redis' && !opt.cacheUri) throw new Error('dedup-method of redis requires a cache-uri')
   if (opt.dedupMethod === 'redis' && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('dedup-method of redis requires a dedup-period > 1 second')
+  if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either deduplication-id or dedup-id-per-message but not both')
 
   return opt
 }

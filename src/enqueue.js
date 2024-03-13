@@ -167,19 +167,33 @@ const retryableExceptions = [
   QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
 ]
 
-export async function sendMessage (qrl, command, opt) {
-  debug('sendMessage(', qrl, command, ')')
-
-  // See if we even have to send it
-  const shouldEnqueue = await dedupShouldEnqueue(command, opt)
-  if (!shouldEnqueue) return { MessageId: 'deduplicated' }
-
-  const params = Object.assign({ QueueUrl: qrl }, formatMessage(command))
+export function finishMessage (params, opt) {
+  const uuidFunction = opt.uuidFunction || uuidV1
   if (opt.fifo) {
     params.MessageGroupId = opt.groupId
-    params.MessageDeduplicationId = opt.deduplicationId || uuidV1()
+    if (opt.deduplicationId) params.MessageDeduplicationId = opt.deduplicationId
+    if (opt.dedupIdPerMessage) params.MessageDeduplicationId = uuidFunction()
+    if (params.MessageDeduplicationId) {
+      params.MessageAttributes = {
+        DeduplicationId: {
+          StringValue: params.MessageDeduplicationId,
+          DataType: 'String'
+        }
+      }
+    }
   }
   if (opt.delay) params.DelaySeconds = opt.delay
+  return params
+}
+
+export async function sendMessage (qrl, command, opt) {
+  debug('sendMessage(', qrl, command, ')')
+  const uuidFunction = opt.uuidFunction || uuidV1
+  const params = finishMessage(Object.assign({ QueueUrl: qrl }, formatMessage(command)), opt)
+
+  // See if we even have to send it
+  const shouldEnqueue = await dedupShouldEnqueue(params, opt)
+  if (!shouldEnqueue) return { MessageId: uuidFunction() }
 
   // Send it
   const client = getSQSClient()
@@ -208,30 +222,15 @@ export async function sendMessage (qrl, command, opt) {
 
 export async function sendMessageBatch (qrl, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
-  const params = { Entries: messages, QueueUrl: qrl }
-  const uuidFunction = opt.uuidFunction || uuidV1
-
-  // See which messages we even have to send
-  const shouldEnqueueMap = await dedupShouldEnqueueMulti(messages.map(m => m.MessageBody), opt)
-  messages = messages.filter(m => shouldEnqueueMap[m.MessageBody])
-
-  // Add in group id if we're using fifo
-  if (opt.fifo) {
-    params.Entries = params.Entries.map(
-      message => Object.assign({
-        MessageGroupId: opt.groupIdPerMessage ? uuidFunction() : opt.groupId,
-        MessageDeduplicationId: opt.deduplicationId || uuidFunction()
-      }, message)
-    )
-  }
-  if (opt.delay) {
-    params.Entries = params.Entries.map(message =>
-      Object.assign({ DelaySeconds: opt.delay }, message))
-  }
+  const params = { Entries: messages.map(m => finishMessage(m, opt)), QueueUrl: qrl }
   if (opt.sentryDsn) {
     addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ params }), level: 'debug' })
   }
   debug({ params })
+
+  // See which messages we even have to send
+  params.Entries = await dedupShouldEnqueueMulti(params.Entries, opt)
+  if (!params.Entries.length) return
 
   // Send them
   const client = getSQSClient()

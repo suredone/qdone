@@ -17,6 +17,7 @@ import {
   getOrCreateDLQ,
   getQueueAttributes,
   formatMessage,
+  finishMessage,
   sendMessage,
   sendMessageBatch,
   addMessage,
@@ -586,6 +587,7 @@ describe('sendMessage', () => {
     jest.runAllTimers() // delay() -> setTimeout()
 
     await Promise.resolve() // await action
+    await Promise.resolve() // await action
     jest.runAllTimers() // not sure why here
 
     await expect(promise).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
@@ -593,19 +595,25 @@ describe('sendMessage', () => {
       .toHaveReceivedNthCommandWith(
         2,
         SendMessageCommand,
-        Object.assign({
-          QueueUrl: qrl,
-          MessageGroupId: groupId,
-          DelaySeconds: options.delay,
-          MessageDeduplicationId: deduplicationId
-        }, formatMessage(cmd))
+        finishMessage(
+          Object.assign(
+            {
+              QueueUrl: qrl,
+              MessageGroupId: groupId,
+              DelaySeconds: options.delay,
+              MessageDeduplicationId: deduplicationId
+            },
+            formatMessage(cmd)
+          ),
+          opt
+        )
       )
   })
 })
 
 describe('sendMessageBatch', () => {
   test('basic batch works', async () => {
-    const options = {}
+    const opt = getOptionsWithDefaults({})
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -621,13 +629,13 @@ describe('sendMessageBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
     await expect(
-      sendMessageBatch(qrl, messages, options)
+      sendMessageBatch(qrl, messages, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
         SendMessageBatchCommand,
-        Object.assign({ QueueUrl: qrl, Entries: messages })
+        Object.assign({ QueueUrl: qrl, Entries: messages.map(m => finishMessage(m, opt)) })
       )
   })
 
@@ -1277,28 +1285,28 @@ describe('enqueueBatch', () => {
       .toHaveReceivedNthCommandWith(4, SendMessageBatchCommand, {
         QueueUrl: qrl1,
         Entries: (Array.apply(null, Array(10))).map((e, i) => (
-          { MessageBody: cmd, Id: i + '' }
+          finishMessage({ MessageBody: cmd, Id: i + '' }, opt)
         ))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(5, SendMessageBatchCommand, {
         QueueUrl: qrl3,
         Entries: (Array.apply(null, Array(10))).map((e, i) => (
-          { MessageBody: cmd, Id: i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }
+          finishMessage({ MessageBody: cmd, Id: i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }, { ...opt, fifo: true })
         ))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(6, SendMessageBatchCommand, {
         QueueUrl: qrl2,
         Entries: (Array.apply(null, Array(5))).map((e, i) => (
-          { MessageBody: cmd, Id: 10 + i + '' }
+          finishMessage({ MessageBody: cmd, Id: 10 + i + '' }, opt)
         ))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(7, SendMessageBatchCommand, {
         QueueUrl: qrl3,
         Entries: (Array.apply(null, Array(5))).map((e, i) => (
-          { MessageBody: cmd, Id: 10 + i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }
+          finishMessage({ MessageBody: cmd, Id: 10 + i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }, { ...opt, fifo: true })
         ))
       })
   })
