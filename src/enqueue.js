@@ -20,7 +20,12 @@ import {
   normalizeDLQName
 } from './qrlCache.js'
 import { getSQSClient } from './sqs.js'
-import { dedupShouldEnqueue, dedupShouldEnqueueMulti } from './dedup.js'
+import {
+  addDedupParamsToMessage,
+  dedupShouldEnqueue,
+  dedupShouldEnqueueMulti,
+  dedupErrorBeforeAcknowledgement
+} from './dedup.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
 
@@ -168,20 +173,10 @@ const retryableExceptions = [
 ]
 
 export function finishMessage (params, opt) {
-  const uuidFunction = opt.uuidFunction || uuidV1
   if (opt.fifo) {
     params.MessageGroupId = opt.groupId
-    if (opt.deduplicationId) params.MessageDeduplicationId = opt.deduplicationId
-    if (opt.dedupIdPerMessage) params.MessageDeduplicationId = uuidFunction()
-    if (params.MessageDeduplicationId) {
-      params.MessageAttributes = {
-        DeduplicationId: {
-          StringValue: params.MessageDeduplicationId,
-          DataType: 'String'
-        }
-      }
-    }
   }
+  params = addDedupParamsToMessage(params, opt)
   if (opt.delay) params.DelaySeconds = opt.delay
   return params
 }
@@ -192,8 +187,10 @@ export async function sendMessage (qrl, command, opt) {
   const params = finishMessage(Object.assign({ QueueUrl: qrl }, formatMessage(command)), opt)
 
   // See if we even have to send it
-  const shouldEnqueue = await dedupShouldEnqueue(params, opt)
-  if (!shouldEnqueue) return { MessageId: uuidFunction() }
+  if (opt.externalDedup) {
+    const shouldEnqueue = await dedupShouldEnqueue(params, opt)
+    if (!shouldEnqueue) return { MessageId: uuidFunction() }
+  }
 
   // Send it
   const client = getSQSClient()
@@ -207,12 +204,15 @@ export async function sendMessage (qrl, command, opt) {
     return data
   }
   const shouldRetry = async (result, error) => {
+    if (!error) return false
     for (const exceptionClass of retryableExceptions) {
       if (error instanceof exceptionClass) {
         debug({ sendMessageRetryingBecause: { error, result } })
         return true
       }
     }
+    // If we could not send it, we also need to remove our dedup flag
+    await dedupErrorBeforeAcknowledgement(params, opt)
     return false
   }
   const result = await backoff.run(send, shouldRetry)
@@ -229,8 +229,10 @@ export async function sendMessageBatch (qrl, messages, opt) {
   debug({ params })
 
   // See which messages we even have to send
-  params.Entries = await dedupShouldEnqueueMulti(params.Entries, opt)
-  if (!params.Entries.length) return
+  if (opt.externalDedup) {
+    params.Entries = await dedupShouldEnqueueMulti(params.Entries, opt)
+    if (!params.Entries.length) return
+  }
 
   // Send them
   const client = getSQSClient()

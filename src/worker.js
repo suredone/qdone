@@ -137,7 +137,7 @@ export async function executeJob (job, qname, qrl, opt) {
     }
 
     // Let dedup system know we processed it
-    await dedupSuccessfullyProcessed(job.Body, opt)
+    await dedupSuccessfullyProcessed(job, opt)
 
     return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
   } catch (err) {

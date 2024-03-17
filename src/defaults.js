@@ -19,7 +19,7 @@ export const defaults = Object.freeze({
   disableLog: false,
   includeFailed: false,
   includeDead: false,
-  dedupMethod: 'sqs',
+  externalDedup: false,
   dedupPeriod: 60 * 5,
 
   // Enqueue
@@ -82,7 +82,7 @@ export function getOptionsWithDefaults (options) {
     disableLog: options.disableLog || options['disable-log'] || defaults.disableLog,
     includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
     includeDead: options.includeDead || options['include-dead'] || defaults.includeDead,
-    dedupMethod: options.dedupMethod || options['dedup-method'] || defaults.dedupMethod,
+    externalDedup: options.externalDedup || options['external-dedup'] || defaults.externalDedup,
     dedupPeriod: options.dedupPeriod || options['dedup-period'] || defaults.dedupPeriod,
 
     // Cache
@@ -136,14 +136,9 @@ export function getOptionsWithDefaults (options) {
   opt.idleFor = validateInteger(opt, 'idleFor')
 
   // Validate dedup args
-  const dedupMethods = [
-    'sqs',
-    'redis'
-  ]
-  if (!dedupMethods.includes(opt.dedupMethod)) throw new Error('Invalid dedup method')
-  if (opt.dedupMethod === 'redis' && !opt.cacheUri) throw new Error('dedup-method of redis requires a cache-uri')
-  if (opt.dedupMethod === 'redis' && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('dedup-method of redis requires a dedup-period > 1 second')
-  if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either deduplication-id or dedup-id-per-message but not both')
+  if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
+  if (opt.externalDedup && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('--external-dedup of redis requires a --dedup-period > 1 second')
+  if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either --deduplication-id or --dedup-id-per-message but not both')
 
   return opt
 }

@@ -224,7 +224,7 @@ export class JobExecutor {
         debug('DeleteMessageBatch returned', result)
 
         // Mark batch as processed for dedup
-        await dedupSuccessfullyProcessedMulti(entries.map(e => this.jobsByMessageId[e.Id].Body), this.opt)
+        await dedupSuccessfullyProcessedMulti(entries.map(e => this.jobsByMessageId[e.Id]), this.opt)
 
         // TODO Sentry
       }

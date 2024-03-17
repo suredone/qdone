@@ -136,7 +136,6 @@ describe('getOrCreateQueue', () => {
   })
 
   test('fifo variant of above', async () => {
-    console.error('fifo variant')
     const opt = getOptionsWithDefaults({ prefix: '', dlq: true, fifo: true, verbose: true })
     const basename = 'testqueue'
     const qname = basename + '.fifo'
@@ -172,7 +171,6 @@ describe('getOrCreateQueue', () => {
   })
 
   test('tag variant of above', async () => {
-    console.error('fifo variant')
     const tags = { Role: 'app', Environment: 'production' }
     const opt = getOptionsWithDefaults({ prefix: '', dlq: true, fifo: true, verbose: true, tags })
     const basename = 'testqueue'
@@ -1243,13 +1241,10 @@ describe('enqueueBatch', () => {
     sqsMock
       .on(GetQueueUrlCommand)
       .callsFake(({ QueueName: qname }) => {
-        // console.log({ GetQueueUrlCommand: { QueueName: qname } })
         return { QueueUrl: qrlBase + qname }
       })
       .on(SendMessageBatchCommand)
       .callsFake(async ({ Entries: entries, QueueUrl: qrl }) => {
-        // console.log({ SendMessageBatchCommand: { Entries: entries,  QueueUrl: qrl } })
-        // console.log(entries)
         return {
           Successful: entries
             .filter(({ MessageGroupId, MessageDeduplicationId }) =>
