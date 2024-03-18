@@ -46,6 +46,7 @@ export function getCacheKey (dedupId, opt) {
  * @returns {Object} the modified parameters/message object
  */
 export function addDedupParamsToMessage (message, opt) {
+  // TODO: Make external work without fifo
   if (opt.fifo) {
     const uuidFunction = opt.uuidFunction || uuidV1
     if (opt.deduplicationId) message.MessageDeduplicationId = opt.deduplicationId
@@ -56,8 +57,11 @@ export function addDedupParamsToMessage (message, opt) {
       message.MessageDeduplicationId = getDeduplicationId(message.MessageBody, opt)
     }
 
-    // Track this so we can see it on the receiving end
     if (opt.externalDedup) {
+      // If we are using our own dedup, then we must fake out the SQS dedup by
+      // providing a unique ID. Otherwise SQS will interact with us.
+      message.MessageDeduplicationId = uuidFunction()
+      // Track our own dedup id so we can see it on the receiving end
       message.MessageAttributes = {
         QdoneDeduplicationId: {
           StringValue: message.MessageDeduplicationId,
@@ -107,6 +111,7 @@ export async function dedupShouldEnqueue (message, opt) {
     await client.set(cacheKey, canExpireAfter, 'EX', dedupPeriod)
     return true
   }
+  // TODO: Log if the return value is false
   return false
 }
 
@@ -208,4 +213,4 @@ export async function dedupErrorBeforeAcknowledgement (message, opt) {
   }
 }
 
-// TODO: rewrite dedupSuccessfullyProcessed
+// TODO: rewrite dedupSuccessfullyProcessedMulti
