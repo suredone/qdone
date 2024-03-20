@@ -24,7 +24,7 @@ import {
   addDedupParamsToMessage,
   dedupShouldEnqueue,
   dedupShouldEnqueueMulti,
-  dedupErrorBeforeAcknowledgement
+  dedupSuccessfullyProcessed
 } from './dedup.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
@@ -212,7 +212,7 @@ export async function sendMessage (qrl, command, opt) {
       }
     }
     // If we could not send it, we also need to remove our dedup flag
-    await dedupErrorBeforeAcknowledgement(params, opt)
+    await dedupSuccessfullyProcessed(params, opt)
     return false
   }
   const result = await backoff.run(send, shouldRetry)

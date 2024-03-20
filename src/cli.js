@@ -44,6 +44,7 @@ const globalOptionDefinitions = [
   { name: 'help', type: Boolean, description: 'Print full help message.' },
   { name: 'external-dedup', type: Boolean, description: 'Moves deduplication from SQS to qdone external cache, allowing a longer deduplication window and alternate semantics.' },
   { name: 'dedup-period', type: Number, description: 'Number of seconds (counting from the first enqueue) to prevent a duplicate message from being sent. Resets after a message with that deduplication id has been successfully processed. Minumum 360 seconds.' },
+  { name: 'dedup-stats', type: Boolean, description: 'Keeps statistics on dedup keys. Disabled by default. Increases load on redis.' },
   { name: 'sentry-dsn', type: String, description: 'Optional Sentry DSN to track unhandled errors.' }
 ]
 

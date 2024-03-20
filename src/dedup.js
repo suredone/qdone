@@ -46,8 +46,8 @@ export function getCacheKey (dedupId, opt) {
  * @returns {Object} the modified parameters/message object
  */
 export function addDedupParamsToMessage (message, opt) {
-  // TODO: Make external work without fifo
-  if (opt.fifo) {
+  // Either of these means we need to calculate an id
+  if (opt.fifo || opt.externalDedup) {
     const uuidFunction = opt.uuidFunction || uuidV1
     if (opt.deduplicationId) message.MessageDeduplicationId = opt.deduplicationId
     if (opt.dedupIdPerMessage) message.MessageDeduplicationId = uuidFunction()
@@ -57,40 +57,70 @@ export function addDedupParamsToMessage (message, opt) {
       message.MessageDeduplicationId = getDeduplicationId(message.MessageBody, opt)
     }
 
+    // Track our own dedup id so we can look it up upon ReceiveMessage
     if (opt.externalDedup) {
-      // If we are using our own dedup, then we must fake out the SQS dedup by
-      // providing a unique ID. Otherwise SQS will interact with us.
-      message.MessageDeduplicationId = uuidFunction()
-      // Track our own dedup id so we can see it on the receiving end
       message.MessageAttributes = {
         QdoneDeduplicationId: {
           StringValue: message.MessageDeduplicationId,
           DataType: 'String'
         }
       }
+      // If we are using our own dedup, then we must disable the SQS dedup by
+      // providing a different unique ID. Otherwise SQS will interact with us.
+      if (opt.fifo) message.MessageDeduplicationId = uuidFunction()
     }
+
+    // Non fifo can't have this parameter
+    if (!opt.fifo) delete message.MessageDeduplicationId
   }
   return message
 }
 
 /**
- * Calculates:
- *  - dedupPeriod: the number of seconds from now until another duplicate is
- *    allowed to run (if the current running duplicate does not finish earlier)
- *  - canExpireAfter: the earliest absolute timestamp when another duplicate
- *    job can run provided the running job completes. This value is used by
- *    dedupSuccessfullyProcessed and dedupSuccessfullyProcessedMulti to either
- *    expire a the key or schedule it's expiration if a job finishes
+ * Updates statistics in redis, of which there are two:
+ * 1. duplicateSet - a set who's members are cache keys and scores are the number of duplicate
+ *                   runs prevented by dedup.
+ * 2. expirationSet - a set who's members are cache keys and scores are when the cache key expires
+ * @param {String} cacheKey
+ * @param {Number} duplicates - the number of duplicates, must be at least 1 to gather stats
+ * @param {Number} expireAt - timestamp for when this key's dedupPeriod expires
+ * @param {Object} opt - Opt object from getOptionsWithDefaults()
+ * @param {Object} pipeline - (Optional) redis pipeline you will exec() yourself
  */
-export function calculateDedupParams (opt) {
-  // We won, now make sure it expires
-  const minDedupPeriod = 6 * 60
-  const dedupPeriod = Math.max(opt.dedupPeriod, minDedupPeriod) // at least minDedupPeriod
-  const timestamp = new Date().getTime()
-  // Wait at least the minDedupPeriod before we are allowed to expire
-  const canExpireAfter = Math.round(timestamp / 1000.0 + minDedupPeriod)
-  debug({ calculateDedupParams: { minDedupPeriod, dedupPeriod, timestamp, canExpireAfter }})
-  return { minDedupPeriod, dedupPeriod, timestamp, canExpireAfter }
+export async function updateStats (cacheKey, duplicates, expireAt, opt, pipeline) {
+  if (duplicates >= 1) {
+    const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
+    const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
+    const hadPipeline = !!pipeline
+    if (!hadPipeline) pipeline = getCacheClient(opt).multi()
+    pipeline.zadd(duplicateSet, 'GT', duplicates, cacheKey)
+    pipeline.zadd(expirationSet, 'GT', expireAt, cacheKey)
+    if (!hadPipeline) await pipeline.exec()
+  }
+}
+
+/**
+ * Removes expired items from stats.
+ */
+export async function statMaintenance (opt) {
+  const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
+  const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
+  const client = getCacheClient(opt)
+  const now = new Date().getTime()
+
+  // Grab a batch of expired keys
+  debug({ statMaintenance: { aboutToGo: true, expirationSet }})
+  const expiredStats = await client.zrange(expirationSet, '-inf', now, 'BYSCORE')
+  debug({ statMaintenance: { expiredStats }})
+
+  // And remove them from indexes, main storage
+  if (expiredStats.length) {
+    const result = await client.multi()
+      .zrem(expirationSet, expiredStats)
+      .zrem(duplicateSet, expiredStats)
+      .exec()
+    debug({ statMaintenance: { result }})
+  }
 }
 
 /**
@@ -104,14 +134,17 @@ export async function dedupShouldEnqueue (message, opt) {
   const client = getCacheClient(opt)
   const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
   const cacheKey = getCacheKey(dedupId, opt)
-  const result = await client.incr(cacheKey)
-  debug({ action: 'shouldEnqueue', cacheKey, result })
-  if (result === 1) {
-    const { canExpireAfter, dedupPeriod } = calculateDedupParams(opt)
-    await client.set(cacheKey, canExpireAfter, 'EX', dedupPeriod)
+  const expireAt = new Date().getTime() + opt.dedupPeriod
+  const copies = await client.incr(cacheKey)
+  debug({ action: 'shouldEnqueue', cacheKey, copies })
+  if (copies === 1) {
+    await client.expireat(cacheKey, expireAt)
     return true
   }
-  // TODO: Log if the return value is false
+  if (opt.dedupStats) {
+    const duplicates = copies - 1
+    await updateStats(cacheKey, duplicates, expireAt, opt)
+  }
   return false
 }
 
@@ -124,6 +157,7 @@ export async function dedupShouldEnqueue (message, opt) {
  */
 export async function dedupShouldEnqueueMulti (messages, opt) {
   debug({ dedupShouldEnqueueMulti: { messages, opt }})
+  const expireAt = new Date().getTime() + opt.dedupPeriod
   // Increment all
   const incrPipeline = getCacheClient(opt).pipeline()
   for (const message of messages) {
@@ -140,19 +174,23 @@ export async function dedupShouldEnqueueMulti (messages, opt) {
 
   // Interpret responses and expire keys for races we won
   const expirePipeline = getCacheClient(opt).pipeline()
+  const statsPipeline = opt.dedupStats ? getCacheClient(opt).pipeline() : undefined
   const messagesToEnqueue = []
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i]
-    const [, response] = responses[i]
+    const [, copies] = responses[i]
     const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
     const cacheKey = getCacheKey(dedupId, opt)
-    if (response === 1) {
+    if (copies === 1) {
       messagesToEnqueue.push(message)
-      const { canExpireAfter, dedupPeriod } = calculateDedupParams(opt)
-      expirePipeline.set(cacheKey, canExpireAfter, 'EX', dedupPeriod)
+      expirePipeline.expireat(cacheKey, expireAt)
+    } else if (opt.dedupStats) {
+      const duplicates = copies - 1
+      updateStats(cacheKey, duplicates, expireAt, opt, statsPipeline)
     }
   }
   await expirePipeline.exec()
+  if (opt.dedupStats) await statsPipeline.exec()
   return messagesToEnqueue
 }
 
@@ -168,49 +206,48 @@ export async function dedupSuccessfullyProcessed (message, opt) {
   const client = getCacheClient(opt)
   const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
   if (dedupId) {
-    // Instead of just deleting the key here, we need to make sure that we
-    // wait at least as long as SQS's dedup period. This is because we may
-    // get a successful call to enqueue a message that doesn't really send
-    // the message because of SQS's own dedup. This can cause us to
-    // accidentally refuse to enqueue a message in the following situation:
-    //   1) Send a message. We check the dedup id and give the OK
-    //   2) SQS gets the message, they track dedup id for 5 minutes
-    //   3) We process message and delete it within the 5 minutes
-    //   4) We also delete our record, allowing future duplicates
-    //   5) We enqueue another duplicate, our record allows it
-    //   6) We send to SQS and get a success, but SQS has silently dropped
-    //      because we are still in the 5 minute window
-    //   7) Now there is no message in flight to trigger deleting this key
-    //      and there won't be until the end of the dedup period
-    // So, the upshot is that we have to wait at least as long as SQS
     const cacheKey = getCacheKey(dedupId, opt)
-    const canExpireAfter = parseInt(await client.get(cacheKey))
-    // If canExpireAfter is in the past, this call will delete the key
-    // otherwise it will delete as soon as the min dedup period is up
-    debug({ dedupSuccessfullyProcessed: { dedupId, cacheKey, canExpireAfter } })
-    // Note that if the key has already expired, we need do nothing
-    if (canExpireAfter > 0) {
-      const result = await client.expireat(cacheKey, canExpireAfter)
-      debug({ dedupSuccessfullyProcessed: { dedupId, cacheKey, result } })
+    const count = await client.del(cacheKey)
+    // Probabalistic stat maintenance
+    if (opt.dedupStats) {
+      const chance = 1 / 100.0
+      if (Math.random() < chance) await statMaintenance(opt)
     }
+    return count
   }
+  return 0
 }
 
 /**
- * If we got a non-retryable error from SQS, we need to remove our key so the
- * application can try again without waiting the entire dedupPeriod.
- * @param {Object} message - Return value from RecieveMessageCommand
+ * Marks an array of messages as processed so that subsequent calls to
+ * dedupShouldEnqueue and dedupShouldEnqueueMulti will allow a message to be
+ * enqueued again without waiting for dedupPeriod to expire.
+ * @param {Array[Object]} messages - Return values from RecieveMessageCommand
  * @param {Object} opt - Opt object from getOptionsWithDefaults()
- * @returns {Number} 1 if a cache key was deleted, otherwise 0
+ * @returns {Number} number of deleted keys
  */
-export async function dedupErrorBeforeAcknowledgement (message, opt) {
-  const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-  if (dedupId) {
-    const client = getCacheClient(opt)
-    const cacheKey = getCacheKey(dedupId, opt)
-    const result = await client.del(cacheKey)
-    debug({ dedupErrorBeforeAcknowledgement: { dedupId, result } })
+export async function dedupSuccessfullyProcessedMulti (messages, opt) {
+  debug({ messages, dedupSuccessfullyProcessedMulti: { messages, opt }})
+  const cacheKeys = []
+  for (const message of messages) {
+    const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
+    if (dedupId) {
+      const cacheKey = getCacheKey(dedupId, opt)
+      cacheKeys.push(cacheKey)
+    }
   }
-}
+  debug({ dedupSuccessfullyProcessedMulti: { cacheKeys }})
+  if (cacheKeys.length) {
+    const numDeleted = await getCacheClient(opt).del(cacheKeys)
+    // const numDeleted = results.map(([, val]) => val).reduce((a, b) => a + b, 0)
+    debug({ dedupSuccessfullyProcessedMulti: { cacheKeys, numDeleted } })
 
-// TODO: rewrite dedupSuccessfullyProcessedMulti
+    // Probabalistic stat maintenance
+    if (opt.dedupStats) {
+      const chance = numDeleted / 100.0
+      if (Math.random() < chance) await statMaintenance(opt)
+    }
+    return numDeleted
+  }
+  return 0
+}

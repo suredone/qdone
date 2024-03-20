@@ -21,6 +21,7 @@ export const defaults = Object.freeze({
   includeDead: false,
   externalDedup: false,
   dedupPeriod: 60 * 5,
+  dedupStats: false,
 
   // Enqueue
   groupId: uuidv1(),
@@ -84,6 +85,7 @@ export function getOptionsWithDefaults (options) {
     includeDead: options.includeDead || options['include-dead'] || defaults.includeDead,
     externalDedup: options.externalDedup || options['external-dedup'] || defaults.externalDedup,
     dedupPeriod: options.dedupPeriod || options['dedup-period'] || defaults.dedupPeriod,
+    dedupStats: options.dedupStats || options['dedup-stats'] || defaults.dedupStats,
 
     // Cache
     cacheUri: options.cacheUri || options['cache-uri'] || defaults.cacheUri,
