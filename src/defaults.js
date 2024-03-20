@@ -19,11 +19,15 @@ export const defaults = Object.freeze({
   disableLog: false,
   includeFailed: false,
   includeDead: false,
+  externalDedup: false,
+  dedupPeriod: 60 * 5,
+  dedupStats: false,
 
   // Enqueue
   groupId: uuidv1(),
   groupIdPerMessage: false,
   deduplicationId: undefined,
+  dedupIdPerMessage: false,
   messageRetentionPeriod: 1209600,
   delay: 0,
   sendRetries: 6,
@@ -79,6 +83,9 @@ export function getOptionsWithDefaults (options) {
     disableLog: options.disableLog || options['disable-log'] || defaults.disableLog,
     includeFailed: options.includeFailed || options['include-failed'] || defaults.includeFailed,
     includeDead: options.includeDead || options['include-dead'] || defaults.includeDead,
+    externalDedup: options.externalDedup || options['external-dedup'] || defaults.externalDedup,
+    dedupPeriod: options.dedupPeriod || options['dedup-period'] || defaults.dedupPeriod,
+    dedupStats: options.dedupStats || options['dedup-stats'] || defaults.dedupStats,
 
     // Cache
     cacheUri: options.cacheUri || options['cache-uri'] || defaults.cacheUri,
@@ -89,6 +96,7 @@ export function getOptionsWithDefaults (options) {
     groupId: options.groupId || options['group-id'] || defaults.groupId,
     groupIdPerMessage: false,
     deduplicationId: options.deduplicationId || options['deduplication-id'] || defaults.deduplicationId,
+    dedupIdPerMessage: options.dedupIdPerMessage || options['dedup-id-per-message'] || defaults.dedupIdPerMessage,
     messageRetentionPeriod: options.messageRetentionPeriod || options['message-retention-period'] || defaults.messageRetentionPeriod,
     delay: options.delay || defaults.delay,
     sendRetries: options['send-retries'] || defaults.sendRetries,
@@ -120,6 +128,7 @@ export function getOptionsWithDefaults (options) {
   opt.messageRetentionPeriod = validateInteger(opt, 'messageRetentionPeriod')
   opt.delay = validateInteger(opt, 'delay')
   opt.sendRetries = validateInteger(opt, 'sendRetries')
+  opt.dedupPeriod = validateInteger(opt, 'dedupPeriod')
   opt.failDelay = validateInteger(opt, 'failDelay')
   opt.dlqAfter = validateInteger(opt, 'dlqAfter')
   opt.waitTime = validateInteger(opt, 'waitTime')
@@ -127,6 +136,11 @@ export function getOptionsWithDefaults (options) {
   opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
   opt.maxMemoryPercent = validateInteger(opt, 'maxMemoryPercent')
   opt.idleFor = validateInteger(opt, 'idleFor')
+
+  // Validate dedup args
+  if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
+  if (opt.externalDedup && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('--external-dedup of redis requires a --dedup-period > 1 second')
+  if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either --deduplication-id or --dedup-id-per-message but not both')
 
   return opt
 }

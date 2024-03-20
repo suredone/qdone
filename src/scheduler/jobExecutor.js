@@ -8,6 +8,7 @@ import { ChangeMessageVisibilityBatchCommand, DeleteMessageBatchCommand } from '
 import chalk from 'chalk'
 import Debug from 'debug'
 
+import { dedupSuccessfullyProcessedMulti } from '../dedup.js'
 import { getSQSClient } from '../sqs.js'
 
 const debug = Debug('qdone:jobExecutor')
@@ -221,6 +222,10 @@ export class JobExecutor {
           }
         }
         debug('DeleteMessageBatch returned', result)
+
+        // Mark batch as processed for dedup
+        await dedupSuccessfullyProcessedMulti(entries.map(e => this.jobsByMessageId[e.Id]), this.opt)
+
         // TODO Sentry
       }
     }

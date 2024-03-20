@@ -12,15 +12,16 @@ let client
  * how to connect.
  */
 export function getCacheClient (opt) {
+  const RedisClass = opt.Redis || Redis
   if (client) {
     return client
   } else if (opt.cacheUri) {
     const url = new URL(opt.cacheUri)
     if (url.protocol === 'redis:') {
-      client = new Redis(url.toString())
+      client = new RedisClass(url.toString())
     } else if (url.protocol === 'redis-cluster:') {
       url.protocol = 'redis:'
-      client = new Redis.Cluster([url.toString()], { slotsRefreshInterval: 60 * 1000 })
+      client = new RedisClass.Cluster([url.toString()], { slotsRefreshInterval: 60 * 1000 })
     } else {
       throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
     }
