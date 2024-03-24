@@ -130,7 +130,7 @@ describe('getOrCreateQueue', () => {
       QueueName: qname,
       Attributes: {
         MessageRetentionPeriod: '1209600',
-        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"1"}'
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":1}'
       }
     })
   })
@@ -165,7 +165,7 @@ describe('getOrCreateQueue', () => {
       Attributes: {
         FifoQueue: 'true',
         MessageRetentionPeriod: '1209600',
-        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"1"}'
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":1}'
       }
     })
   })
@@ -201,7 +201,7 @@ describe('getOrCreateQueue', () => {
       Attributes: {
         FifoQueue: 'true',
         MessageRetentionPeriod: '1209600',
-        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"1"}'
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":1}'
       },
       tags
     })
@@ -258,7 +258,7 @@ describe('getOrCreateFailQueue', () => {
       Attributes: {
         DelaySeconds: '120',
         MessageRetentionPeriod: '1209600',
-        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"3"}'
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":3}'
       }
     })
   })
@@ -320,7 +320,7 @@ describe('getOrCreateFailQueue', () => {
         DelaySeconds: '120',
         FifoQueue: 'true',
         MessageRetentionPeriod: '1209600',
-        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":"3"}'
+        RedrivePolicy: '{"deadLetterTargetArn":"foobar","maxReceiveCount":3}'
       }
     })
   })
@@ -968,23 +968,27 @@ describe('enqueue', () => {
   })
 
   test('enqueue with creation', async () => {
-    const opt = getOptionsWithDefaults({ dlq: false })
+    const options = { dlq: false }
+    const opt = getOptionsWithDefaults(options)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = '51b0a325...39163aa0'
     const sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
-      .rejectsOnce(new QueueDoesNotExist())
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
       .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
       .rejectsOnce(new QueueDoesNotExist())
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
+      .resolves({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
+
+      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
+      .rejectsOnce(new QueueDoesNotExist())
+      .resolves({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
+
       .on(CreateQueueCommand)
       .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
       .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
+
       .on(GetQueueAttributesCommand, { QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
-      .resolvesOnce({
+      .resolves({
         Attributes: {
           CreatedTimestamp: '1442426968',
           DelaySeconds: '0',
@@ -996,6 +1000,7 @@ describe('enqueue', () => {
           VisibilityTimeout: '30'
         }
       })
+
       .on(SendMessageCommand)
       .resolvesOnce({
         MD5OfMessageBody: md5,
@@ -1003,7 +1008,7 @@ describe('enqueue', () => {
       })
 
     await expect(
-      enqueue('testQueue', 'true', opt)
+      enqueue('testQueue', 'true', options)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
 
     expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
@@ -1025,7 +1030,7 @@ describe('enqueue', () => {
         MessageRetentionPeriod: opt.messageRetentionPeriod + '',
         RedrivePolicy: JSON.stringify({
           deadLetterTargetArn: 'arn:aws:sqs:us-east-1:123456789101:qdone_testQueue_failed',
-          maxReceiveCount: '1'
+          maxReceiveCount: 1
         })
       }
     })
@@ -1036,19 +1041,22 @@ describe('enqueue', () => {
   })
 
   test('should print traceback and exit 1 with error', async () => {
-    const opt = getOptionsWithDefaults()
+    const options = {}
     const err = new Error('Queue cannot be created.')
     err.name = 'SomeOtherError'
     err.Code = 'AWS.SimpleQueueService.SomeOtherError'
     const sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock
-      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
-      .rejectsOnce(new QueueDoesNotExist())
-      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
       .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue' })
       .rejectsOnce(new QueueDoesNotExist())
       .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue' })
+      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_failed' })
+      .rejectsOnce(new QueueDoesNotExist())
+      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
+      .on(GetQueueUrlCommand, { QueueName: 'qdone_testQueue_dead' })
+      .rejectsOnce(new QueueDoesNotExist())
+      .resolvesOnce({ QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_dead' })
       .on(CreateQueueCommand)
       .rejects(err)
       .on(GetQueueAttributesCommand, { QueueUrl: 'https://q.amazonaws.com/123456789101/qdone_testQueue_failed' })
@@ -1071,7 +1079,7 @@ describe('enqueue', () => {
         MessageId: 'da68f62c-0c07-4bee-bf5f-7e856EXAMPLE'
       })
     await expect(
-      enqueue('testQueue', 'true', opt)
+      enqueue('testQueue', 'true', options)
     ).rejects.toThrow('cannot be created')
   })
 })

@@ -88,17 +88,19 @@ export async function getFailParams (queue, opt) {
   if (opt.failDelay) params.Attributes.DelaySeconds = opt.failDelay + ''
   if (opt.tags) params.tags = opt.tags
   if (opt.fifo) params.Attributes.FifoQueue = 'true'
-  return { fqname, params }
+  return params
 }
 
 /**
  * Returns the qrl for the failed queue for the given queue. Creates the queue
  * if it does not exist.
  */
-export async function getOrCreateFailQueue (queue, opt) {
+export async function getOrCreateFailQueue (queue, opt, doesNotExist) {
   debug('getOrCreateFailQueue(', queue, ')')
+  const fqname = normalizeFailQueueName(queue, opt)
   try {
-    const fqname = normalizeFailQueueName(queue, opt)
+    // Bail early if the caller knew we didn't have a queue
+    if (doesNotExist) throw new QueueDoesNotExist(fqname)
     const fqrl = await qrlCacheGet(fqname)
     return fqrl
   } catch (err) {
@@ -106,16 +108,15 @@ export async function getOrCreateFailQueue (queue, opt) {
     if (!(err instanceof QueueDoesNotExist)) throw err
 
     // Grab params, creating DLQ if needed
-    const { fqname, params } = await (async () => {
-      try {
-        return getFailParams(queue, opt)
-      } catch (e) {
-        // If DLQ doesn't exist, create it
-        if (!(opt.dlq && e instanceof QueueDoesNotExist)) throw e
-        await getOrCreateDLQ(queue, opt)
-        return getFailParams(queue, opt)
-      }
-    })()
+    let params
+    try {
+      params = await getFailParams(queue, opt)
+    } catch (e) {
+      // If DLQ doesn't exist, create it
+      if (!(opt.dlq && e instanceof QueueDoesNotExist)) throw e
+      await getOrCreateDLQ(queue, opt)
+      params = await getFailParams(queue, opt)
+    }
 
     // Create our fail queue
     const client = getSQSClient()
@@ -150,7 +151,7 @@ export async function getQueueParams (queue, opt) {
   }
   if (opt.tags) params.tags = opt.tags
   if (opt.fifo) params.Attributes.FifoQueue = 'true'
-  return { qname, params }
+  return params
 }
 
 /**
@@ -158,25 +159,26 @@ export async function getQueueParams (queue, opt) {
  */
 export async function getOrCreateQueue (queue, opt) {
   debug('getOrCreateQueue(', queue, ')')
+  const qname = normalizeQueueName(queue, opt)
   try {
-    const qname = normalizeQueueName(queue, opt)
     const qrl = await qrlCacheGet(qname)
     return qrl
   } catch (err) {
     // Anything other than queue doesn't exist gets re-thrown
     if (!(err instanceof QueueDoesNotExist)) throw err
 
-    // Grab params, creating DLQ if needed
-    const { qname, params } = await (async () => {
-      try {
-        return getQueueParams(queue, opt)
-      } catch (e) {
-        // If DLQ doesn't exist, create it
-        if (!(opt.dlq && e instanceof QueueDoesNotExist)) throw e
-        await getOrCreateDLQ(queue, opt)
-        return getQueueParams(queue, opt)
-      }
-    })()
+    // Grab params, creating fail queue if needed
+    let params
+    try {
+      params = await getQueueParams(qname, opt)
+    } catch (e) {
+      // If fail queue doesn't exist, create it
+      if (!(e instanceof QueueDoesNotExist)) throw e
+      await getOrCreateFailQueue(qname, opt, true)
+      params = await getQueueParams(qname, opt)
+    }
+
+    debug({ getOrCreateQueue: { qname, params } })
 
     // Create our queue
     const client = getSQSClient()
@@ -400,8 +402,13 @@ export async function addMessage (qrl, command, messageIndex, opt, sendBuffer) {
 export async function enqueue (queue, command, options) {
   debug('enqueue(', { queue, command }, ')')
   const opt = getOptionsWithDefaults(options)
-  const qrl = await getOrCreateQueue(queue, opt)
-  return sendMessage(qrl, command, opt)
+  try {
+    const qrl = await getOrCreateQueue(queue, opt)
+    return sendMessage(qrl, command, opt)
+  } catch (e) {
+    console.log(e)
+    throw e
+  }
 }
 
 //

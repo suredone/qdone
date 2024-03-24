@@ -66,7 +66,7 @@ export async function qrlCacheGet (qname) {
   // debug({ cmd })
   const result = await client.send(cmd)
   // debug('result', result)
-  // if (!result) throw new Error(`No such queue ${qname}`)
+  if (!result) throw new QueueDoesNotExist(qname)
   const { QueueUrl: qrl } = result
   // debug('getQueueUrl returned', data)
   qcache.set(qname, qrl)
