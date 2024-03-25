@@ -57,8 +57,23 @@ const enqueueOptionDefinitions = [
   { name: 'delay', type: Number, description: 'Delays delivery of the enqueued message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
   { name: 'fail-delay', type: Number, description: 'Delays delivery of all messages on this queue by the given number of seconds (up to 900 seconds, or 15 minutes). Only takes effect if this queue is created during this enqueue operation. Defaults to immediate delivery (no delay).' },
   { name: 'dlq', type: Boolean, description: 'Send messages from the failed queue to a DLQ.' },
-  { name: 'dql-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
-  { name: 'dql-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` },
+  { name: 'dlq-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
+  { name: 'dlq-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` },
+  { name: 'tag', type: String, multiple: true, description: 'Adds an AWS tag to queue creation. Use the format Key=Value. Can specify multiple times.' }
+]
+
+const checkOptionDefinitions = [
+  { name: 'create', type: Boolean, description: 'Create queues that do not exist' },
+  { name: 'overwrite', type: Boolean, description: 'Overwrite queue attributes that do not match expected' },
+  { name: 'fifo', alias: 'f', type: Boolean, description: 'Create new queues as FIFOs' },
+  { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues.' },
+  { name: 'include-dead', type: Boolean, description: 'When using \'*\' do not ignore dead queues.' },
+  { name: 'message-retention-period', type: Number, description: `Number of seconds to retain jobs (up to 14 days). [default: ${defaults.messageRetentionPeriod}]` },
+  { name: 'delay', type: Number, description: 'Delays delivery of the enqueued message by the given number of seconds (up to 900 seconds, or 15 minutes). Defaults to immediate delivery (no delay).' },
+  { name: 'fail-delay', type: Number, description: 'Delays delivery of all messages on this queue by the given number of seconds (up to 900 seconds, or 15 minutes). Only takes effect if this queue is created during this enqueue operation. Defaults to immediate delivery (no delay).' },
+  { name: 'dlq', type: Boolean, description: 'Send messages from the failed queue to a DLQ.' },
+  { name: 'dlq-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` },
+  { name: 'dlq-after', type: String, description: `Drives message to the DLQ after this many failures in the failed queue. [default: ${defaults.dlqAfter}]` },
   { name: 'tag', type: String, multiple: true, description: 'Adds an AWS tag to queue creation. Use the format Key=Value. Can specify multiple times.' }
 ]
 
@@ -120,6 +135,64 @@ export async function enqueue (argv, testHook) {
   )
   debug('enqueue returned', result)
   if (options.verbose) console.error(chalk.blue('Enqueued job ') + result.MessageId)
+  return result
+}
+
+export async function check (argv, testHook) {
+  const optionDefinitions = [].concat(checkOptionDefinitions, globalOptionDefinitions)
+  const usageSections = [
+    { content: 'usage: qdone check [options] <queue>', raw: true },
+    { content: 'Options', raw: true },
+    { optionList: optionDefinitions },
+    { content: 'SQS API Call Complexity', raw: true, long: true },
+    {
+      content: [
+        { count: '2 [ + 3 ]', summary: 'one call to resolve the queue name\none call to check the command\none extra calls if the queue does not match and --modify option is set' }
+      ],
+      long: true
+    },
+    awsUsageHeader, awsUsageBody
+  ]
+  debug('check argv', argv)
+
+  // Parse command and options
+  let queues, options
+  try {
+    options = commandLineArgs(optionDefinitions, { argv, partial: true })
+    setupVerbose(options)
+    debug('check options', options)
+    if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
+    if (!options._unknown || options._unknown.length === 0) throw new UsageError('check requres one or more <queue> arguments')
+    queues = options._unknown
+    debug('queues', queues)
+  } catch (err) {
+    console.log(getUsage(usageSections.filter(s => !s.long)))
+    throw err
+  }
+
+  // Process tags
+  if (options.tag && options.tag.length) {
+    options.tags = {}
+    for (const input of options.tag) {
+      debug({ input })
+      if (input.indexOf('=') === -1) throw new UsageError('Tags must be separated with the "=" character.')
+      const [key, ...rest] = input.split('=')
+      const value = rest.join('=')
+      debug({ input, key, rest, value, tags: options.tags })
+      options.tags[key] = value
+    }
+  }
+
+  // Load module after AWS global load
+  setupAWS(options)
+  const { check: checkOriginal } = await import('./check.js')
+  const check = testHook || checkOriginal
+
+  // Normal (non batch) enqueue
+  const opt = getOptionsWithDefaults(options)
+  const result = (
+    await withSentry(async () => check(queues, opt), opt)
+  )
   return result
 }
 
@@ -452,7 +525,7 @@ export async function idleQueues (argv, testHook) {
 }
 
 export async function root (originalArgv, testHook) {
-  const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues', 'monitor']
+  const validCommands = [null, 'enqueue', 'enqueue-batch', 'worker', 'idle-queues', 'monitor', 'check']
   const usageSections = [
     { content: 'qdone - Command line job queue for SQS', raw: true, long: true },
     { content: 'usage: qdone [options] <command>', raw: true },
@@ -505,6 +578,8 @@ export async function root (originalArgv, testHook) {
     return idleQueues(argv, testHook)
   } else if (command === 'monitor') {
     return monitor(argv, testHook)
+  } else if (command === 'check') {
+    return check(argv, testHook)
   }
 }
 
