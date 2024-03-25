@@ -1,4 +1,4 @@
-import { addBreadcrumb } from '@sentry/node'
+import { addBreadcrumb, setExtra } from '@sentry/node'
 import { v1 as uuidV1 } from 'uuid'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -394,6 +394,9 @@ export async function addMessage (qrl, command, messageIndex, opt, sendBuffer, m
 export async function enqueue (queue, command, options) {
   debug('enqueue(', { queue, command }, ')')
   const opt = getOptionsWithDefaults(options)
+  if (opt.sentryDsn) {
+    setExtra({ qdoneOperation: 'enqueue', args: { queue, command, opt } })
+  }
   try {
     const qrl = await getOrCreateQueue(queue, opt)
     return sendMessage(qrl, command, opt)
@@ -410,44 +413,50 @@ export async function enqueue (queue, command, options) {
 export async function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
   const opt = getOptionsWithDefaults(options)
-
-  // Find unique queues so we can pre-fetch qrls. We do this so that all
-  // queues are created prior to going through our flush logic
-  const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
-    qname: normalizeQueueName(queue, opt),
-    command,
-    messageOptions: validateMessageOptions(messageOptions)
-  }))
-  const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
-
-  // Prefetch qrls / create queues in parallel
-  const createPromises = []
-  for (const qname of uniqueQnames) {
-    createPromises.push(getOrCreateQueue(qname, opt))
+  if (opt.sentryDsn) {
+    setExtra({ qdoneOperation: 'enqueueBatch', args: { pairs, opt } })
   }
-  await Promise.all(createPromises)
+  try {
+    // Find unique queues so we can pre-fetch qrls. We do this so that all
+    // queues are created prior to going through our flush logic
+    const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
+      qname: normalizeQueueName(queue, opt),
+      command,
+      messageOptions: validateMessageOptions(messageOptions)
+    }))
+    const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
 
-  // After we've prefetched, all qrls are in cache
-  // so go back through the list of pairs and fire off messages
-  requestCount = 0
-  const sendBuffer = {}
-  let messageIndex = 0
-  let initialFlushTotal = 0
-  for (const { qname, command, messageOptions } of normalizedPairs) {
-    const qrl = await getOrCreateQueue(qname, opt)
-    initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
-  }
+    // Prefetch qrls / create queues in parallel
+    const createPromises = []
+    for (const qname of uniqueQnames) {
+      createPromises.push(getOrCreateQueue(qname, opt))
+    }
+    await Promise.all(createPromises)
+    // After we've prefetched, all qrls are in cache
+    // so go back through the list of pairs and fire off messages
+    requestCount = 0
+    const sendBuffer = {}
+    let messageIndex = 0
+    let initialFlushTotal = 0
+    for (const { qname, command, messageOptions } of normalizedPairs) {
+      const qrl = await getOrCreateQueue(qname, opt)
+      initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
+    }
 
-  // And flush any remaining messages
-  const extraFlushPromises = []
-  for (const qrl in sendBuffer) {
-    extraFlushPromises.push(flushMessages(qrl, opt, sendBuffer))
+    // And flush any remaining messages
+    const extraFlushPromises = []
+    for (const qrl in sendBuffer) {
+      extraFlushPromises.push(flushMessages(qrl, opt, sendBuffer))
+    }
+    const extraFlushCounts = await Promise.all(extraFlushPromises)
+    const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)
+    const totalFlushed = initialFlushTotal + extraFlushTotal
+    debug({ initialFlushTotal, extraFlushTotal, totalFlushed })
+    return totalFlushed
+  } catch (e) {
+    console.log(e)
+    throw e
   }
-  const extraFlushCounts = await Promise.all(extraFlushPromises)
-  const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)
-  const totalFlushed = initialFlushTotal + extraFlushTotal
-  debug({ initialFlushTotal, extraFlushTotal, totalFlushed })
-  return totalFlushed
 }
 
 debug('loaded')
