@@ -26,7 +26,7 @@ import {
   dedupShouldEnqueueMulti,
   dedupSuccessfullyProcessed
 } from './dedup.js'
-import { getOptionsWithDefaults } from './defaults.js'
+import { getOptionsWithDefaults, validateMessageOptions } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
 
 const debug = Debug('qdone:enqueue')
@@ -203,17 +203,15 @@ export async function getQueueAttributes (qrl) {
   return data
 }
 
-export function formatMessage (command, id) {
-  const message = {
-    /*
-    MessageAttributes: {
-      City: { DataType: 'String', StringValue: 'Any City' },
-      Population: { DataType: 'Number', StringValue: '1250800' }
-    },
-    */
-    MessageBody: command
-  }
+export function formatMessage (body, id, opt, messageOptions) {
+  const message = { MessageBody: body }
   if (typeof id !== 'undefined') message.Id = '' + id
+  if (opt.fifo) {
+    message.MessageGroupId = messageOptions?.groupId || opt?.groupId
+  }
+  addDedupParamsToMessage(message, opt, messageOptions)
+  if (opt.delay) message.DelaySeconds = opt.delay
+  if (messageOptions?.delay) message.DelaySeconds = messageOptions.delay
   return message
 }
 
@@ -224,19 +222,13 @@ const retryableExceptions = [
   QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
 ]
 
-export function finishMessage (params, opt) {
-  if (opt.fifo) {
-    params.MessageGroupId = opt.groupId
-  }
-  params = addDedupParamsToMessage(params, opt)
-  if (opt.delay) params.DelaySeconds = opt.delay
-  return params
-}
-
-export async function sendMessage (qrl, command, opt) {
+export async function sendMessage (qrl, command, opt, messageOptions) {
   debug('sendMessage(', qrl, command, ')')
   const uuidFunction = opt.uuidFunction || uuidV1
-  const params = finishMessage(Object.assign({ QueueUrl: qrl }, formatMessage(command)), opt)
+  const params = {
+    QueueUrl: qrl,
+    ...formatMessage(command, null, opt, messageOptions)
+  }
 
   // See if we even have to send it
   if (opt.externalDedup) {
@@ -274,7 +266,7 @@ export async function sendMessage (qrl, command, opt) {
 
 export async function sendMessageBatch (qrl, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
-  const params = { Entries: messages.map(m => finishMessage(m, opt)), QueueUrl: qrl }
+  const params = { Entries: messages, QueueUrl: qrl }
   if (opt.sentryDsn) {
     addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ params }), level: 'debug' })
   }
@@ -384,8 +376,8 @@ export async function flushMessages (qrl, opt, sendBuffer) {
 // Automaticaly flushes if queue has >= 10 messages.
 // Returns number of messages flushed.
 //
-export async function addMessage (qrl, command, messageIndex, opt, sendBuffer) {
-  const message = formatMessage(command, messageIndex)
+export async function addMessage (qrl, command, messageIndex, opt, sendBuffer, messageOptions) {
+  const message = formatMessage(command, messageIndex, opt, messageOptions)
   sendBuffer[qrl] = sendBuffer[qrl] || []
   sendBuffer[qrl].push(message)
   debug({ location: 'addMessage', sendBuffer })
@@ -421,9 +413,10 @@ export async function enqueueBatch (pairs, options) {
 
   // Find unique queues so we can pre-fetch qrls. We do this so that all
   // queues are created prior to going through our flush logic
-  const normalizedPairs = pairs.map(({ queue, command }) => ({
+  const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
     qname: normalizeQueueName(queue, opt),
-    command
+    command,
+    messageOptions: validateMessageOptions(messageOptions)
   }))
   const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
 
@@ -440,9 +433,9 @@ export async function enqueueBatch (pairs, options) {
   const sendBuffer = {}
   let messageIndex = 0
   let initialFlushTotal = 0
-  for (const { qname, command } of normalizedPairs) {
+  for (const { qname, command, messageOptions } of normalizedPairs) {
     const qrl = await getOrCreateQueue(qname, opt)
-    initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer)
+    initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
   }
 
   // And flush any remaining messages

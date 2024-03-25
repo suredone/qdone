@@ -17,7 +17,6 @@ import {
   getOrCreateDLQ,
   getQueueAttributes,
   formatMessage,
-  finishMessage,
   sendMessage,
   sendMessageBatch,
   addMessage,
@@ -462,19 +461,22 @@ describe('getQueueAttributes', () => {
 
 describe('formatMessage', () => {
   test('basic format is followed', async () => {
+    const opt = getOptionsWithDefaults()
     const cmd = 'sd BulkStatusModel finalizeAll'
-    expect(formatMessage(cmd)).toEqual({ MessageBody: cmd })
+    expect(formatMessage(cmd, undefined, opt)).toEqual({ MessageBody: cmd })
   })
   test('message with a specific id gets formatted', async () => {
+    const opt = getOptionsWithDefaults()
     const cmd = 'sd BulkStatusModel finalizeAll'
     const id = '1234'
-    expect(formatMessage(cmd, id)).toEqual({ MessageBody: cmd, Id: id })
+    expect(formatMessage(cmd, id, opt)).toEqual({ MessageBody: cmd, Id: id })
   })
 })
 
 describe('sendMessage', () => {
   test('basic send works', async () => {
     const options = {}
+    const opt = getOptionsWithDefaults()
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -492,7 +494,7 @@ describe('sendMessage', () => {
       .toHaveReceivedNthSpecificCommandWith(
         1,
         SendMessageCommand,
-        Object.assign({ QueueUrl: qrl }, formatMessage(cmd))
+        Object.assign({ QueueUrl: qrl }, formatMessage(cmd, null, opt))
       )
   })
 
@@ -516,7 +518,7 @@ describe('sendMessage', () => {
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
     expect(sqsMock).toHaveReceivedNthCommandWith(
       1, SendMessageCommand,
-      Object.assign({}, formatMessage(cmd), { QueueUrl: qrl, MessageGroupId: opt.groupId })
+      Object.assign({}, formatMessage(cmd, null, opt), { QueueUrl: qrl, MessageGroupId: opt.groupId })
     )
   })
 
@@ -551,7 +553,7 @@ describe('sendMessage', () => {
           QueueUrl: qrl,
           MessageGroupId: groupId,
           DelaySeconds: options.delay
-        }, formatMessage(cmd))
+        }, formatMessage(cmd, null, opt))
       )
   })
 
@@ -593,25 +595,14 @@ describe('sendMessage', () => {
       .toHaveReceivedNthCommandWith(
         2,
         SendMessageCommand,
-        finishMessage(
-          Object.assign(
-            {
-              QueueUrl: qrl,
-              MessageGroupId: groupId,
-              DelaySeconds: options.delay,
-              MessageDeduplicationId: deduplicationId
-            },
-            formatMessage(cmd)
-          ),
-          opt
-        )
+        formatMessage(cmd, null, opt, { groupId, delay: options.delay, deduplicationId })
       )
   })
 })
 
 describe('sendMessageBatch', () => {
   test('basic batch works', async () => {
-    const opt = getOptionsWithDefaults({})
+    const opt = getOptionsWithDefaults()
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -619,8 +610,8 @@ describe('sendMessageBatch', () => {
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
     const messages = [
-      formatMessage(cmd),
-      formatMessage(cmd)
+      formatMessage(cmd, 0, opt),
+      formatMessage(cmd, 1, opt)
     ]
     setSQSClient(sqsMock)
     sqsMock
@@ -633,12 +624,13 @@ describe('sendMessageBatch', () => {
       .toHaveReceivedNthSpecificCommandWith(
         1,
         SendMessageBatchCommand,
-        Object.assign({ QueueUrl: qrl, Entries: messages.map(m => finishMessage(m, opt)) })
+        Object.assign({ QueueUrl: qrl, Entries: messages })
       )
   })
 
   test('batch with delay works', async () => {
     const options = { delay: 15 }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -646,8 +638,8 @@ describe('sendMessageBatch', () => {
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'
     const messages = [
-      formatMessage(cmd),
-      formatMessage(cmd)
+      formatMessage(cmd, null, opt),
+      formatMessage(cmd, null, opt)
     ]
     messages[0].DelaySeconds = options.delay
     messages[1].DelaySeconds = options.delay
@@ -675,14 +667,15 @@ describe('sendMessageBatch', () => {
       'group-id': groupId,
       uuidFunction: () => messageId
     }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
     const sqsMock = mockClient(client)
     const md5 = 'foobar'
     const messages = [
-      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd)),
-      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd))
+      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd, null, opt)),
+      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd, null, opt))
     ]
     setSQSClient(sqsMock)
     sqsMock
@@ -717,14 +710,15 @@ describe('sendMessageBatch', () => {
       'group-id-per-message': true,
       uuidFunction: () => messageId
     }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
     const sqsMock = mockClient(client)
     const md5 = 'foobar'
     const messages = [
-      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd)),
-      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd))
+      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd, 0, opt)),
+      Object.assign({ MessageDeduplicationId: messageId, MessageGroupId: groupId }, formatMessage(cmd, 0, opt))
     ]
     setSQSClient(sqsMock)
     sqsMock
@@ -755,6 +749,7 @@ describe('sendMessageBatch', () => {
 describe('addMessage / flushMessages', () => {
   test('basic add/flush cycle works', async () => {
     const options = {}
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -816,16 +811,16 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 0),
-            formatMessage(cmd, 1),
-            formatMessage(cmd, 2),
-            formatMessage(cmd, 3),
-            formatMessage(cmd, 4),
-            formatMessage(cmd, 5),
-            formatMessage(cmd, 6),
-            formatMessage(cmd, 7),
-            formatMessage(cmd, 8),
-            formatMessage(cmd, 9)
+            formatMessage(cmd, 0, opt),
+            formatMessage(cmd, 1, opt),
+            formatMessage(cmd, 2, opt),
+            formatMessage(cmd, 3, opt),
+            formatMessage(cmd, 4, opt),
+            formatMessage(cmd, 5, opt),
+            formatMessage(cmd, 6, opt),
+            formatMessage(cmd, 7, opt),
+            formatMessage(cmd, 8, opt),
+            formatMessage(cmd, 9, opt)
           ]
         })
       )
@@ -836,9 +831,9 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 10),
-            formatMessage(cmd, 11),
-            formatMessage(cmd, 12)
+            formatMessage(cmd, 10, opt),
+            formatMessage(cmd, 11, opt),
+            formatMessage(cmd, 12, opt)
           ]
         })
       )
@@ -846,6 +841,7 @@ describe('addMessage / flushMessages', () => {
 
   test('failed messages fail the whole batch', async () => {
     const options = { dlq: false }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -894,14 +890,14 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toBe(10)
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toBe(0)
     // should flush those three
-    await expect(flushMessages(qrl, options, sendBuffer))
+    await expect(flushMessages(qrl, opt, sendBuffer))
       .rejects.toThrow('One or more message failures')
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -910,16 +906,16 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 0),
-            formatMessage(cmd, 1),
-            formatMessage(cmd, 2),
-            formatMessage(cmd, 3),
-            formatMessage(cmd, 4),
-            formatMessage(cmd, 5),
-            formatMessage(cmd, 6),
-            formatMessage(cmd, 7),
-            formatMessage(cmd, 8),
-            formatMessage(cmd, 9)
+            formatMessage(cmd, 0, opt),
+            formatMessage(cmd, 1, opt),
+            formatMessage(cmd, 2, opt),
+            formatMessage(cmd, 3, opt),
+            formatMessage(cmd, 4, opt),
+            formatMessage(cmd, 5, opt),
+            formatMessage(cmd, 6, opt),
+            formatMessage(cmd, 7, opt),
+            formatMessage(cmd, 8, opt),
+            formatMessage(cmd, 9, opt)
           ]
         })
       )
@@ -930,9 +926,9 @@ describe('addMessage / flushMessages', () => {
         Object.assign({
           QueueUrl: qrl,
           Entries: [
-            formatMessage(cmd, 10),
-            formatMessage(cmd, 11),
-            formatMessage(cmd, 12)
+            formatMessage(cmd, 10, opt),
+            formatMessage(cmd, 11, opt),
+            formatMessage(cmd, 12, opt)
           ]
         })
       )
@@ -942,6 +938,7 @@ describe('addMessage / flushMessages', () => {
 describe('enqueue', () => {
   test('basic enqueue works', async () => {
     const options = { prefix: '' }
+    const opt = getOptionsWithDefaults(options)
     const qname = 'testqueue'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
@@ -963,7 +960,7 @@ describe('enqueue', () => {
       .toHaveReceivedNthCommandWith(
         2,
         SendMessageCommand,
-        Object.assign({ QueueUrl: qrl }, formatMessage(cmd))
+        Object.assign({ QueueUrl: qrl }, formatMessage(cmd, undefined, opt))
       )
   })
 
@@ -1287,29 +1284,31 @@ describe('enqueueBatch', () => {
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(4, SendMessageBatchCommand, {
         QueueUrl: qrl1,
-        Entries: (Array.apply(null, Array(10))).map((e, i) => (
-          finishMessage({ MessageBody: cmd, Id: i + '' }, opt)
-        ))
+        Entries: (Array.apply(null, Array(10))).map((e, i) => formatMessage(cmd, i, opt))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(5, SendMessageBatchCommand, {
         QueueUrl: qrl3,
-        Entries: (Array.apply(null, Array(10))).map((e, i) => (
-          finishMessage({ MessageBody: cmd, Id: i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }, { ...opt, fifo: true })
+        Entries: (Array.apply(null, Array(10))).map((e, i) => formatMessage(
+          cmd,
+          i,
+          { ...opt, fifo: true },
+          { deduplicationId: messageId, groupId: messageId }
         ))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(6, SendMessageBatchCommand, {
         QueueUrl: qrl2,
-        Entries: (Array.apply(null, Array(5))).map((e, i) => (
-          finishMessage({ MessageBody: cmd, Id: 10 + i + '' }, opt)
-        ))
+        Entries: (Array.apply(null, Array(5))).map((e, i) => formatMessage(cmd, 10 + i, opt))
       })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(7, SendMessageBatchCommand, {
         QueueUrl: qrl3,
-        Entries: (Array.apply(null, Array(5))).map((e, i) => (
-          finishMessage({ MessageBody: cmd, Id: 10 + i + '', MessageDeduplicationId: messageId, MessageGroupId: messageId }, { ...opt, fifo: true })
+        Entries: (Array.apply(null, Array(5))).map((e, i) => formatMessage(
+          cmd,
+          10 + i,
+          { ...opt, fifo: true },
+          { deduplicationId: messageId, groupId: messageId }
         ))
       })
   })

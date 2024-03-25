@@ -59,6 +59,19 @@ function validateInteger (opt, name) {
   return parsed
 }
 
+export function validateMessageOptions (messageOptions) {
+  const validKeys = ['deduplicaitonId', 'groupId']
+  if (typeof messageOptions === 'object' &&
+      !Array.isArray(messageOptions) &&
+      messageOptions !== null) {
+    for (const key in messageOptions) {
+      if (!validKeys.includes(key)) throw new Error(`Invalid message option ${key}`)
+    }
+    return messageOptions
+  }
+  return {}
+}
+
 /**
  * This function should be called by each exposed API entry point on the
  * options passed in from the caller. It supports options named in camelCase

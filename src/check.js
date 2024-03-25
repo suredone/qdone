@@ -3,9 +3,7 @@ import Debug from 'debug'
 import {
   GetQueueAttributesCommand,
   SetQueueAttributesCommand,
-  QueueDoesNotExist,
-  RequestThrottled,
-  KmsThrottled
+  QueueDoesNotExist
 } from '@aws-sdk/client-sqs'
 
 import {
@@ -20,12 +18,10 @@ import {
   getDLQParams,
   getFailParams,
   getQueueParams,
-  getOrCreateQueue,
   getOrCreateFailQueue,
   getOrCreateDLQ
 } from './enqueue.js'
 import { getOptionsWithDefaults } from './defaults.js'
-import { ExponentialBackoff } from './exponentialBackoff.js'
 
 const debug = Debug('qdone:check')
 
@@ -170,13 +166,6 @@ export async function setQueueAttributes (qrl, attributes) {
   debug('SetQueueAttributes returned', data)
   return data
 }
-
-// Retry happens within the context of the send functions
-const retryableExceptions = [
-  RequestThrottled,
-  KmsThrottled,
-  QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
-]
 
 //
 // Enqueue a single command

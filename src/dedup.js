@@ -43,14 +43,17 @@ export function getCacheKey (dedupId, opt) {
  * for whatever deduplication options the caller has set.
  * @param {String} message - parameters to SendMessageCommand
  * @param {Object} opt - Opt object from getOptionsWithDefaults()
+ * @param {Object} [messageOptions] - optional per message options. We only care about the key deduplicationId.
  * @returns {Object} the modified parameters/message object
  */
-export function addDedupParamsToMessage (message, opt) {
+export function addDedupParamsToMessage (message, opt, messageOptions) {
   // Either of these means we need to calculate an id
   if (opt.fifo || opt.externalDedup) {
     const uuidFunction = opt.uuidFunction || uuidV1
+
     if (opt.deduplicationId) message.MessageDeduplicationId = opt.deduplicationId
     if (opt.dedupIdPerMessage) message.MessageDeduplicationId = uuidFunction()
+    if (messageOptions?.deduplicationId) message.MessageDeduplicationId = messageOptions.deduplicationId
 
     // Fallback to using the message body
     if (!message.MessageDeduplicationId) {
