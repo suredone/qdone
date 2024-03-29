@@ -23,7 +23,6 @@ import { getSQSClient } from './sqs.js'
 import {
   addDedupParamsToMessage,
   dedupShouldEnqueue,
-  dedupShouldEnqueueMulti,
   dedupSuccessfullyProcessed
 } from './dedup.js'
 import { getOptionsWithDefaults, validateMessageOptions } from './defaults.js'
@@ -274,7 +273,9 @@ export async function sendMessageBatch (qrl, messages, opt) {
 
   // See which messages we even have to send
   if (opt.externalDedup) {
-    params.Entries = await dedupShouldEnqueueMulti(params.Entries, opt)
+    const promises = params.Entries.map(async m => ({ m, shouldEnqueue: await dedupShouldEnqueue(m, opt) }))
+    const results = await Promise.all(promises)
+    params.Entries = results.filter(({ shouldEnqueue }) => shouldEnqueue)
     if (!params.Entries.length) return
   }
 

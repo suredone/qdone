@@ -112,9 +112,9 @@ export async function statMaintenance (opt) {
   const now = new Date().getTime()
 
   // Grab a batch of expired keys
-  debug({ statMaintenance: { aboutToGo: true, expirationSet }})
+  debug({ statMaintenance: { aboutToGo: true, expirationSet } })
   const expiredStats = await client.zrange(expirationSet, '-inf', now, 'BYSCORE')
-  debug({ statMaintenance: { expiredStats }})
+  debug({ statMaintenance: { expiredStats } })
 
   // And remove them from indexes, main storage
   if (expiredStats.length) {
@@ -122,7 +122,7 @@ export async function statMaintenance (opt) {
       .zrem(expirationSet, expiredStats)
       .zrem(duplicateSet, expiredStats)
       .exec()
-    debug({ statMaintenance: { result }})
+    debug({ statMaintenance: { result } })
   }
 }
 
@@ -159,7 +159,7 @@ export async function dedupShouldEnqueue (message, opt) {
  * @returns {Array[Object]} an array of messages that can be safely enqueued. Could be empty.
  */
 export async function dedupShouldEnqueueMulti (messages, opt) {
-  debug({ dedupShouldEnqueueMulti: { messages, opt }})
+  debug({ dedupShouldEnqueueMulti: { messages, opt } })
   const expireAt = new Date().getTime() + opt.dedupPeriod
   // Increment all
   const incrPipeline = getCacheClient(opt).pipeline()
@@ -170,10 +170,6 @@ export async function dedupShouldEnqueueMulti (messages, opt) {
   }
   const responses = await incrPipeline.exec()
   debug({ dedupShouldEnqueueMulti: { messages, responses } })
-
-  // Figure out dedup period
-  const minDedupPeriod = 6 * 60
-  const dedupPeriod = Math.min(opt.dedupPeriod, minDedupPeriod)
 
   // Interpret responses and expire keys for races we won
   const expirePipeline = getCacheClient(opt).pipeline()
@@ -230,7 +226,7 @@ export async function dedupSuccessfullyProcessed (message, opt) {
  * @returns {Number} number of deleted keys
  */
 export async function dedupSuccessfullyProcessedMulti (messages, opt) {
-  debug({ messages, dedupSuccessfullyProcessedMulti: { messages, opt }})
+  debug({ messages, dedupSuccessfullyProcessedMulti: { messages, opt } })
   const cacheKeys = []
   for (const message of messages) {
     const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
@@ -239,7 +235,7 @@ export async function dedupSuccessfullyProcessedMulti (messages, opt) {
       cacheKeys.push(cacheKey)
     }
   }
-  debug({ dedupSuccessfullyProcessedMulti: { cacheKeys }})
+  debug({ dedupSuccessfullyProcessedMulti: { cacheKeys } })
   if (cacheKeys.length) {
     const numDeleted = await getCacheClient(opt).del(cacheKeys)
     // const numDeleted = results.map(([, val]) => val).reduce((a, b) => a + b, 0)

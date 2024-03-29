@@ -60,7 +60,7 @@ function validateInteger (opt, name) {
 }
 
 export function validateMessageOptions (messageOptions) {
-  const validKeys = ['deduplicaitonId', 'groupId']
+  const validKeys = ['deduplicationId', 'groupId']
   if (typeof messageOptions === 'object' &&
       !Array.isArray(messageOptions) &&
       messageOptions !== null) {
