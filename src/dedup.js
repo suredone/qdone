@@ -202,6 +202,7 @@ export async function dedupShouldEnqueueMulti (messages, opt) {
  * @returns {Number} 1 if a cache key was deleted, otherwise 0
  */
 export async function dedupSuccessfullyProcessed (message, opt) {
+  debug({ dedupSuccessfullyProcessed: { message, opt } })
   const client = getCacheClient(opt)
   const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
   if (dedupId) {

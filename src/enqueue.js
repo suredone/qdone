@@ -275,7 +275,7 @@ export async function sendMessageBatch (qrl, messages, opt) {
   if (opt.externalDedup) {
     const promises = params.Entries.map(async m => ({ m, shouldEnqueue: await dedupShouldEnqueue(m, opt) }))
     const results = await Promise.all(promises)
-    params.Entries = results.filter(({ shouldEnqueue }) => shouldEnqueue)
+    params.Entries = results.filter(({ shouldEnqueue }) => shouldEnqueue).map(({ m }) => m)
     if (!params.Entries.length) return
   }
 

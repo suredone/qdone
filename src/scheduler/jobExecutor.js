@@ -220,11 +220,16 @@ export class JobExecutor {
           } else if (!this.opt.disableLog) {
             console.log(JSON.stringify({ event: 'DELETE_MESSAGES', timestamp: start, count, qrl }))
           }
+
+          // Mark batch as processed for dedup
+          await Promise.all(
+            result.Successful.map(
+              e => dedupSuccessfullyProcessed(this.jobsByMessageId[e.Id], this.opt)
+            )
+          )
         }
         debug('DeleteMessageBatch returned', result)
 
-        // Mark batch as processed for dedup
-        await Promise.all(entries.map(e => dedupSuccessfullyProcessed(this.jobsByMessageId[e.Id], this.opt)))
 
         // TODO Sentry
       }
