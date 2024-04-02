@@ -224,7 +224,7 @@ export class JobExecutor {
           // Mark batch as processed for dedup
           await Promise.all(
             result.Successful.map(
-              e => dedupSuccessfullyProcessed(this.jobsByMessageId[e.Id], this.opt)
+              e => dedupSuccessfullyProcessed(this.jobsByMessageId[e.Id].message, this.opt)
             )
           )
         }
