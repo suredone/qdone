@@ -31,19 +31,19 @@ afterAll(shutdownCache)
 describe('getDeduplicationId', () => {
   test('allows allowed characters', () => {
     const opt = getOptionsWithDefaults(options)
-    expect(getDeduplicationId('a-zA-Z0-9!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~', opt)).toEqual('a-zA-Z0-9!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~')
+    expect(getDeduplicationId('a-zA-Z0-9!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~', opt)).toEqual('a-zA-Z0-9!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~...sha1:{5d4847abbe4ecf143157e00837dcb1670e33c2ef}')
   })
   test('converts disallowed characters', () => {
     const opt = getOptionsWithDefaults(options)
-    expect(getDeduplicationId('éø¢‡ asdf', opt)).toEqual('_____asdf')
+    expect(getDeduplicationId('éø¢‡ asdf', opt)).toEqual('_____asdf...sha1:{999209fd6ef9f3b8dadc0b243edbfaebf89616cb}')
   })
   test('creates id based on sha1 when content is too long', () => {
     const opt = getOptionsWithDefaults(options)
-    expect(getDeduplicationId('asdf '.repeat(1000), opt)).toEqual('asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_...sha1:ee08dd2964d1907d80f1ef743a595b5834c31170')
+    expect(getDeduplicationId('asdf '.repeat(1000), opt)).toEqual('asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asdf_asd...sha1:{ee08dd2964d1907d80f1ef743a595b5834c31170}')
   })
   test('ignores whitespace', () => {
     const opt = getOptionsWithDefaults(options)
-    expect(getDeduplicationId(' ls -al    \t', opt)).toEqual('ls_-al')
+    expect(getDeduplicationId(' ls -al    \t', opt)).toEqual('ls_-al...sha1:{77ddcf666184ffbde2a66d6a0dc7f96322133e23}')
   })
 })
 
@@ -67,7 +67,7 @@ describe('addDedupParamsToMessage', () => {
   test('adds MessageDeduplicationId to fifo messages', () => {
     const opt = getOptionsWithDefaults({ ...options, fifo: true })
     const message = { MessageBody: 'test' }
-    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'test' })
+    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'test...sha1:{a94a8fe5ccb19ba61c4c0873d391e987982fbbd3}' })
   })
   test('uses passed deduplication id when present', () => {
     const opt = getOptionsWithDefaults({ ...options, fifo: true, deduplicationId: 'foo' })
@@ -90,7 +90,7 @@ describe('addDedupParamsToMessage', () => {
       MessageAttributes: {
         QdoneDeduplicationId: {
           DataType: 'String',
-          StringValue: 'test'
+          StringValue: 'test...sha1:{a94a8fe5ccb19ba61c4c0873d391e987982fbbd3}'
         }
       }
     }
@@ -104,7 +104,7 @@ describe('addDedupParamsToMessage', () => {
       MessageAttributes: {
         QdoneDeduplicationId: {
           DataType: 'String',
-          StringValue: 'test'
+          StringValue: 'test...sha1:{a94a8fe5ccb19ba61c4c0873d391e987982fbbd3}'
         }
       }
     }
@@ -221,7 +221,7 @@ describe('dedupShouldEnqueue', () => {
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     const client = getCacheClient(opt)
-    const expectedKey = opt.cachePrefix + 'dedup:ls_-al'
+    const expectedKey = opt.cachePrefix + 'dedup:ls_-al...sha1:{77ddcf666184ffbde2a66d6a0dc7f96322133e23}'
     await expect(
       client.multi()
         .zrange(duplicateSet, '-inf', 'inf', 'BYSCORE', 'WITHSCORES')
@@ -262,8 +262,8 @@ describe('dedupShouldEnqueueMulti', () => {
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     const client = getCacheClient(opt)
-    const expectedKey1 = opt.cachePrefix + 'dedup:ls_-alh_1'
-    const expectedKey2 = opt.cachePrefix + 'dedup:ls_-alh_2'
+    const expectedKey1 = opt.cachePrefix + 'dedup:ls_-alh_1...sha1:{899b8effc74970f80bbee7a4bcb78ca42a7c2662}'
+    const expectedKey2 = opt.cachePrefix + 'dedup:ls_-alh_2...sha1:{f0ad0039c94c7974b729667dfaffe1e16a72a06c}'
     await expect(
       client.multi()
         .zrange(duplicateSet, '-inf', 'inf', 'BYSCORE', 'WITHSCORES')
@@ -310,7 +310,7 @@ describe('dedupSuccessfullyProcessed', () => {
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     const client = getCacheClient(opt)
-    const expectedKey = opt.cachePrefix + 'dedup:ls_-alh'
+    const expectedKey = opt.cachePrefix + 'dedup:ls_-alh...sha1:{098d79047d3414d5bfb3892ea537fef16ba34fb2}'
     await expect(
       client.multi()
         .zrange(duplicateSet, '-inf', 'inf', 'BYSCORE', 'WITHSCORES')
@@ -386,9 +386,9 @@ describe('dedupSuccessfullyProcessedMulti', () => {
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     const client = getCacheClient(opt)
-    const expectedKey1 = opt.cachePrefix + 'dedup:ls_-alh_1'
-    const expectedKey2 = opt.cachePrefix + 'dedup:ls_-alh_2'
-    const expectedKey3 = opt.cachePrefix + 'dedup:ls_-alh_3'
+    const expectedKey1 = opt.cachePrefix + 'dedup:ls_-alh_1...sha1:{899b8effc74970f80bbee7a4bcb78ca42a7c2662}'
+    const expectedKey2 = opt.cachePrefix + 'dedup:ls_-alh_2...sha1:{f0ad0039c94c7974b729667dfaffe1e16a72a06c}'
+    const expectedKey3 = opt.cachePrefix + 'dedup:ls_-alh_3...sha1:{927ca81ed78768ae8fc410dafb89cd85b11c0b34}'
     await expect(
       client.multi()
         .zrange(duplicateSet, '-inf', 'inf', 'BYSCORE', 'WITHSCORES')

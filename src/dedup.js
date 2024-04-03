@@ -20,9 +20,7 @@ export function getDeduplicationId (dedupContent, opt) {
   dedupContent = dedupContent.trim().replace(/[^a-zA-Z0-9!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~]/g, '_')
   const max = 128
   const sep = '...sha1:'
-  if (dedupContent.length > max) {
-    dedupContent = dedupContent.slice(0, max - sep.length - 40) + '...sha1:' + createHash('sha1').update(dedupContent).digest('hex')
-  }
+  dedupContent = dedupContent.slice(0, max - sep.length - 42) + '...sha1:{' + createHash('sha1').update(dedupContent).digest('hex') + '}'
   return dedupContent
 }
 
