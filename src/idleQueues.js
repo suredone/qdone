@@ -50,7 +50,7 @@ export async function _cheapIdleCheck (qname, qrl, opt) {
   } catch (e) {
     if (e instanceof QueueDoesNotExist) {
       // Count deleted queues as idle
-      return { idle: true, SQS: 1 }
+      return { result: { idle: true }, SQS: 1 }
     } else {
       throw e
     }
