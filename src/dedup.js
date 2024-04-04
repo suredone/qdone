@@ -19,9 +19,11 @@ export function getDeduplicationId (dedupContent, opt) {
   // Don't transmit long keys to redis
   dedupContent = dedupContent.trim().replace(/[^a-zA-Z0-9!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~]/g, '_')
   const max = 128
-  const sep = '...sha1:'
-  dedupContent = dedupContent.slice(0, max - sep.length - 42) + '...sha1:{' + createHash('sha1').update(dedupContent).digest('hex') + '}'
-  return dedupContent
+  const sep = 'sha1::body:'
+  const hash = createHash('sha1').update(dedupContent).digest('hex')
+  const truncated = dedupContent.slice(0, max - sep.length - 42)
+  const id = `sha1:{${hash}}:body:${truncated}`
+  return id
 }
 
 /**
