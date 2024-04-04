@@ -58,6 +58,9 @@ export function addDedupParamsToMessage (message, opt, messageOptions) {
     // Fallback to using the message body
     if (!message.MessageDeduplicationId) {
       message.MessageDeduplicationId = getDeduplicationId(message.MessageBody, opt)
+    } else {
+      // Transform the incoming ID so that it fits SPS spec and is suitable for Redis
+      message.MessageDeduplicationId = getDeduplicationId(message.MessageDeduplicationId, opt)
     }
 
     // Track our own dedup id so we can look it up upon ReceiveMessage

@@ -69,16 +69,16 @@ describe('addDedupParamsToMessage', () => {
     const message = { MessageBody: 'test' }
     expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'sha1:{a94a8fe5ccb19ba61c4c0873d391e987982fbbd3}:body:test' })
   })
-  test('uses passed deduplication id when present', () => {
+  test('uses passed deduplication id when present, prepending our own entropy', () => {
     const opt = getOptionsWithDefaults({ ...options, fifo: true, deduplicationId: 'foo' })
     const message = { MessageBody: 'test' }
-    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'foo' })
+    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'sha1:{0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33}:body:foo' })
   })
   test('uses unique deduplication id when dedupIdPerMessage is set', () => {
     const opt = getOptionsWithDefaults({ ...options, fifo: true, dedupIdPerMessage: true })
     opt.uuidFunction = () => 'bar'
     const message = { MessageBody: 'test' }
-    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'bar' })
+    expect(addDedupParamsToMessage(message, opt)).toEqual({ ...message, MessageDeduplicationId: 'sha1:{62cdb7020ff920e5aa642c3d4066950dd1f01f4d}:body:bar' })
   })
   test('adds fake MessageDeduplicationId to when externalDedup is used on fifo', () => {
     const opt = getOptionsWithDefaults({ ...options, fifo: true, externalDedup: true })

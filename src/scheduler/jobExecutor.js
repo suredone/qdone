@@ -230,7 +230,6 @@ export class JobExecutor {
         }
         debug('DeleteMessageBatch returned', result)
 
-
         // TODO Sentry
       }
     }
