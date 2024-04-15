@@ -53,7 +53,7 @@ export const defaults = Object.freeze({
   create: false
 })
 
-function validateInteger (opt, name) {
+export function validateInteger (opt, name) {
   const parsed = parseInt(opt[name], 10)
   if (isNaN(parsed)) throw new Error(`${name} needs to be an integer.`)
   return parsed
@@ -117,7 +117,7 @@ export function getOptionsWithDefaults (options) {
     delay: options.delay || defaults.delay,
     sendRetries: options['send-retries'] || defaults.sendRetries,
     failDelay: options.failDelay || options['fail-delay'] || defaults.failDelay,
-    dlq: dlq === false ? false : (dlq || defaults.dlq),
+    dlq: dlq === false ? false : defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || defaults.dlqSuffix,
     dlqAfter: options.dlqAfter || options['dlq-after'] || defaults.dlqAfter,
     tags: options.tags || undefined,
@@ -159,7 +159,7 @@ export function getOptionsWithDefaults (options) {
 
   // Validate dedup args
   if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
-  if (opt.externalDedup && (!opt.dedupPeriod || opt.dedupPeriod < 1)) throw new Error('--external-dedup of redis requires a --dedup-period > 1 second')
+  if (opt.externalDedup && (opt.dedupPeriod < 1)) throw new Error('--external-dedup of redis requires a --dedup-period > 1 second')
   if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either --deduplication-id or --dedup-id-per-message but not both')
 
   return opt
