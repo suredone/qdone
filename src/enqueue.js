@@ -333,10 +333,25 @@ let requestCount = 0
 //
 export async function flushMessages (qrl, opt, sendBuffer) {
   debug('flushMessages', qrl)
+  // Track our outgoing messages to map with Failed / Successful returns
+  const messagesById = new Map()
+  const resultsById = new Map()
+  const results = []
+  if (sendBuffer[qrl] && sendBuffer[qrl].length) {
+    for (const message of sendBuffer[qrl]) {
+      messagesById.set(message.Id, message)
+      // Pre-prepare results
+      const result = {}
+      resultsById.set(message.Id, result)
+      results.push(result)
+    }
+  }
   // Flush until empty
   let numFlushed = 0
   async function whileNotEmpty () {
-    if (!(sendBuffer[qrl] && sendBuffer[qrl].length)) return numFlushed
+    if (!(sendBuffer[qrl] && sendBuffer[qrl].length)) {
+      return { numFlushed, results }
+    }
     // Construct batch until full
     const batch = []
     let nextSize = JSON.stringify(sendBuffer[qrl][0]).length
@@ -362,9 +377,13 @@ export async function flushMessages (qrl, opt, sendBuffer) {
     // If we actually managed to flush any of them
     if (batch.length) {
       requestCount += 1
-      data.Successful.forEach(message => {
-        if (opt.verbose) console.error(chalk.blue('Enqueued job ') + message.MessageId + chalk.blue(' request ' + requestCount))
-      })
+      for (const { Id, MessageId } of data.Successful) {
+        const { MessageAttributes } = messagesById.get(Id)
+        if (MessageAttributes?.QdoneDeduplicaitonId?.StringValue) {
+          resultsById.get(Id).QdoneDeduplicaitonId = MessageAttributes?.QdoneDeduplicaitonId?.StringValue
+        }
+        if (opt.verbose) console.error(chalk.blue('Enqueued job ') + MessageId + chalk.blue(' request ' + requestCount))
+      }
       numFlushed += batch.length
     }
     return whileNotEmpty()
@@ -385,7 +404,7 @@ export async function addMessage (qrl, command, messageIndex, opt, sendBuffer, m
   if (sendBuffer[qrl].length >= 10) {
     return flushMessages(qrl, opt, sendBuffer)
   }
-  return 0
+  return { numFlushed: 0, results: [] }
 }
 
 //
@@ -418,6 +437,7 @@ export async function enqueueBatch (pairs, options) {
     setExtra({ qdoneOperation: 'enqueueBatch', args: { pairs, opt } })
   }
   try {
+    const allResults = []
     // Find unique queues so we can pre-fetch qrls. We do this so that all
     // queues are created prior to going through our flush logic
     const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
@@ -441,7 +461,9 @@ export async function enqueueBatch (pairs, options) {
     let initialFlushTotal = 0
     for (const { qname, command, messageOptions } of normalizedPairs) {
       const qrl = await getOrCreateQueue(qname, opt)
-      initialFlushTotal += await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
+      const { numFlushed, results } = await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
+      initialFlushTotal += numFlushed
+      allResults.push(...results)
     }
 
     // And flush any remaining messages
@@ -449,11 +471,14 @@ export async function enqueueBatch (pairs, options) {
     for (const qrl in sendBuffer) {
       extraFlushPromises.push(flushMessages(qrl, opt, sendBuffer))
     }
-    const extraFlushCounts = await Promise.all(extraFlushPromises)
-    const extraFlushTotal = extraFlushCounts.reduce((a, b) => a + b, 0)
+    let extraFlushTotal = 0
+    for (const { numFlushed, results } of await Promise.all(extraFlushPromises)) {
+      allResults.push(...results)
+      extraFlushTotal += numFlushed
+    }
     const totalFlushed = initialFlushTotal + extraFlushTotal
     debug({ initialFlushTotal, extraFlushTotal, totalFlushed })
-    return totalFlushed
+    return { numFlushed: totalFlushed, results: allResults }
   } catch (e) {
     console.log(e)
     throw e

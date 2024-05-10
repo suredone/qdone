@@ -759,15 +759,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -796,14 +796,24 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toEqual({
+      numFlushed: 10,
+      results: Array(10).fill({ MessageId: messageId })
+    })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
-    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toBe(3)
+    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toEqual({
+      numFlushed: 3,
+      results: [
+        { MessageId: messageId },
+        { MessageId: messageId },
+        { MessageId: messageId }
+      ]
+    })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -851,15 +861,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -890,12 +900,15 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toEqual({
+      numFlushed: 10,
+      results: Array(10).fill({ MessageId: messageId })
+    })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
     await expect(flushMessages(qrl, opt, sendBuffer))
       .rejects.toThrow('One or more message failures')
@@ -1107,7 +1120,13 @@ describe('enqueueBatch', () => {
       })
     await expect(
       enqueueBatch(pairs, opt)
-    ).resolves.toBe(2)
+    ).resolves.toEqual({
+      numFlushed: 2,
+      results: [
+        { MessageId: messageId },
+        { MessageId: messageId }
+      ]
+    })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
     expect(sqsMock)
@@ -1133,17 +1152,23 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
-        Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
-        ]
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(4).fill({ MD5OfMessageBody: md5, MessageId: messageId })
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: Array(24).fill({ MessageId: messageId })
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1162,17 +1187,23 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
-        Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
-        ]
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(4).fill({ MD5OfMessageBody: md5, MessageId: messageId })
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: Array(24).fill({ MessageId: messageId })
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1191,17 +1222,23 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
-        Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
-        ]
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(4).fill({ MD5OfMessageBody: md5, MessageId: messageId })
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: Array(24).fill({ MessageId: messageId })
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1276,8 +1313,14 @@ describe('enqueueBatch', () => {
       })
     const first = enqueueBatch(pairs, opt)
     const second = enqueueBatch(pairs.map(p => ({ queue: qname3, command: cmd })), { ...opt, fifo: true })
-    await expect(first).resolves.toBe(15)
-    await expect(second).resolves.toBe(15)
+    await expect(first).resolves.toEqual({
+      numFlushed: 15,
+      results: Array(15).fill({ MessageId: undefined })
+    })
+    await expect(second).resolves.toEqual({
+      numFlushed: 15,
+      results: Array(15).fill({ MessageId: messageId })
+    })
     expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname1 })
     expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: qname2 })
     expect(sqsMock).toHaveReceivedNthCommandWith(3, GetQueueUrlCommand, { QueueName: qname3 })
@@ -1311,5 +1354,43 @@ describe('enqueueBatch', () => {
           { deduplicationId: messageId, groupId: messageId }
         ))
       })
+  })
+
+  test('test/fixtures/test-unique01-x24.batch with individual group-ids', async () => {
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const opt = getOptionsWithDefaults({ prefix: '', fifo: true, uuidFunction: () => messageId })
+    const qname = 'test.fifo'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const md5 = 'foobar'
+
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(10).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+      .resolvesOnce({
+        Successful: Array(4).fill({ MD5OfMessageBody: md5, MessageId: messageId })
+      })
+
+    const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
+    expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
+    for (const [index, pair] of pairs.entries()) {
+      pair.groupId = index
+    }
+
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: Array(24).fill({ MessageId: messageId })
+    })
+
+    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
   })
 })
