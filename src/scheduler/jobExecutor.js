@@ -168,6 +168,8 @@ export class JobExecutor {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
             console.error('FAILED_TO_EXTEND_JOB', this.jobsByMessageId[failed.Id])
+            // ensure that we clean this one up so it doesn't generate api calls
+            this.jobsbymessageid[failed.id].status = 'failed'
           }
         }
         if (result.Successful) {
@@ -210,6 +212,8 @@ export class JobExecutor {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
             console.error('FAILED_TO_DELETE_JOB', this.jobsByMessageId[failed.Id])
+            // ensure that we clean this one up so it doesn't generate api calls
+            this.jobsbymessageid[failed.id].status = 'failed'
           }
         }
         if (result.Successful) {
@@ -250,7 +254,7 @@ export class JobExecutor {
 
   addJob (message, callback, qname, qrl) {
     // Create job entry and track it
-    const defaultVisibilityTimeout = 60
+    const defaultVisibilityTimeout = 120
     const job = {
       status: 'waiting',
       start: new Date(),

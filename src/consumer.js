@@ -36,7 +36,7 @@ export async function getMessages (qrl, opt, maxMessages) {
     MaxNumberOfMessages: maxMessages,
     MessageAttributeNames: ['All'],
     QueueUrl: qrl,
-    VisibilityTimeout: 60,
+    VisibilityTimeout: 120,
     WaitTimeSeconds: opt.waitTime
   }
   const response = await getSQSClient().send(new ReceiveMessageCommand(params))
