@@ -169,7 +169,7 @@ export class JobExecutor {
           for (const failed of result.Failed) {
             console.error('FAILED_TO_EXTEND_JOB', this.jobsByMessageId[failed.Id])
             // ensure that we clean this one up so it doesn't generate api calls
-            this.jobsbymessageid[failed.id].status = 'failed'
+            this.jobsbymessageid[failed.Id].status = 'failed'
           }
         }
         if (result.Successful) {
@@ -213,7 +213,7 @@ export class JobExecutor {
           for (const failed of result.Failed) {
             console.error('FAILED_TO_DELETE_JOB', this.jobsByMessageId[failed.Id])
             // ensure that we clean this one up so it doesn't generate api calls
-            this.jobsbymessageid[failed.id].status = 'failed'
+            this.jobsbymessageid[failed.Id].status = 'failed'
           }
         }
         if (result.Successful) {
