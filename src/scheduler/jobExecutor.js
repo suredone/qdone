@@ -18,9 +18,9 @@ const maxJobSeconds = 12 * 60 * 60
 export class JobExecutor {
   constructor (opt) {
     this.opt = opt
-    this.jobs = []
-    this.jobsByMessageId = {}
-    this.jobsByQueue = new Map()
+    this.jobs = []                   // for full traversals
+    this.jobsByMessageId = {}        // for looking up via message id
+    this.jobsByQueue = new Map()     // for looking up via queue name
     this.stats = {
       activeJobs: 0,
       waitingJobs: 0,
@@ -167,9 +167,9 @@ export class JobExecutor {
         if (result.Failed) {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
-            console.error('FAILED_TO_EXTEND_JOB', this.jobsByMessageId[failed.Id])
+            console.error('FAILED_TO_EXTEND_JOB', { failedEntry: failed, job: this.jobsByMessageId[failed.Id] })
             // ensure that we clean this one up so it doesn't generate api calls
-            this.jobsbymessageid[failed.Id].status = 'failed'
+            this.jobsByMessageId[failed.Id].status = 'failed'
           }
         }
         if (result.Successful) {
@@ -211,9 +211,9 @@ export class JobExecutor {
         if (result.Failed) {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
-            console.error('FAILED_TO_DELETE_JOB', this.jobsByMessageId[failed.Id])
+            console.error('FAILED_TO_DELETE_JOB', { failedEntry: failed, job: this.jobsByMessageId[failed.Id] })
             // ensure that we clean this one up so it doesn't generate api calls
-            this.jobsbymessageid[failed.Id].status = 'failed'
+            this.jobsByMessageId[failed.Id].status = 'failed'
           }
         }
         if (result.Successful) {
@@ -227,7 +227,7 @@ export class JobExecutor {
 
           // Mark batch as processed for dedup
           await Promise.all(
-            result.Successful.map(
+            result.Successful.filter(e => this.jobsByMessageId[e.Id]).map(
               e => dedupSuccessfullyProcessed(this.jobsByMessageId[e.Id].message, this.opt)
             )
           )
