@@ -18,9 +18,9 @@ const maxJobSeconds = 12 * 60 * 60
 export class JobExecutor {
   constructor (opt) {
     this.opt = opt
-    this.jobs = []                   // for full traversals
-    this.jobsByMessageId = {}        // for looking up via message id
-    this.jobsByQueue = new Map()     // for looking up via queue name
+    this.jobs = [] // for full traversals
+    this.jobsByMessageId = {} // for looking up via message id
+    this.jobsByQueue = new Map() // for looking up via queue name
     this.stats = {
       activeJobs: 0,
       waitingJobs: 0,
