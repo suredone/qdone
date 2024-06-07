@@ -7,7 +7,7 @@ import { getCloudWatchClient } from './cloudWatch.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { normalizeFailQueueName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
+import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
 import { getCache, setCache } from './cache.js'
 // const AWS = require('aws-sdk')
 
@@ -218,6 +218,9 @@ export async function processQueuePair (qname, qrl, opt) {
   // Generate fail queue name/url
   const fqname = normalizeFailQueueName(qname, normalizeOptions)
   const fqrl = normalizeFailQueueName(fqname, normalizeOptions)
+  // Generate DLQ name/url
+  const dqname = normalizeDLQName(qname, normalizeOptions)
+  const dqrl = normalizeDLQName(fqname, normalizeOptions)
 
   // Idle check
   const result = await checkIdle(qname, qrl, opt)
@@ -229,7 +232,7 @@ export async function processQueuePair (qname, qrl, opt) {
     if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + opt.idleFor + chalk.blue(' minutes.'))
     return result
   }
-
+  
   // Queue is idle
   if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
 
@@ -260,10 +263,22 @@ export async function processQueuePair (qname, qrl, opt) {
 
     // Trigger a delete if the user wants it
     if (!opt.delete) return idleCheckResult
-    const [dresult, dfresult] = await Promise.all([
-      deleteQueue(qname, qrl, opt),
-      deleteQueue(fqname, fqrl, opt)
-    ])
+
+    let dresult, dfresult
+    try {
+      dresult = await deleteQueue(qname, qrl, opt)
+    } catch (e) {
+      // Ignore queues that don't exist already in case that: 1) there was a double
+      // call or 2) the SQS node that got the request is not consistent yet
+      if (!(e instanceof QueueDoesNotExist)) throw e
+    }
+    try {
+      dfresult = await deleteQueue(fqname, fqrl, opt)
+    } catch (e) {
+      // Ignore queues that don't exist already in case that: 1) there was a double
+      // call or 2) the SQS node that got the request is not consistent yet
+      if (!(e instanceof QueueDoesNotExist)) throw e
+    }
     return Object.assign(idleCheckResult, {
       apiCalls: {
         // Sum the SQS calls across all four
