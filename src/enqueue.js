@@ -276,7 +276,18 @@ export async function sendMessageBatch (qrl, messages, opt) {
     const promises = params.Entries.map(async m => ({ m, shouldEnqueue: await dedupShouldEnqueue(m, opt) }))
     const results = await Promise.all(promises)
     params.Entries = results.filter(({ shouldEnqueue }) => shouldEnqueue).map(({ m }) => m)
-    if (!params.Entries.length) return { Failed: [], Successful: [] }
+    if (!params.Entries.length) {
+      const result = {
+        Failed: [],
+        Successful: results.map(
+          ({ m: { Id: id, MessageAttributes: ma } }) => ({
+            Id: id,
+            MessageId: 'duplicate',
+            QdoneDeduplicationId: ma?.QdoneDeduplicationId?.StringValue
+          }))
+      }
+      return result
+    }
   }
 
   // Send them
