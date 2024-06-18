@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals'
+import { error } from 'console'
 import {
   CreateQueueCommand,
   GetQueueUrlCommand,
@@ -486,10 +487,10 @@ describe('sendMessage', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       sendMessage(qrl, cmd, options)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -512,10 +513,10 @@ describe('sendMessage', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       sendMessage(qrl, cmd, opt)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock).toHaveReceivedNthCommandWith(
       1, SendMessageCommand,
       Object.assign({}, formatMessage(cmd, null, opt), { QueueUrl: qrl, MessageGroupId: opt.groupId })
@@ -541,10 +542,10 @@ describe('sendMessage', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       sendMessage(qrl, cmd, opt)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(
         1,
@@ -579,7 +580,7 @@ describe('sendMessage', () => {
       .rejectsOnce(new RequestThrottled())
       // .rejectsOnce(new KmsThrottled())
       // .rejectsOnce(new QueueDoesNotExist())
-      .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     const promise = sendMessage(qrl, cmd, opt)
 
     await Promise.resolve() // shouldRetry()
@@ -590,7 +591,7 @@ describe('sendMessage', () => {
     await Promise.resolve() // await action
     jest.runAllTimers() // not sure why here
 
-    await expect(promise).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    await expect(promise).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(
         2,
@@ -616,10 +617,10 @@ describe('sendMessageBatch', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       sendMessageBatch(qrl, messages, opt)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -646,10 +647,10 @@ describe('sendMessageBatch', () => {
     setSQSClient(sqsMock)
     sqsMock
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       sendMessageBatch(qrl, messages, options)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -682,16 +683,16 @@ describe('sendMessageBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({
         Succeeded: [
-          { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId },
-          { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId }
         ]
       })
     await expect(
       sendMessageBatch(qrl, messages, options)
     ).resolves.toEqual({
       Succeeded: [
-        { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId },
-        { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId }
+        { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
+        { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId }
       ]
     })
     expect(sqsMock)
@@ -725,16 +726,16 @@ describe('sendMessageBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({
         Succeeded: [
-          { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId },
-          { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId }
         ]
       })
     await expect(
       sendMessageBatch(qrl, messages, options)
     ).resolves.toEqual({
       Succeeded: [
-        { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId },
-        { MD5OfMessageBody: md5, MessageId: messageId, MessageGroupId: groupId }
+        { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
+        { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId }
       ]
     })
     expect(sqsMock)
@@ -750,7 +751,7 @@ describe('addMessage / flushMessages', () => {
   test('basic add/flush cycle works', async () => {
     const options = {}
     const opt = getOptionsWithDefaults(options)
-    const qname = 'testqueue'
+    const qname = 'testqueueFlushMessages'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
     const cmd = 'sd BulkStatusModel finalizeAll'
     const sqsMock = mockClient(client)
@@ -759,15 +760,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -775,35 +776,56 @@ describe('addMessage / flushMessages', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' },
         ]
       })
       .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '12' }
         ]
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toEqual({
+      numFlushed: 10,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' }
+      ]
+    })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
-    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toBe(3)
+    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toEqual({
+      numFlushed: 3,
+      results: [
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' }
+      ]
+    })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
         1,
@@ -839,6 +861,66 @@ describe('addMessage / flushMessages', () => {
       )
   })
 
+  test('dedup id is returned when activated', async () => {
+    const options = {
+      // externalDedup: true,
+      cacheUri: 'redis://localhost',
+      cachePrefix: 'qdone:enqueue:',
+      cacheTtlSeconds: 1
+    }
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueueDedupIdReturn'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const md5 = 'foobar'
+    const message = {
+      MessageBody: 'sd BulkStatusModel finalizeAll',
+      Id: '0',
+      MessageAttributes: {
+        QdoneDeduplicationId: {
+          StringValue: 'sha1:{ed646457f61480d6b4b8441d1e192fa1be44e561}:body:sd_BulkStatusModel_finalizeAll',
+          DataType: 'String'
+        }
+      }
+    }
+    const sendBuffer = {
+      [qrl]: [message]
+    }
+
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+        ]
+      })
+
+    await expect(flushMessages(qrl, opt, sendBuffer)).resolves.toEqual({
+      numFlushed: 1,
+      results: [
+        {
+          Id: '0',
+          MessageId: messageId,
+          QdoneDeduplicationId: 'sha1:{ed646457f61480d6b4b8441d1e192fa1be44e561}:body:sd_BulkStatusModel_finalizeAll'
+        }
+      ]
+    })
+
+    expect(sqsMock)
+      .toHaveReceivedNthSpecificCommandWith(
+        1,
+        SendMessageBatchCommand,
+        Object.assign({
+          QueueUrl: qrl,
+          Entries: [message]
+        })
+      )
+
+  })
+
   test('failed messages fail the whole batch', async () => {
     const options = { dlq: false }
     const opt = getOptionsWithDefaults(options)
@@ -851,15 +933,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -867,22 +949,22 @@ describe('addMessage / flushMessages', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
         ]
       })
       .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' }
         ],
         Failed: [
           { SenderFault: true, Id: '25', Code: 'XYZ', Message: 'You messed up.' }
@@ -890,12 +972,26 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toBe(10)
+    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toEqual({
+      numFlushed: 10,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' }
+      ]
+    })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toBe(0)
-    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toBe(0)
+    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
     await expect(flushMessages(qrl, opt, sendBuffer))
       .rejects.toThrow('One or more message failures')
@@ -950,10 +1046,10 @@ describe('enqueue', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageCommand, { QueueUrl: qrl })
-      .resolves({ MD5OfMessageBody: md5, MessageId: messageId })
+      .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
       enqueue(qname, cmd, options)
-    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId })
+    ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
     expect(sqsMock)
@@ -1101,13 +1197,19 @@ describe('enqueueBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' }
         ]
       })
     await expect(
       enqueueBatch(pairs, opt)
-    ).resolves.toBe(2)
+    ).resolves.toEqual({
+      numFlushed: 2,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' }
+      ]
+    })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
     expect(sqsMock)
@@ -1133,17 +1235,75 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
+      .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '12' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '13' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '14' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '15' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '16' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '17' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '18' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '19' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '20' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '21' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '22' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '23' }
         ]
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' },
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' },
+        { MessageId: messageId, Id: '13' },
+        { MessageId: messageId, Id: '14' },
+        { MessageId: messageId, Id: '15' },
+        { MessageId: messageId, Id: '16' },
+        { MessageId: messageId, Id: '17' },
+        { MessageId: messageId, Id: '18' },
+        { MessageId: messageId, Id: '19' },
+        { MessageId: messageId, Id: '20' },
+        { MessageId: messageId, Id: '21' },
+        { MessageId: messageId, Id: '22' },
+        { MessageId: messageId, Id: '23' }
+      ]
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1162,17 +1322,75 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
+      .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '12' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '13' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '14' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '15' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '16' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '17' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '18' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '19' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '20' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '21' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '22' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '23' }
         ]
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' },
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' },
+        { MessageId: messageId, Id: '13' },
+        { MessageId: messageId, Id: '14' },
+        { MessageId: messageId, Id: '15' },
+        { MessageId: messageId, Id: '16' },
+        { MessageId: messageId, Id: '17' },
+        { MessageId: messageId, Id: '18' },
+        { MessageId: messageId, Id: '19' },
+        { MessageId: messageId, Id: '20' },
+        { MessageId: messageId, Id: '21' },
+        { MessageId: messageId, Id: '22' },
+        { MessageId: messageId, Id: '23' }
+      ]
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1191,17 +1409,75 @@ describe('enqueueBatch', () => {
       .on(GetQueueUrlCommand, { QueueName: qname })
       .resolves({ QueueUrl: qrl })
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
-      .resolves({
+      .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId },
-          { MD5OfMessageBody: md5, MessageId: messageId }
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '12' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '13' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '14' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '15' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '16' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '17' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '18' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '19' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '20' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '21' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '22' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '23' }
         ]
       })
 
     const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
     expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
 
-    await expect(enqueueBatch(pairs, opt)).resolves.toBe(24)
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' },
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' },
+        { MessageId: messageId, Id: '13' },
+        { MessageId: messageId, Id: '14' },
+        { MessageId: messageId, Id: '15' },
+        { MessageId: messageId, Id: '16' },
+        { MessageId: messageId, Id: '17' },
+        { MessageId: messageId, Id: '18' },
+        { MessageId: messageId, Id: '19' },
+        { MessageId: messageId, Id: '20' },
+        { MessageId: messageId, Id: '21' },
+        { MessageId: messageId, Id: '22' },
+        { MessageId: messageId, Id: '23' }
+      ]
+    })
 
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
     expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
@@ -1276,8 +1552,46 @@ describe('enqueueBatch', () => {
       })
     const first = enqueueBatch(pairs, opt)
     const second = enqueueBatch(pairs.map(p => ({ queue: qname3, command: cmd })), { ...opt, fifo: true })
-    await expect(first).resolves.toBe(15)
-    await expect(second).resolves.toBe(15)
+    await expect(first).resolves.toEqual({
+      numFlushed: 15,
+      results: [
+        { Id: '0' },
+        { Id: '1' },
+        { Id: '2' },
+        { Id: '3' },
+        { Id: '4' },
+        { Id: '5' },
+        { Id: '6' },
+        { Id: '7' },
+        { Id: '8' },
+        { Id: '9' },
+        { Id: '10' },
+        { Id: '11' },
+        { Id: '12' },
+        { Id: '13' },
+        { Id: '14' }
+      ]
+    })
+    await expect(second).resolves.toEqual({
+      numFlushed: 15,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' },
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' },
+        { MessageId: messageId, Id: '13' },
+        { MessageId: messageId, Id: '14' }
+      ]
+    })
     expect(sqsMock).toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname1 })
     expect(sqsMock).toHaveReceivedNthCommandWith(2, GetQueueUrlCommand, { QueueName: qname2 })
     expect(sqsMock).toHaveReceivedNthCommandWith(3, GetQueueUrlCommand, { QueueName: qname3 })
@@ -1311,5 +1625,95 @@ describe('enqueueBatch', () => {
           { deduplicationId: messageId, groupId: messageId }
         ))
       })
+  })
+
+  test('test/fixtures/test-unique01-x24.batch with individual group-ids', async () => {
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const opt = getOptionsWithDefaults({ prefix: '', fifo: true, uuidFunction: () => messageId })
+    const qname = 'test.fifo'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const md5 = 'foobar'
+
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '2' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '3' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '4' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '5' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '10' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '11' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '12' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '13' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '14' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '15' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '16' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '17' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '18' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '19' }
+        ]
+      })
+      .resolvesOnce({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '20' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '21' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '22' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '23' }
+        ]
+      })
+
+    const pairs = await loadBatchFiles(['test/fixtures/test-unique01-x24.batch'])
+    expect(pairs).toEqual(Array(24).fill({ command: 'true', queue: 'test' }))
+    for (const [index, pair] of pairs.entries()) {
+      pair.groupId = index
+    }
+
+    await expect(enqueueBatch(pairs, opt)).resolves.toEqual({
+      numFlushed: 24,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' },
+        { MessageId: messageId, Id: '2' },
+        { MessageId: messageId, Id: '3' },
+        { MessageId: messageId, Id: '4' },
+        { MessageId: messageId, Id: '5' },
+        { MessageId: messageId, Id: '6' },
+        { MessageId: messageId, Id: '7' },
+        { MessageId: messageId, Id: '8' },
+        { MessageId: messageId, Id: '9' },
+        { MessageId: messageId, Id: '10' },
+        { MessageId: messageId, Id: '11' },
+        { MessageId: messageId, Id: '12' },
+        { MessageId: messageId, Id: '13' },
+        { MessageId: messageId, Id: '14' },
+        { MessageId: messageId, Id: '15' },
+        { MessageId: messageId, Id: '16' },
+        { MessageId: messageId, Id: '17' },
+        { MessageId: messageId, Id: '18' },
+        { MessageId: messageId, Id: '19' },
+        { MessageId: messageId, Id: '20' },
+        { MessageId: messageId, Id: '21' },
+        { MessageId: messageId, Id: '22' },
+        { MessageId: messageId, Id: '23' }
+      ]
+    })
+
+    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 3)
   })
 })
