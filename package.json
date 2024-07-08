@@ -1,6 +1,6 @@
 {
   "name": "qdone",
-  "version": "2.0.48-alpha",
+  "version": "2.0.49-alpha",
   "description": "A distributed scheduler for SQS",
   "type": "module",
   "main": "./index.js",
