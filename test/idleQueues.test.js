@@ -43,6 +43,7 @@ describe('_cheapIdleCheck', () => {
         ApproximateNumberOfMessages: '1',
         ApproximateNumberOfMessagesNotVisible: '0',
         idle: false,
+        exists: true,
         queue: qname
       }
     })
@@ -79,6 +80,7 @@ describe('cheapIdleCheck', () => {
         ApproximateNumberOfMessages: '1',
         ApproximateNumberOfMessagesNotVisible: '0',
         idle: false,
+        exists: true,
         queue: qname
       }
     })

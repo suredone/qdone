@@ -133,7 +133,7 @@ export function getOptionsWithDefaults (options) {
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || defaults.idleFor,
     delete: options.delete || defaults.delete,
-    unpair: options.delete || defaults.unpair,
+    unpair: options.unpair || defaults.unpair,
 
     // Check
     create: options.create || defaults.create,
