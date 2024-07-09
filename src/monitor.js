@@ -5,15 +5,18 @@
 import { getMatchingQueues, getQueueAttributes } from './sqs.js'
 import { putAggregateData } from './cloudWatch.js'
 import { getOptionsWithDefaults } from './defaults.js'
+import { normalizeQueueName } from './qrlCache.js'
 import Debug from 'debug'
-const debug = Debug('sd:utils:qmonitor:index')
+const debug = Debug('qdone:monitor')
 
 /**
  * Splits a queue name with a single wildcard into prefix and suffix regex.
  */
 export async function monitor (queue, save, options) {
   const opt = getOptionsWithDefaults(options)
-  const data = await getAggregateData(queue)
+  const queueName = normalizeQueueName(queue, opt)
+  debug({ opt, queueName })
+  const data = await getAggregateData(queueName)
   console.log(data)
   if (save) {
     if (opt.verbose) process.stderr.write('Saving to CloudWatch...')

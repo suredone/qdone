@@ -234,16 +234,8 @@ export async function monitor (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const { getAggregateData } = await import('./monitor.js')
-  const { putAggregateData } = await import('./cloudWatch.js')
-  const data = await getAggregateData(queue)
-  console.log(data)
-  if (options.save) {
-    process.stderr.write('Saving to CloudWatch...')
-    await putAggregateData(data)
-    process.stderr.write('done\n')
-  }
-  return data
+  const { monitor } = await import('./monitor.js')
+  return monitor(queue, options.save, options)
 }
 
 export async function loadBatchFile (filename) {
