@@ -13,9 +13,10 @@ const debug = Debug('qdone:monitor')
  * Splits a queue name with a single wildcard into prefix and suffix regex.
  */
 export async function monitor (queue, save, options) {
+  if (queue.endsWith('.fifo')) options.fifo = true
   const opt = getOptionsWithDefaults(options)
   const queueName = normalizeQueueName(queue, opt)
-  debug({ opt, queueName })
+  debug({ options, opt, queue, queueName })
   const data = await getAggregateData(queueName)
   console.log(data)
   if (save) {

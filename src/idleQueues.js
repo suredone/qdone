@@ -187,35 +187,6 @@ export async function deleteQueue (qname, qrl, opt) {
 }
 
 /**
- * Processes a single queue, checking for idle, deleting if applicable.
- */
-export async function processQueue (qname, qrl, opt) {
-  const result = await checkIdle(qname, qrl, opt)
-  debug(qname, result)
-
-  // Queue is active
-  if (!result.idle) {
-    // Notify and return
-    if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + opt.idleFor + chalk.blue(' minutes.'))
-    return result
-  }
-
-  // Queue is idle
-  if (opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
-  if (opt.delete) {
-    const deleteResult = await deleteQueue(qname, qrl, opt)
-    const resultIncludingDelete = Object.assign(result, {
-      deleted: deleteResult.deleted,
-      apiCalls: {
-        SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
-        CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
-      }
-    })
-    return resultIncludingDelete
-  }
-}
-
-/**
  * Processes a queue and its fail and delete queue, treating them as a unit.
  */
 export async function processQueueSet (qname, qrl, opt) {
@@ -309,6 +280,14 @@ export async function processQueueSet (qname, qrl, opt) {
 }
 
 //
+// Strips failed and dlq suffix from a queue name or URL
+//
+export function stripSuffixes (queueName, opt) {
+  const suffixFinder = new RegExp(`(${opt.dlqSuffix}|${opt.failSuffix}){1}(|${fifoSuffix})$`)
+  return queueName.replace(suffixFinder, '$2')
+}
+
+//
 // Resolve queues for listening loop listen
 //
 export async function idleQueues (queues, options) {
@@ -322,17 +301,17 @@ export async function idleQueues (queues, options) {
     console.error()
   }
 
-  // Filter out any queue ending in suffix unless --include-failed is set
+  // Filter out failed and dead queues, but if we have an orphaned fail or
+  // dead queue, keep the original parent queue name so that orphans can be
+  // deleted.
+  const queueNames = new Set()
   const filteredEntries = entries.filter(entry => {
-    const suf = opt.failSuffix
-    const sufFifo = opt.failSuffix + fifoSuffix
-    const isFail = entry.qname.endsWith(suf)
-    const isFifoFail = entry.qname.endsWith(sufFifo)
-    const sufDead = opt.dlqSuffix
-    const sufFifoDead = opt.dlqSuffix + fifoSuffix
-    const isDead = entry.qname.endsWith(sufDead)
-    const isFifoDead = entry.qname.endsWith(sufFifoDead)
-    return opt.includeFailed ? true : (!isFail && !isFifoFail && !isDead && !isFifoDead)
+    const stripped = stripSuffixes(entry.qname, opt)
+    if (queueNames.has(stripped)) return false
+    queueNames.add(stripped)
+    entry.qname = stripped
+    entry.qrl = stripSuffixes(entry.qrl, opt)
+    return true
   })
 
   // But only if we have queues to remove
@@ -345,7 +324,6 @@ export async function idleQueues (queues, options) {
       console.error()
     }
     // Check each queue in parallel
-    if (opt.unpair) return Promise.all(filteredEntries.map(e => processQueue(e.qname, e.qrl, opt)))
     return Promise.all(filteredEntries.map(e => processQueueSet(e.qname, e.qrl, opt)))
   }
 

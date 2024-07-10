@@ -60,6 +60,12 @@ export function validateInteger (opt, name) {
   return parsed
 }
 
+export function validateQueueName (opt, name) {
+  if (typeof name !== 'string') throw new Error(`${name} must be a string.`)
+  if (!name.match(/^[a-z0-9-_]+$/i)) throw new Error(`${name} can contain only numbers, letters, hypens and underscores.`)
+  return name
+}
+
 export function validateMessageOptions (messageOptions) {
   const validKeys = ['deduplicationId', 'groupId']
   if (typeof messageOptions === 'object' &&
@@ -157,6 +163,11 @@ export function getOptionsWithDefaults (options) {
   opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
   opt.maxMemoryPercent = validateInteger(opt, 'maxMemoryPercent')
   opt.idleFor = validateInteger(opt, 'idleFor')
+
+  validateQueueName(opt, 'region')
+  validateQueueName(opt, 'prefix')
+  validateQueueName(opt, 'failSuffix')
+  validateQueueName(opt, 'dlqSuffix')
 
   // Validate dedup args
   if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
