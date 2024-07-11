@@ -207,7 +207,6 @@ describe('environment variables', () => {
   testInteger('QDONE_MAX_MEMORY_PERCENT', 'maxMemoryPercent', 80, 50)
   testInteger('QDONE_IDLE_FOR', 'idleFor', 120, 420)
   testBoolean('QDONE_DELETE', 'delete')
-  testBoolean('QDONE_UNPAIR', 'unpair')
   testBoolean('QDONE_CREATE', 'create')
   testBoolean('QDONE_OVERWRITE', 'overwrite')
 })

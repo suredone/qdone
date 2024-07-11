@@ -440,9 +440,7 @@ export async function worker (argv, testHook) {
 export async function idleQueues (argv, testHook) {
   const optionDefinitions = [
     { name: 'idle-for', alias: 'o', type: Number, defaultValue: defaults.idleFor, description: `Minutes of inactivity after which a queue is considered idle. [default: ${defaults.idleFor}]` },
-    { name: 'delete', type: Boolean, description: 'Delete the queue if it is idle. The fail queue also must be idle unless you use --unpair.' },
-    { name: 'unpair', type: Boolean, description: 'Treat queues and their fail queues as independent. By default they are treated as a unit.' },
-    { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues. This option only applies if you use --unpair. Otherwise, queues and fail queues are treated as a unit.' }
+    { name: 'delete', type: Boolean, description: 'Delete the queue if it is idle along with its corresponding fail queue and dlq.' }
   ].concat(globalOptionDefinitions)
 
   const usageSections = [

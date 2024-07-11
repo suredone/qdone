@@ -47,7 +47,6 @@ export const defaults = Object.freeze({
   // Idle Queues
   idleFor: 60,
   delete: false,
-  unpair: false,
 
   // Check
   create: false,
@@ -140,7 +139,6 @@ export function getOptionsWithDefaults (options) {
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || process.env.QDONE_IDLE_FOR || defaults.idleFor,
     delete: options.delete || process.env.QDONE_DELETE === 'true' || defaults.delete,
-    unpair: options.unpair || process.env.QDONE_UNPAIR === 'true' || defaults.unpair,
 
     // Check
     create: options.create || process.env.QDONE_CREATE === 'true' || defaults.create,

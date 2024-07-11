@@ -561,13 +561,8 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
 
     -o, --idle-for number   Minutes of inactivity after which a queue is considered
                             idle. [default: 60]
-    --delete                Delete the queue if it is idle. The fail queue also must be
-                            idle unless you use --unpair.
-    --unpair                Treat queues and their fail queues as independent. By default
-                            they are treated as a unit.
-    --include-failed        When using '*' do not ignore fail queues. This option only
-                            applies if you use --unpair. Otherwise, queues and fail queues
-                            are treated as a unit.
+    --delete                Delete the queue if it is idle along with its corresponding
+                            fail queue and dlq.
     --prefix string         Prefix to place at the front of each SQS queue name [default: qdone_]
     --fail-suffix string    Suffix to append to each queue to generate fail queue name [default: _failed]
     --region string         AWS region for Queues [default: us-east-1]
