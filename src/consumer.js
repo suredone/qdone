@@ -136,7 +136,7 @@ export async function processMessages (queues, callback, options) {
     const freememFactor = Math.min(1, Math.max(0, remainingMemory / memoryThreshold))
 
     // Load
-    const oneMinuteLoad = loadavg()[0]
+    const oneMinuteLoad = systemMonitor.getLoad()
     const loadPerCore = oneMinuteLoad / cores
     const loadFactor = 1 - Math.min(1, Math.max(0, loadPerCore / 3))
 
