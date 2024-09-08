@@ -373,6 +373,7 @@ export class JobExecutor {
     // Begin tracking jobs
     const jobs = messages.map(message => this.addJob(message, callback, qname, qrl))
     const isFifo = qrl.endsWith('.fifo')
+    const runningJobs = []
 
     // console.log(jobs)
 
@@ -385,7 +386,8 @@ export class JobExecutor {
       // console.log({ i, nextJobAtt: nextJob?.message?.Attributes, nextJobIsSerial })
       // Execute serial or parallel
       if (nextJobIsSerial) await this.runJob(job)
-      else this.runJob(job)
+      else runningJobs.push(this.runJob(job))
     }
+    await Promise.all(runningJobs)
   }
 }

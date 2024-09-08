@@ -7,7 +7,7 @@ import { getCloudWatchClient } from './cloudWatch.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
+import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix, qrlCacheSet } from './qrlCache.js'
 import { getCache, setCache } from './cache.js'
 // const AWS = require('aws-sdk')
 
@@ -133,7 +133,7 @@ export async function checkIdle (qname, qrl, opt) {
   if (cheapResult.idle === false || cheapResult.exists === false) {
     return {
       queue: qname.slice(opt.prefix.length),
-      cheap: cheapResult,
+      cheap: { SQS, result: cheapResult },
       idle: cheapResult.idle,
       exists: cheapResult.exists,
       apiCalls: { SQS, CloudWatch: 0 }

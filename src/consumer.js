@@ -96,7 +96,7 @@ export async function processMessages (queues, callback, options) {
 
       if (!shutdownRequested) {
         if (messages.length) {
-          jobExecutor.executeJobs(messages, callback, qname, qrl)
+          await jobExecutor.executeJobs(messages, callback, qname, qrl)
           queueManager.updateIcehouse(qrl, false)
         } else {
           // If we didn't get any, update the icehouse so we can back off

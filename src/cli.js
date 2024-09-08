@@ -451,19 +451,14 @@ export async function idleQueues (argv, testHook) {
     {
       content: [
         { count: '1 + q + i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
-        { context: 'with --delete options', count: '1 + q + 3i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
-        { context: 'with --unpair option', count: '1 + q', desc: 'q: number of queues in pattern' },
-        { context: 'with --unpair and --delete options', count: '1 + q + i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
-        { desc: 'NOTE: the --unpair option not cheaper if you include fail queues, because it doubles q.' }
+        { context: 'with --delete options', count: '1 + q + 3i', desc: 'q: number of queues in pattern\ni: number of idle queues' }
       ],
       long: true
     },
     { content: 'CloudWatch API Call Complexity', raw: true, long: true },
     {
       content: [
-        { count: 'min: 0 (if queue and fail queue have waiting messages)\nmax: 12q\nexpected (approximate observed): 0.5q + 12i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
-        { context: 'with --unpair option', count: 'min: 0 (if queue has waiting messages)\nmax: 6q\nexpected (approximate observed): q + 6i', desc: 'q: number of queues in pattern\ni: number of idle queues' },
-        { desc: 'NOTE: the --unpair option not cheaper if you include fail queues, because it doubles q.' }
+        { count: 'min: 0 (if queue and fail queue have waiting messages)\nmax: 12q\nexpected (approximate observed): 0.5q + 12i', desc: 'q: number of queues in pattern\ni: number of idle queues' }
       ],
       long: true
     },
@@ -479,7 +474,6 @@ export async function idleQueues (argv, testHook) {
     debug('idleQueues options', options)
     if (options.help) return Promise.resolve(console.log(getUsage(usageSections)))
     if (!options._unknown || options._unknown.length === 0) throw new UsageError('idle-queues requres one or more <queue> arguments')
-    if (options['include-failed'] && !options.unpair) throw new UsageError('--include-failed should be used with --unpair')
     if (options['idle-for'] < 5) throw new UsageError('--idle-for must be at least 5 minutes (CloudWatch limitation)')
     queues = options._unknown
     debug('queues', queues)
