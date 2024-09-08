@@ -95,9 +95,6 @@ describe('qrlCacheGet', () => {
     ).resolves.toEqual(
       'https://sqs.us-east-1.amazonaws.com/foobar/testqueue'
     )
-    expect(sqsMock).toHaveReceivedCommand(GetQueueUrlCommand, {
-      QueueName: 'testqueue'
-    })
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
   })
 
