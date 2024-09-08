@@ -379,12 +379,26 @@ describe('deleteQueue', () => {
   })
 })
 
-// describe('processQueueSet', () => {
-//   test('', async () => {
-//     const opt = getOptionsWithDefaults()
-//     await processQueueSet('test', 'https://sqs.us-east-1.amazonaws.com/example/test', opt)
-//   })
-// })
+describe('processQueueSet', () => {
+  test('completes execution', async () => {
+    const options = { prefix: '' }
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const sqsMock = mockClient(sqsClient)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueAttributesCommand)
+      .resolves({
+        QueueUrl: qrl,
+        Attributes: {
+          ApproximateNumberOfMessages: '1',
+          ApproximateNumberOfMessagesNotVisible: '0'
+        }
+      })
+    await processQueueSet('test', 'https://sqs.us-east-1.amazonaws.com/example/test', opt)
+  })
+})
 
 describe('stripSuffixes', () => {
   test('works for all examples', () => {
@@ -403,8 +417,25 @@ describe('idleQueues', () => {
     await expect(idleQueues([], { prefix: '' })).resolves.toEqual('noQueues')
   })
 
-  // test('single queue', async () => {
-  //   await qrlCacheSet('test', 'https://sqs.us-east-1.amazonaws.com/example/test')
-  //   await expect(idleQueues(['test'], { prefix: '' })).resolves.toEqual('noQueues')
-  // })
+  test('single queue returns expected result', async () => {
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const sqsMock = mockClient(sqsClient)
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueAttributesCommand)
+      .resolves({
+        QueueUrl: qrl,
+        Attributes: {
+          ApproximateNumberOfMessages: '1',
+          ApproximateNumberOfMessagesNotVisible: '0'
+        }
+      })
+    await qrlCacheSet('test', 'https://sqs.us-east-1.amazonaws.com/example/test')
+    await expect(idleQueues(['test'], { prefix: '' })).resolves.toEqual([{
+      apiCalls: { SQS: 3, CloudWatch: 0 },
+      idle: false,
+      queue: 'test'
+    }])
+  })
 })
