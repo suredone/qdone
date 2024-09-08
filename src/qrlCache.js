@@ -66,7 +66,10 @@ export async function qrlCacheGet (qname) {
   // debug({ cmd })
   const result = await client.send(cmd)
   // debug('result', result)
-  if (!result) throw new QueueDoesNotExist(qname)
+  if (!result) {
+    qrlCacheInvalidate(qname)
+    throw new QueueDoesNotExist(qname)
+  }
   const { QueueUrl: qrl } = result
   // debug('getQueueUrl returned', data)
   qcache.set(qname, qrl)
@@ -79,7 +82,7 @@ export async function qrlCacheGet (qname) {
 // Immediately updates the cache
 //
 export function qrlCacheSet (qname, qrl) {
-  qcache.set(qname, qrl)
+  if (qrl) qcache.set(qname, qrl)
   // debug('qcache', Object.keys(qcache), 'set', qname, ' => ', qcache[qname])
 }
 

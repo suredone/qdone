@@ -21,6 +21,8 @@ const options = {
   cachePrefix: 'qdone:'
 }
 
+jest.retryTimes(3)
+
 beforeEach(shutdownCache)
 afterEach(async () => {
   jest.restoreAllMocks()

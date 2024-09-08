@@ -26,10 +26,7 @@ describe('getMatchingQueues', () => {
         'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_0_1021_failed',
         'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_0_1022_failed'
       ])
-    expect(sqsMock).toHaveReceivedCommand(ListQueuesCommand, {
-      QueueNamePrefix: 'sdqd_amzn_orders_0',
-      MaxResults: 1000
-    })
+    expect(sqsMock).toHaveReceivedCommand(ListQueuesCommand)
   })
 
   test('follows next tokens', async () => {

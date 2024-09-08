@@ -47,7 +47,6 @@ export const defaults = Object.freeze({
   // Idle Queues
   idleFor: 60,
   delete: false,
-  unpair: false,
 
   // Check
   create: false,
@@ -58,6 +57,12 @@ export function validateInteger (opt, name) {
   const parsed = parseInt(opt[name], 10)
   if (isNaN(parsed)) throw new Error(`${name} needs to be an integer.`)
   return parsed
+}
+
+export function validateQueueName (opt, name) {
+  if (typeof name !== 'string') throw new Error(`${name} must be a string.`)
+  if (!name.match(/^[a-z0-9-_]+$/i)) throw new Error(`${name} can contain only numbers, letters, hypens and underscores.`)
+  return name
 }
 
 export function validateMessageOptions (messageOptions) {
@@ -134,7 +139,6 @@ export function getOptionsWithDefaults (options) {
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || process.env.QDONE_IDLE_FOR || defaults.idleFor,
     delete: options.delete || process.env.QDONE_DELETE === 'true' || defaults.delete,
-    unpair: options.unpair || process.env.QDONE_UNPAIR === 'true' || defaults.unpair,
 
     // Check
     create: options.create || process.env.QDONE_CREATE === 'true' || defaults.create,
@@ -157,6 +161,11 @@ export function getOptionsWithDefaults (options) {
   opt.maxConcurrentJobs = validateInteger(opt, 'maxConcurrentJobs')
   opt.maxMemoryPercent = validateInteger(opt, 'maxMemoryPercent')
   opt.idleFor = validateInteger(opt, 'idleFor')
+
+  validateQueueName(opt, 'region')
+  validateQueueName(opt, 'prefix')
+  validateQueueName(opt, 'failSuffix')
+  validateQueueName(opt, 'dlqSuffix')
 
   // Validate dedup args
   if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
