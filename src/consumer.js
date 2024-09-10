@@ -84,19 +84,25 @@ export async function processMessages (queues, callback, options) {
 
   // Keep track of how many messages could be returned from each queue
   const activeQrls = new Map()
+  const listeningQrls = new Set()
   let maxReturnCount = 0
   const listen = async (qname, qrl, maxMessages) => {
     if (opt.verbose) {
       console.error(chalk.blue('Listening on: '), qname)
     }
-    activeQrls.set(qrl, (activeQrls.get(qrl) || 0) + 1)
     maxReturnCount += maxMessages
     try {
+      listeningQrls.add(qrl)
       const messages = await getMessages(qrl, opt, maxMessages)
+      listeningQrls.delete(qrl)
 
       if (!shutdownRequested) {
         if (messages.length) {
+          activeQrls.set(qrl, (activeQrls.get(qrl) || 0) + 1)
           await jobExecutor.executeJobs(messages, callback, qname, qrl)
+          const count = activeQrls.get(qrl) - 1
+          if (count) activeQrls.set(qrl, count)
+          else activeQrls.delete(qrl)
           queueManager.updateIcehouse(qrl, false)
         } else {
           // If we didn't get any, update the icehouse so we can back off
@@ -106,9 +112,6 @@ export async function processMessages (queues, callback, options) {
 
       // Max job accounting
       maxReturnCount -= maxMessages
-      const count = activeQrls.get(qrl) - 1
-      if (count) activeQrls.set(qrl, count)
-      else activeQrls.delete(qrl)
     } catch (e) {
       // If the queue has been cleaned up, we should back off anyway
       if (e instanceof QueueDoesNotExist) {
@@ -117,6 +120,14 @@ export async function processMessages (queues, callback, options) {
         throw e
       }
     }
+  }
+
+  if (opt.verbose) {
+    function printUrls () {
+      console.error({ activeQrls, listeningQrls })
+      if (!shutdownRequested) setTimeout(printUrls, 2000)
+    }
+    printUrls()
   }
 
   while (!shutdownRequested) { // eslint-disable-line
@@ -147,19 +158,19 @@ export async function processMessages (queues, callback, options) {
     let jobsLeft = targetJobs
 
     if (opt.verbose) {
-      console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, maxReturnCount, runningJobs, allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs, activeQrls })
+      console.error({ maxConcurrentJobs: opt.maxConcurrentJobs, maxReturnCount, runningJobs, allowedJobs, maxLatency, latencyFactor, freememFactor, loadFactor, overallFactor, targetJobs })
     }
     for (const { qname, qrl } of queueManager.getPairs()) {
       // const qcount = jobExecutor.runningJobCountForQueue(qname)
       // console.log({ evaluating: { qname, qrl, qcount, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0) break
-      // if (activeQrls.has(qrl)) continue
+      if (listeningQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
       jobsLeft -= maxMessages
       // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
-    await delay(500)
+    await delay(300)
   }
   debug('after all')
 }

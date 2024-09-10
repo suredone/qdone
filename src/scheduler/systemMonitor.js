@@ -71,7 +71,7 @@ export class SystemMonitor {
    */
 
   measureLoad () {
-    const [newLoad, ] = os.loadavg()
+    const [newLoad] = os.loadavg()
     const previousLoad = this.oneMinuteLoad
     if (previousLoad !== newLoad) {
       const e = 1884 / 2048 // see include/linux/sched/loadavg.h
@@ -84,7 +84,7 @@ export class SystemMonitor {
     }
   }
 
-  getLoad() {
+  getLoad () {
     return this.instantaneousLoad
   }
 

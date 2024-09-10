@@ -785,7 +785,7 @@ describe('addMessage / flushMessages', () => {
           { MD5OfMessageBody: md5, MessageId: messageId, Id: '6' },
           { MD5OfMessageBody: md5, MessageId: messageId, Id: '7' },
           { MD5OfMessageBody: md5, MessageId: messageId, Id: '8' },
-          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '9' }
         ]
       })
       .resolvesOnce({
@@ -894,7 +894,7 @@ describe('addMessage / flushMessages', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolvesOnce({
         Successful: [
-          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' }
         ]
       })
 
@@ -918,7 +918,6 @@ describe('addMessage / flushMessages', () => {
           Entries: [message]
         })
       )
-
   })
 
   test('failed messages fail the whole batch', async () => {
