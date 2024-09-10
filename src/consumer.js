@@ -2,7 +2,7 @@
  * Consumer implementation.
  */
 
-import { freemem, totalmem, loadavg, cpus } from 'os'
+import { freemem, totalmem, cpus } from 'os'
 import { ReceiveMessageCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -83,13 +83,13 @@ export async function processMessages (queues, callback, options) {
   })
 
   // Keep track of how many messages could be returned from each queue
-  const activeQrls = new Set()
+  const activeQrls = new Map()
   let maxReturnCount = 0
   const listen = async (qname, qrl, maxMessages) => {
     if (opt.verbose) {
       console.error(chalk.blue('Listening on: '), qname)
     }
-    activeQrls.add(qrl)
+    activeQrls.set(qrl, (activeQrls.get(qrl) || 0) + 1)
     maxReturnCount += maxMessages
     try {
       const messages = await getMessages(qrl, opt, maxMessages)
@@ -106,7 +106,9 @@ export async function processMessages (queues, callback, options) {
 
       // Max job accounting
       maxReturnCount -= maxMessages
-      activeQrls.delete(qrl)
+      const count = activeQrls.get(qrl) - 1
+      if (count) activeQrls.set(qrl, count)
+      else activeQrls.delete(qrl)
     } catch (e) {
       // If the queue has been cleaned up, we should back off anyway
       if (e instanceof QueueDoesNotExist) {
@@ -151,13 +153,13 @@ export async function processMessages (queues, callback, options) {
       // const qcount = jobExecutor.runningJobCountForQueue(qname)
       // console.log({ evaluating: { qname, qrl, qcount, jobsLeft, activeQrlsHasQrl: activeQrls.has(qrl) } })
       if (jobsLeft <= 0) break
-      if (activeQrls.has(qrl)) continue
+      // if (activeQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
       listen(qname, qrl, maxMessages)
       jobsLeft -= maxMessages
       // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }
-    await delay(1000)
+    await delay(500)
   }
   debug('after all')
 }
