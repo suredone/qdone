@@ -103,7 +103,7 @@ export async function checkFailQueue (queue, qrl, opt, indent = '') {
   try {
     // Get fail queue params, creating fail queue if it doesn't exist and create flag is set
     if (opt.verbose) console.error(chalk.blue(indent + 'checking ') + fqname)
-    const { params: { Attributes: desired } } = await getFailParams(queue, opt)
+    const { Attributes: desired } = await getFailParams(queue, opt)
     const { Attributes: current } = await getQueueAttributes(fqrl)
     if (attributesMatch(current, desired, opt, indent + '  ')) {
       if (opt.verbose) console.error(chalk.green(indent + '  all good'))
@@ -128,7 +128,7 @@ export async function checkQueue (queue, qrl, opt, indent = '') {
   if (opt.verbose) console.error(chalk.blue(indent + 'checking ') + qname)
   await checkFailQueue(queue, qrl, opt, indent + '  ')
   try {
-    const { params: { Attributes: desired } } = await getQueueParams(queue, opt)
+    const { Attributes: desired } = await getQueueParams(queue, opt)
     const { Attributes: current, $metadata } = await getQueueAttributes(qrl)
     debug({ current, $metadata })
     if (attributesMatch(current, desired, opt, indent + '  ')) {
