@@ -15,6 +15,7 @@ import {
 import {
   qrlCacheGet,
   qrlCacheSet,
+  qrlCacheInvalidate,
   normalizeQueueName,
   normalizeFailQueueName,
   normalizeDLQName
@@ -221,7 +222,7 @@ const retryableExceptions = [
   QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
 ]
 
-export async function sendMessage (qrl, command, opt, messageOptions) {
+export async function sendMessage (qrl, queue, command, opt, messageOptions) {
   debug('sendMessage(', qrl, command, ')')
   const uuidFunction = opt.uuidFunction || uuidV1
   const params = {
@@ -248,6 +249,12 @@ export async function sendMessage (qrl, command, opt, messageOptions) {
   }
   const shouldRetry = async (result, error) => {
     if (!error) return false
+
+    if (error instanceof QueueDoesNotExist) {
+      const qname = normalizeQueueName(queue, opt)
+      qrlCacheInvalidate(qname)
+    }
+
     for (const exceptionClass of retryableExceptions) {
       if (error instanceof exceptionClass) {
         debug({ sendMessageRetryingBecause: { error, result } })
@@ -436,7 +443,7 @@ export async function enqueue (queue, command, options) {
   }
   try {
     const qrl = await getOrCreateQueue(queue, opt)
-    return sendMessage(qrl, command, opt)
+    return sendMessage(qrl, queue, command, opt)
   } catch (e) {
     console.log(e)
     throw e
