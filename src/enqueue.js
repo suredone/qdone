@@ -253,6 +253,8 @@ export async function sendMessage (qrl, queue, command, opt, messageOptions) {
     if (error instanceof QueueDoesNotExist) {
       const qname = normalizeQueueName(queue, opt)
       qrlCacheInvalidate(qname)
+      // clear cache in case cache does not reflect reality, then try recreating the queue before sending message again
+      await getOrCreateQueue(queue, opt)
     }
 
     for (const exceptionClass of retryableExceptions) {
