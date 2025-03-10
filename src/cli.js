@@ -520,7 +520,8 @@ export async function root (originalArgv, testHook) {
         { name: 'enqueue-batch', summary: 'Enqueue multiple commands from stdin or a file' },
         { name: 'worker', summary: 'Execute work on one or more queues' },
         { name: 'idle-queues', summary: 'Write a list of idle queues to stdout' },
-        { name: 'monitor', summary: 'Monitor multiple queues at once' }
+        { name: 'monitor', summary: 'Monitor multiple queues at once' },
+        { name: 'check', summary: 'Check or update queue configurations' }
       ]
     },
     { content: 'Global Options', raw: true },
