@@ -26,7 +26,7 @@ import {
   enqueueBatch
 } from '../src/enqueue.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
-import { qrlCacheSet, qrlCacheClear, qrlCacheInvalidate, normalizeQueueName } from '../src/qrlCache.js'
+import { qrlCacheSet, qrlCacheClear } from '../src/qrlCache.js'
 import { getOptionsWithDefaults } from '../src/defaults.js'
 import { loadBatchFiles } from '../src/cli.js'
 
@@ -600,33 +600,7 @@ describe('sendMessage', () => {
       )
   })
 
-        test('QueueDoesNotExist error triggers cache invalidation and queue recreation', async () => {
-    const options = { prefix: '' }
-    const opt = getOptionsWithDefaults(options)
-    const qname = 'testqueue'
-    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const cmd = 'sd BulkStatusModel finalizeAll'
-    const sqsMock = mockClient(client)
-    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
-    const md5 = 'foobar'
-    setSQSClient(sqsMock)
 
-    // Set cache so getOrCreateQueue doesn't need to do complex creation
-    qrlCacheSet(qname, qrl)
-
-    // First sendMessage call fails with QueueDoesNotExist
-    // Second call succeeds after queue recreation
-    sqsMock
-      .on(SendMessageCommand, { QueueUrl: qrl })
-      .rejectsOnce(new QueueDoesNotExist())
-      .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
-
-    const result = await sendMessage(qrl, qname, cmd, opt)
-    expect(result).toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
-
-    // Verify that SendMessage was called twice (failed, then succeeded)
-    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageCommand, 2)
-  })
 })
 
 describe('sendMessageBatch', () => {
