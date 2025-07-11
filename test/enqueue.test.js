@@ -600,7 +600,6 @@ describe('sendMessage', () => {
       )
   })
 
-
 })
 
 describe('sendMessageBatch', () => {
