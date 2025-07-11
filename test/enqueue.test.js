@@ -600,6 +600,37 @@ describe('sendMessage', () => {
       )
   })
 
+  test('QueueDoesNotExist error handling calls cache invalidation', async () => {
+    const options = { prefix: '', sendRetries: 1 } // Set retries to 1 to avoid infinite loops
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+
+    // Set up cache to avoid initial queue creation
+    qrlCacheSet(qname, qrl)
+
+    // Mock SendMessage to fail with QueueDoesNotExist every time
+    sqsMock
+      .on(SendMessageCommand, { QueueUrl: qrl })
+      .rejects(new QueueDoesNotExist())
+      // Mock GetQueueUrl to return the URL when getOrCreateQueue is called
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+
+    // This should trigger the QueueDoesNotExist error handling but ultimately fail
+    await expect(
+      sendMessage(qrl, qname, cmd, opt)
+    ).rejects.toThrow(QueueDoesNotExist)
+
+    // Verify SendMessage was called (triggering the error handling)
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageCommand, 1)
+    // Verify GetQueueUrl was called during queue recreation - this confirms the error handling code was executed
+    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
+  })
+
 })
 
 describe('sendMessageBatch', () => {
