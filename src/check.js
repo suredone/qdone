@@ -41,7 +41,7 @@ export function attributesMatch (current, desired, opt, indent = '') {
 
 /**
  * Checks a DLQ, creating if the create option is set and modifying it if the
- * overwrite option is set. 
+ * overwrite option is set.
  */
 export async function checkDLQ (queue, qrl, opt, indent = '') {
   debug({ checkDLQ: { queue, qrl } })
