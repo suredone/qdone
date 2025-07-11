@@ -489,7 +489,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, options)
+      sendMessage(qrl, qname, cmd, options)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -515,7 +515,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, opt)
+      sendMessage(qrl, qname, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock).toHaveReceivedNthCommandWith(
       1, SendMessageCommand,
@@ -544,7 +544,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, opt)
+      sendMessage(qrl, qname, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(
@@ -581,7 +581,7 @@ describe('sendMessage', () => {
       // .rejectsOnce(new KmsThrottled())
       // .rejectsOnce(new QueueDoesNotExist())
       .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
-    const promise = sendMessage(qrl, cmd, opt)
+    const promise = sendMessage(qrl, qname, cmd, opt)
 
     await Promise.resolve() // shouldRetry()
     await Promise.resolve() // await this.delay(attemptNumber)
