@@ -238,7 +238,7 @@ export async function sendMessage (qrl, queue, command, opt, messageOptions) {
 
   // Send it
   const client = getSQSClient()
-  const cmd = new SendMessageCommand(params)
+  let cmd = new SendMessageCommand(params)
   debug({ cmd })
   const backoff = new ExponentialBackoff(opt.sendRetries)
   const send = async (attemptNumber) => {
@@ -254,7 +254,9 @@ export async function sendMessage (qrl, queue, command, opt, messageOptions) {
       const qname = normalizeQueueName(queue, opt)
       qrlCacheInvalidate(qname)
       // clear cache in case cache does not reflect reality, then try recreating the queue before sending message again
-      await getOrCreateQueue(queue, opt)
+      const newQrl = await getOrCreateQueue(queue, opt)
+      params.QueueUrl = newQrl
+      cmd = new SendMessageCommand(params)
     }
 
     for (const exceptionClass of retryableExceptions) {
