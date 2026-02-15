@@ -1,12 +1,21 @@
+/**
+ * Implementation of checks and caching of checks to determine if queues are idle.
+ */
+import chalk from 'chalk'
+import { getSQSClient } from './sqs.js'
+import { getCloudWatchClient } from './cloudWatch.js'
+import { getOptionsWithDefaults } from './defaults.js'
+import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
+import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
+import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix, qrlCacheSet } from './qrlCache.js'
+import { getCache, setCache } from './cache.js'
+// const AWS = require('aws-sdk')
 
-const debug = require('debug')('qdone:idleQueues')
-const chalk = require('chalk')
-const qrlCache = require('./qrlCache')
-const cache = require('./cache')
-const AWS = require('aws-sdk')
+import Debug from 'debug'
+const debug = Debug('qdone:idleQueues')
 
 // Queue attributes we check to determine idle
-const attributeNames = [
+export const attributeNames = [
   'ApproximateNumberOfMessages',
   'ApproximateNumberOfMessagesNotVisible',
   'ApproximateNumberOfMessagesDelayed'
@@ -24,58 +33,68 @@ const metricNames = [
   'ApproximateAgeOfOldestMessage'
 ]
 
-function _cheapIdleCheck (qname, qrl, options) {
-  const sqs = new AWS.SQS()
-  return sqs
-    .getQueueAttributes({ AttributeNames: attributeNames, QueueUrl: qrl })
-    .promise()
-    .then(data => {
-      // debug('data', data)
-      const result = data.Attributes
-      result.queue = qname.slice(options.prefix.length)
-      result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
-      return Promise.resolve({ result, SQS: 1 })
-    })
+/**
+ * Actual SQS call, used in conjunction with cache.
+ */
+export async function _cheapIdleCheck (qname, qrl, opt) {
+  debug('_cheapIdleCheck', qname, qrl)
+  try {
+    const client = getSQSClient()
+    const cmd = new GetQueueAttributesCommand({ AttributeNames: attributeNames, QueueUrl: qrl })
+    const data = await client.send(cmd)
+    debug('data', data)
+    const result = data.Attributes
+    result.queue = qname.slice(opt.prefix.length)
+    // We are idle if all the messages attributes are zero
+    result.idle = attributeNames.filter(k => result[k] === '0').length === attributeNames.length
+    result.exists = true
+    debug({ result, SQS: 1 })
+    return { result, SQS: 1 }
+  } catch (e) {
+    debug({ _cheapIdleCheck: e })
+    if (e instanceof QueueDoesNotExist) {
+      return { result: { idle: undefined, exists: false }, SQS: 1 }
+    } else {
+      throw e
+    }
+  }
 }
 
 /**
  * Gets queue attributes from the SQS api and assesses whether queue is idle
  * at this immediate moment.
  */
-function cheapIdleCheck (qname, qrl, options) {
-  if (options['cache-uri']) {
-    const key = 'cheap-idle-check:' + qrl
-    return cache.getCache(key, options).then(cacheResult => {
-      debug({ cacheResult })
-      if (cacheResult) {
-        debug({ action: 'return resolved' })
-        return Promise.resolve({ result: cacheResult, SQS: 0 })
-      } else {
-        // Cache miss, make actual call
-        debug({ action: 'do real check' })
-        return _cheapIdleCheck(qname, qrl, options).then(({ result, SQS }) => {
-          debug({ action: 'setCache', key, result })
-          return cache.setCache(key, result, options).then(ok => {
-            debug({ action: 'return result of set cache', result })
-            return Promise.resolve({ result, SQS })
-          })
-        })
-      }
-    })
+export async function cheapIdleCheck (qname, qrl, opt) {
+  debug('cheapIdleCheck', qname, qrl)
+  // Just call the API if we don't have a cache
+  if (!opt.cacheUri) return _cheapIdleCheck(qname, qrl, opt)
+
+  // Otherwise check cache
+  const key = 'cheap-idle-check:' + qrl
+  const cacheResult = await getCache(key, opt)
+  debug({ cacheResult })
+  if (cacheResult) {
+    debug({ action: 'return resolved' })
+    return { result: cacheResult, SQS: 0 }
   } else {
-    return _cheapIdleCheck(qname, qrl, options)
+    // Cache miss, make call
+    debug({ action: 'do real check' })
+    const { result, SQS } = await _cheapIdleCheck(qname, qrl, opt)
+    debug({ action: 'setCache', key, result })
+    const ok = await setCache(key, result, opt)
+    debug({ action: 'return result of set cache', ok })
+    return { result, SQS }
   }
 }
-exports.cheapIdleCheck = cheapIdleCheck
 
 /**
  * Gets a single metric from the CloudWatch api.
  */
-function getMetric (qname, qrl, metricName, options) {
+export async function getMetric (qname, qrl, metricName, opt) {
   debug('getMetric', qname, qrl, metricName)
   const now = new Date()
   const params = {
-    StartTime: new Date(now.getTime() - 1000 * 60 * options['idle-for']),
+    StartTime: new Date(now.getTime() - 1000 * 60 * opt.idleFor),
     EndTime: now,
     MetricName: metricName,
     Namespace: 'AWS/SQS',
@@ -84,16 +103,13 @@ function getMetric (qname, qrl, metricName, options) {
     Statistics: ['Sum']
     // Unit: ['']
   }
-  const cloudwatch = new AWS.CloudWatch()
-  return cloudwatch
-    .getMetricStatistics(params)
-    .promise()
-    .then(data => {
-      debug('getMetric data', data)
-      return Promise.resolve({
-        [metricName]: data.Datapoints.map(d => d.Sum).reduce((a, b) => a + b, 0)
-      })
-    })
+  const client = getCloudWatchClient()
+  const cmd = new GetMetricStatisticsCommand(params)
+  const data = await client.send(cmd)
+  debug('getMetric data', data)
+  return {
+    [metricName]: data.Datapoints.map(d => d.Sum).reduce((a, b) => a + b, 0)
+  }
 }
 
 /**
@@ -107,208 +123,212 @@ function getMetric (qname, qrl, metricName, options) {
  * We could randomize the order, but for my test use case, it's always cheaper
  * to check NumberOfMessagesSent first, and is the primary indicator of use.
  */
-function checkIdle (qname, qrl, options) {
+export async function checkIdle (qname, qrl, opt) {
   // Do the cheap check first to make sure there is no data in flight at the moment
   debug('checkIdle', qname, qrl)
-  return cheapIdleCheck(qname, qrl, options)
-    .then(({ result: cheapResult, SQS }) => {
-      debug('cheapResult', cheapResult)
-      // Short circuit further calls if cheap result shows data
-      if (cheapResult.idle === false) {
-        return {
-          queue: qname.slice(options.prefix.length),
-          cheap: cheapResult,
-          idle: false,
-          apiCalls: { SQS, CloudWatch: 0 }
-        }
-      }
-      // If we get here, there's nothing in the queue at the moment,
-      // so we have to check metrics one at a time
-      return metricNames.reduce((promiseChain, metricName) => {
-        return promiseChain.then((soFar = {
-          queue: qname.slice(options.prefix.length),
-          cheap: cheapResult,
-          idle: true,
-          apiCalls: { SQS: 1, CloudWatch: 0 }
-        }) => {
-          debug('soFar', soFar)
-          // Break out of our call chain if we find one failed check
-          if (soFar.idle === false) return Promise.resolve(soFar)
-          return getMetric(qname, qrl, metricName, options)
-            .then(result => {
-              debug('getMetric result', result)
-              return Object.assign(
-                soFar, // start with soFar object
-                result, // add in our metricName keyed result
-                { idle: result[metricName] === 0 }, // and recalculate idle
-                { apiCalls: {
-                  SQS: soFar.apiCalls.SQS,
-                  CloudWatch: soFar.apiCalls.CloudWatch + 1
-                } }
-              )
-            })
-        })
-      }, Promise.resolve())
-    })
+  const { result: cheapResult, SQS } = await cheapIdleCheck(qname, qrl, opt)
+  debug('cheapResult', cheapResult)
+
+  // Short circuit further calls if cheap result is conclusive
+  if (cheapResult.idle === false || cheapResult.exists === false) {
+    return {
+      queue: qname.slice(opt.prefix.length),
+      cheap: { SQS, result: cheapResult },
+      idle: cheapResult.idle,
+      exists: cheapResult.exists,
+      apiCalls: { SQS, CloudWatch: 0 }
+    }
+  }
+
+  // If we get here, there's nothing in the queue at the moment,
+  // so we have to check metrics one at a time
+  const apiCalls = { SQS, CloudWatch: 0 }
+  const results = []
+  let idle = true
+  for (const metricName of metricNames) {
+    // Check metrics in order
+    const result = await getMetric(qname, qrl, metricName, opt)
+    results.push(result)
+    debug('getMetric result', result)
+    apiCalls.CloudWatch++
+
+    // Recalculate idle
+    idle = result[metricName] === 0
+    if (!idle) break // and stop checking metrics if we find evidence of activity
+  }
+
+  // Calculate stats
+  const stats = Object.assign(
+    {
+      queue: qname.slice(opt.prefix.length),
+      cheap: cheapResult,
+      apiCalls,
+      idle,
+      exists: true
+    },
+    ...results // merge in results from CloudWatch
+  )
+  debug('checkIdle stats', stats)
+  return stats
 }
 
 /**
  * Just deletes a queue.
  */
-function deleteQueue (qname, qrl, options) {
-  const sqs = new AWS.SQS()
-  return sqs.deleteQueue({ QueueUrl: qrl })
-    .promise()
-    .then(result => {
-      debug(result)
-      if (options.verbose) console.error(chalk.blue('Deleted ') + qname.slice(options.prefix.length))
-      return Promise.resolve({
-        deleted: true,
-        apiCalls: { SQS: 1, CloudWatch: 0 }
-      })
-    })
+export async function deleteQueue (qname, qrl, opt) {
+  const cmd = new DeleteQueueCommand({ QueueUrl: qrl })
+  const result = await getSQSClient().send(cmd)
+  debug(result)
+  if (opt.verbose) console.error(chalk.blue('Deleted ') + qname.slice(opt.prefix.length))
+  return {
+    deleted: true,
+    apiCalls: { SQS: 1, CloudWatch: 0 }
+  }
 }
 
 /**
- * Processes a single queue, checking for idle, deleting if applicable.
+ * Processes a queue and its fail and delete queue, treating them as a unit.
  */
-function processQueue (qname, qrl, options) {
-  return checkIdle(qname, qrl, options)
-    .then(result => {
-      debug(qname, result)
-      if (result.idle) {
-        if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-        // Trigger a delete if the user wants it
-        if (options.delete) {
-          // End this branch of the tree
-          return deleteQueue(qname, qrl, options)
-            .then(deleteResult => Object.assign(result, {
-              deleted: deleteResult.deleted,
-              apiCalls: {
-                SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
-                CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
-              }
-            }))
-        }
-      } else {
-        if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-      }
-      // End this branch of the tree
-      return Promise.resolve(result)
-    })
-}
-
-/**
- * Processes a queue and its fail queue, treating them as a unit.
- */
-function processQueuePair (qname, qrl, options) {
+export async function processQueueSet (qname, qrl, opt) {
   const isFifo = qname.endsWith('.fifo')
-  const normalizeOptions = Object.assign({}, options, { fifo: isFifo })
-  const fqname = qrlCache.normalizeFailQueueName(qname, normalizeOptions)
-  const fqrl = qrlCache.normalizeFailQueueName(qrl, normalizeOptions)
-  return checkIdle(qname, qrl, options).then(result => {
-    debug('result', result)
-    if (result.idle) {
-      if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-      // Check fail queue if we get a positive result for normal queue
-      return checkIdle(fqname, fqrl, options).then(fresult => {
-        debug('fresult', fresult)
-        if (fresult.idle) {
-          if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-          // Trigger a delete if the user wants it
-          if (options.delete) {
-            // End this branch of the tree
-            return Promise.all([
-              deleteQueue(qname, qrl, options),
-              deleteQueue(fqname, fqrl, options)
-            ]).then(deleteResults =>
-              deleteResults.reduce((a, b) => Object.assign(a, { apiCalls: {
-                SQS: a.apiCalls.SQS + b.apiCalls.SQS,
-                CloudWatch: a.apiCalls.CloudWatch + b.apiCalls.CloudWatch
-              } }), Object.assign(result, { failq: fresult }, { apiCalls: {
-                SQS: result.apiCalls.SQS + fresult.apiCalls.SQS,
-                CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
-              } }))
-            )
-          }
-        } else {
-          if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
-        }
-        return Promise.resolve(Object.assign(result, { idle: result.idle && fresult.idle, failq: fresult }, { apiCalls: {
-          SQS: result.apiCalls.SQS + fresult.apiCalls.SQS,
-          CloudWatch: result.apiCalls.CloudWatch + fresult.apiCalls.CloudWatch
-        } }))
-      })
-        .catch(e => {
-        // Handle the case where the fail queue has been deleted or was never created for some reason
-          if (e.code === 'AWS.SimpleQueueService.NonExistentQueue') {
-            if (options.verbose) console.error(chalk.blue('Queue ') + fqname.slice(options.prefix.length) + chalk.blue(' does not exist.'))
-            if (options.delete) {
-              return deleteQueue(qname, qrl, options)
-                .then(deleteResult => Object.assign(result, {
-                  deleted: deleteResult.deleted,
-                  apiCalls: {
-                    SQS: result.apiCalls.SQS + deleteResult.apiCalls.SQS,
-                    CloudWatch: result.apiCalls.CloudWatch + deleteResult.apiCalls.CloudWatch
-                  }
-                }))
-            } else {
-              return result
-            }
-          } else {
-            throw e
-          }
-        })
-    } else {
-      if (options.verbose) console.error(chalk.blue('Queue ') + qname.slice(options.prefix.length) + chalk.blue(' has been ') + 'active' + chalk.blue(' in the last ') + options['idle-for'] + chalk.blue(' minutes.'))
+  const normalizeOptions = Object.assign({}, opt, { fifo: isFifo })
+
+  // Generate DLQ name/url
+  const dqname = normalizeDLQName(qname, normalizeOptions)
+  const dqrl = normalizeDLQName(dqname, normalizeOptions)
+
+  // Generate fail queue name/url
+  const fqname = normalizeFailQueueName(qname, normalizeOptions)
+  const fqrl = normalizeFailQueueName(fqname, normalizeOptions)
+
+  debug({ qname, qrl, dqname, dqrl, fqname, fqrl })
+
+  // Idle check
+  const qresult = await checkIdle(qname, qrl, opt)
+  const fqresult = await checkIdle(fqname, fqrl, opt)
+  const dqresult = await checkIdle(dqname, dqrl, opt)
+  debug({ qresult, fqresult, dqresult })
+
+  // Start building return value
+  const result = Object.assign(
+    {
+      queue: qname,
+      idle: (
+        qresult.idle &&
+        (!fqresult.exists || fqresult.idle) &&
+        (!fqresult.exists || dqresult.idle)
+      ),
+      apiCalls: {
+        SQS: qresult.apiCalls.SQS + fqresult.apiCalls.SQS + dqresult.apiCalls.SQS,
+        CloudWatch: qresult.apiCalls.CloudWatch + fqresult.apiCalls.CloudWatch + dqresult.apiCalls.CloudWatch
+      }
     }
-    // End this branch of the tree
-    return result
-  })
+  )
+
+  // Queue is idle
+  if (qresult.idle && opt.verbose) console.error(chalk.blue('Queue ') + qname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
+  if (fqresult.idle && opt.verbose) console.error(chalk.blue('Queue ') + fqname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
+  if (dqresult.idle && opt.verbose) console.error(chalk.blue('Queue ') + dqname.slice(opt.prefix.length) + chalk.blue(' has been ') + 'idle' + chalk.blue(' for the last ') + opt.idleFor + chalk.blue(' minutes.'))
+
+  // Delete if all are idle
+  const canDelete = (
+    (qresult.idle || qresult.exists === false) &&
+    (fqresult.idle || fqresult.exists === false) &&
+    (dqresult.idle || dqresult.exists === false)
+  )
+  debug({ canDelete })
+
+  if (opt.delete && canDelete) {
+    // Normal
+    const qdresult = await (async () => {
+      debug({ qresult })
+      try {
+        if (qresult.idle) return deleteQueue(qname, qrl, opt)
+      } catch (e) {
+        if (!(e instanceof QueueDoesNotExist)) throw e
+      }
+    })()
+    if (qdresult) { result.apiCalls.SQS += qdresult.apiCalls.SQS }
+    debug({ qdresult })
+
+    // Fail
+    const fqdresult = await (async () => {
+      debug({ fqresult })
+      try {
+        if (fqresult.idle) return deleteQueue(fqname, fqrl, opt)
+      } catch (e) {
+        if (!(e instanceof QueueDoesNotExist)) throw e
+      }
+    })()
+    if (fqdresult) { result.apiCalls.SQS += fqdresult.apiCalls.SQS }
+    debug({ fqdresult })
+
+    // Dead
+    const dqdresult = await (async () => {
+      debug({ dqresult })
+      try {
+        if (dqresult.idle) return deleteQueue(dqname, dqrl, opt)
+      } catch (e) {
+        if (!(e instanceof QueueDoesNotExist)) throw e
+      }
+    })()
+    if (dqdresult) { result.apiCalls.SQS += dqdresult.apiCalls.SQS }
+    debug({ dqdresult })
+  }
+
+  return result
+}
+
+//
+// Strips failed and dlq suffix from a queue name or URL
+//
+export function stripSuffixes (queueName, opt) {
+  const suffixFinder = new RegExp(`(${opt.dlqSuffix}|${opt.failSuffix}){1}(|${fifoSuffix})$`)
+  return queueName.replace(suffixFinder, '$2')
 }
 
 //
 // Resolve queues for listening loop listen
 //
-exports.idleQueues = function idleQueues (queues, options) {
-  if (options.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
-  const qnames = queues.map(function (queue) { return options.prefix + queue })
-  return qrlCache
-    .getQnameUrlPairs(qnames, options)
-    .then(function (entries) {
-      debug('qrlCache.getQnameUrlPairs.then')
-      if (options.verbose) {
-        console.error(chalk.blue('  done'))
-        console.error()
-      }
+export async function idleQueues (queues, options) {
+  const opt = getOptionsWithDefaults(options)
+  if (opt.verbose) console.error(chalk.blue('Resolving queues: ') + queues.join(' '))
+  const qnames = queues.map(queue => opt.prefix + queue)
+  const entries = await getQnameUrlPairs(qnames, opt)
+  debug('getQnameUrlPairs.then')
+  if (opt.verbose) {
+    console.error(chalk.blue('  done'))
+    console.error()
+  }
 
-      // Filter out any queue ending in suffix unless --include-failed is set
-      entries = entries
-        .filter(function (entry) {
-          const suf = options['fail-suffix']
-          const sufFifo = options['fail-suffix'] + qrlCache.fifoSuffix
-          const isFail = entry.qname.endsWith(suf)
-          const isFifoFail = entry.qname.endsWith(sufFifo)
-          return options['include-failed'] ? true : (!isFail && !isFifoFail)
-        })
+  // Filter out failed and dead queues, but if we have an orphaned fail or
+  // dead queue, keep the original parent queue name so that orphans can be
+  // deleted.
+  const queueNames = new Set()
+  const filteredEntries = entries.filter(entry => {
+    const stripped = stripSuffixes(entry.qname, opt)
+    if (queueNames.has(stripped)) return false
+    queueNames.add(stripped)
+    entry.qname = stripped
+    entry.qrl = stripSuffixes(entry.qrl, opt)
+    return true
+  })
 
-      // But only if we have queues to remove
-      if (entries.length) {
-        if (options.verbose) {
-          console.error(chalk.blue('Checking queues (in this order):'))
-          console.error(entries.map(e =>
-            '  ' + e.qname.slice(options.prefix.length) + chalk.blue(' - ' + e.qrl)
-          ).join('\n'))
-          console.error()
-        }
-        // Check each queue in parallel
-        if (options.unpair) return Promise.all(entries.map(e => processQueue(e.qname, e.qrl, options)))
-        return Promise.all(entries.map(e => processQueuePair(e.qname, e.qrl, options)))
-      }
+  // But only if we have queues to remove
+  if (filteredEntries.length) {
+    if (opt.verbose) {
+      console.error(chalk.blue('Checking queues (in this order):'))
+      console.error(filteredEntries.map(e =>
+        '  ' + e.qname.slice(opt.prefix.length) + chalk.blue(' - ' + e.qrl)
+      ).join('\n'))
+      console.error()
+    }
+    // Check each queue in parallel
+    return Promise.all(filteredEntries.map(e => processQueueSet(e.qname, e.qrl, opt)))
+  }
 
-      // Otherwise, let caller know
-      return Promise.resolve('noQueues')
-    })
+  // Otherwise, let caller know
+  return 'noQueues'
 }
 
 debug('loaded')
