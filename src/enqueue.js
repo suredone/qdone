@@ -15,6 +15,7 @@ import {
 import {
   qrlCacheGet,
   qrlCacheSet,
+  qrlCacheInvalidate,
   normalizeQueueName,
   normalizeFailQueueName,
   normalizeDLQName
@@ -221,7 +222,7 @@ const retryableExceptions = [
   QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
 ]
 
-export async function sendMessage (qrl, command, opt, messageOptions) {
+export async function sendMessage (qrl, queue, command, opt, messageOptions) {
   debug('sendMessage(', qrl, command, ')')
   const uuidFunction = opt.uuidFunction || uuidV1
   const params = {
@@ -237,7 +238,7 @@ export async function sendMessage (qrl, command, opt, messageOptions) {
 
   // Send it
   const client = getSQSClient()
-  const cmd = new SendMessageCommand(params)
+  let cmd = new SendMessageCommand(params)
   debug({ cmd })
   const backoff = new ExponentialBackoff(opt.sendRetries)
   const send = async (attemptNumber) => {
@@ -248,6 +249,16 @@ export async function sendMessage (qrl, command, opt, messageOptions) {
   }
   const shouldRetry = async (result, error) => {
     if (!error) return false
+
+    if (error instanceof QueueDoesNotExist) {
+      const qname = normalizeQueueName(queue, opt)
+      qrlCacheInvalidate(qname)
+      // clear cache in case cache does not reflect reality, then try recreating the queue before sending message again
+      const newQrl = await getOrCreateQueue(queue, opt)
+      params.QueueUrl = newQrl
+      cmd = new SendMessageCommand(params)
+    }
+
     for (const exceptionClass of retryableExceptions) {
       if (error instanceof exceptionClass) {
         debug({ sendMessageRetryingBecause: { error, result } })
@@ -263,7 +274,7 @@ export async function sendMessage (qrl, command, opt, messageOptions) {
   return result
 }
 
-export async function sendMessageBatch (qrl, messages, opt) {
+export async function sendMessageBatch (qrl, queue, messages, opt) {
   debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
   const params = { Entries: messages, QueueUrl: qrl }
   if (opt.sentryDsn) {
@@ -292,7 +303,7 @@ export async function sendMessageBatch (qrl, messages, opt) {
 
   // Send them
   const client = getSQSClient()
-  const cmd = new SendMessageBatchCommand(params)
+  let cmd = new SendMessageBatchCommand(params)
   debug({ cmd })
   const backoff = new ExponentialBackoff(opt.sendRetries)
   const send = async (attemptNumber) => {
@@ -300,7 +311,7 @@ export async function sendMessageBatch (qrl, messages, opt) {
     const data = await client.send(cmd)
     return data
   }
-  const shouldRetry = (result, error) => {
+  const shouldRetry = async (result, error) => {
     debug({ shouldRetry: { error, result } })
     if (result) {
       // Handle failed result of one or more messages in the batch
@@ -323,6 +334,16 @@ export async function sendMessageBatch (qrl, messages, opt) {
       if (opt.sentryDsn) {
         addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ error }), level: 'error' })
       }
+
+      if (error instanceof QueueDoesNotExist) {
+        const qname = normalizeQueueName(queue, opt)
+        qrlCacheInvalidate(qname)
+        // Clear stale cache entry and recreate queue before retrying
+        const newQrl = await getOrCreateQueue(queue, opt)
+        params.QueueUrl = newQrl
+        cmd = new SendMessageBatchCommand(params)
+      }
+
       for (const exceptionClass of retryableExceptions) {
         debug({ exceptionClass, retryableExceptions })
         if (error instanceof exceptionClass) {
@@ -342,8 +363,8 @@ let requestCount = 0
 // If the message is too large, batch is retried with half the messages.
 // Returns number of messages flushed.
 //
-export async function flushMessages (qrl, opt, sendBuffer) {
-  debug('flushMessages', { qrl, sendBuffer })
+export async function flushMessages (qrl, queue, opt, sendBuffer) {
+  debug('flushMessages', { qrl, queue, sendBuffer })
   // Track our outgoing messages to map with Failed / Successful returns
   const messagesById = new Map()
   const resultsById = new Map()
@@ -376,7 +397,7 @@ export async function flushMessages (qrl, opt, sendBuffer) {
     }
 
     // Send batch
-    const data = await sendMessageBatch(qrl, batch, opt)
+    const data = await sendMessageBatch(qrl, queue, batch, opt)
 
     // Fail if there are any individual message failures
     if (data?.Failed && data?.Failed.length) {
@@ -413,13 +434,13 @@ export async function flushMessages (qrl, opt, sendBuffer) {
 // Returns number of messages flushed.
 //
 const debugAddMessage = Debug('qdone:enqueue:addMessage')
-export async function addMessage (qrl, command, messageIndex, opt, sendBuffer, messageOptions) {
+export async function addMessage (qrl, queue, command, messageIndex, opt, sendBuffer, messageOptions) {
   const message = formatMessage(command, messageIndex, opt, messageOptions)
   sendBuffer[qrl] = sendBuffer[qrl] || []
   sendBuffer[qrl].push(message)
   debugAddMessage({ location: 'addMessage', messageIndex, sendBuffer })
   if (sendBuffer[qrl].length >= 10) {
-    return flushMessages(qrl, opt, sendBuffer)
+    return flushMessages(qrl, queue, opt, sendBuffer)
   }
   return { numFlushed: 0, results: [] }
 }
@@ -436,7 +457,7 @@ export async function enqueue (queue, command, options) {
   }
   try {
     const qrl = await getOrCreateQueue(queue, opt)
-    return sendMessage(qrl, command, opt)
+    return sendMessage(qrl, queue, command, opt)
   } catch (e) {
     console.log(e)
     throw e
@@ -464,10 +485,13 @@ export async function enqueueBatch (pairs, options) {
     }))
     const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
 
-    // Prefetch qrls / create queues in parallel
+    // Prefetch qrls / create queues in parallel, building a reverse map for cache invalidation
     const createPromises = []
+    const qrlToQname = new Map()
     for (const qname of uniqueQnames) {
-      createPromises.push(getOrCreateQueue(qname, opt))
+      createPromises.push(
+        getOrCreateQueue(qname, opt).then(qrl => qrlToQname.set(qrl, qname))
+      )
     }
     await Promise.all(createPromises)
     // After we've prefetched, all qrls are in cache
@@ -478,7 +502,7 @@ export async function enqueueBatch (pairs, options) {
     let initialFlushTotal = 0
     for (const { qname, command, messageOptions } of normalizedPairs) {
       const qrl = await getOrCreateQueue(qname, opt)
-      const { numFlushed, results } = await addMessage(qrl, command, messageIndex++, opt, sendBuffer, messageOptions)
+      const { numFlushed, results } = await addMessage(qrl, qname, command, messageIndex++, opt, sendBuffer, messageOptions)
       initialFlushTotal += numFlushed
       allResults.push(...results)
     }
@@ -486,7 +510,7 @@ export async function enqueueBatch (pairs, options) {
     // And flush any remaining messages
     const extraFlushPromises = []
     for (const qrl in sendBuffer) {
-      extraFlushPromises.push(flushMessages(qrl, opt, sendBuffer))
+      extraFlushPromises.push(flushMessages(qrl, qrlToQname.get(qrl), opt, sendBuffer))
     }
     let extraFlushTotal = 0
     for (const { numFlushed, results } of await Promise.all(extraFlushPromises)) {

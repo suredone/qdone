@@ -489,7 +489,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, options)
+      sendMessage(qrl, qname, cmd, options)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -515,7 +515,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, opt)
+      sendMessage(qrl, qname, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock).toHaveReceivedNthCommandWith(
       1, SendMessageCommand,
@@ -544,7 +544,7 @@ describe('sendMessage', () => {
       .on(SendMessageCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessage(qrl, cmd, opt)
+      sendMessage(qrl, qname, cmd, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthCommandWith(
@@ -581,7 +581,7 @@ describe('sendMessage', () => {
       // .rejectsOnce(new KmsThrottled())
       // .rejectsOnce(new QueueDoesNotExist())
       .resolvesOnce({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
-    const promise = sendMessage(qrl, cmd, opt)
+    const promise = sendMessage(qrl, qname, cmd, opt)
 
     await Promise.resolve() // shouldRetry()
     await Promise.resolve() // await this.delay(attemptNumber)
@@ -599,6 +599,38 @@ describe('sendMessage', () => {
         formatMessage(cmd, null, opt, { groupId, delay: options.delay, deduplicationId })
       )
   })
+
+  test('QueueDoesNotExist error handling calls cache invalidation', async () => {
+    const options = { prefix: '', sendRetries: 1 } // Set retries to 1 to avoid infinite loops
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+
+    // Set up cache to avoid initial queue creation
+    qrlCacheSet(qname, qrl)
+
+    // Mock SendMessage to fail with QueueDoesNotExist every time
+    sqsMock
+      .on(SendMessageCommand, { QueueUrl: qrl })
+      .rejects(new QueueDoesNotExist())
+      // Mock GetQueueUrl to return the URL when getOrCreateQueue is called
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+
+    // This should trigger the QueueDoesNotExist error handling but ultimately fail
+    await expect(
+      sendMessage(qrl, qname, cmd, opt)
+    ).rejects.toThrow(QueueDoesNotExist)
+
+    // Verify SendMessage was called (triggering the error handling)
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageCommand, 1)
+    // Verify GetQueueUrl was called during queue recreation - this confirms the error handling code was executed
+    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
+  })
+
 })
 
 describe('sendMessageBatch', () => {
@@ -619,7 +651,7 @@ describe('sendMessageBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessageBatch(qrl, messages, opt)
+      sendMessageBatch(qrl, qname, messages, opt)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -649,7 +681,7 @@ describe('sendMessageBatch', () => {
       .on(SendMessageBatchCommand, { QueueUrl: qrl })
       .resolves({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     await expect(
-      sendMessageBatch(qrl, messages, options)
+      sendMessageBatch(qrl, qname, messages, options)
     ).resolves.toEqual({ MD5OfMessageBody: md5, MessageId: messageId, Id: '1' })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
@@ -688,7 +720,7 @@ describe('sendMessageBatch', () => {
         ]
       })
     await expect(
-      sendMessageBatch(qrl, messages, options)
+      sendMessageBatch(qrl, qname, messages, options)
     ).resolves.toEqual({
       Succeeded: [
         { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
@@ -731,7 +763,7 @@ describe('sendMessageBatch', () => {
         ]
       })
     await expect(
-      sendMessageBatch(qrl, messages, options)
+      sendMessageBatch(qrl, qname, messages, options)
     ).resolves.toEqual({
       Succeeded: [
         { MD5OfMessageBody: md5, MessageId: messageId, Id: '1', MessageGroupId: groupId },
@@ -744,6 +776,36 @@ describe('sendMessageBatch', () => {
         SendMessageBatchCommand,
         Object.assign({ QueueUrl: qrl, Entries: messages })
       )
+  })
+
+  test('QueueDoesNotExist error handling calls cache invalidation and queue recreation', async () => {
+    const options = { prefix: '', sendRetries: 1 }
+    const opt = getOptionsWithDefaults(options)
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+
+    // Set up cache
+    qrlCacheSet(qname, qrl)
+
+    const messages = [formatMessage(cmd, 0, opt)]
+
+    // SendMessageBatch always fails with QueueDoesNotExist
+    sqsMock
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .rejects(new QueueDoesNotExist())
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+
+    await expect(
+      sendMessageBatch(qrl, qname, messages, opt)
+    ).rejects.toThrow(QueueDoesNotExist)
+
+    // Verify cache invalidation triggered queue recreation
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 1)
+    expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
   })
 })
 
@@ -760,15 +822,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -797,7 +859,7 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, options, sendBuffer)).resolves.toEqual({
+    expect(addMessage(qrl, qname, cmd, 9, options, sendBuffer)).resolves.toEqual({
       numFlushed: 10,
       results: [
         { MessageId: messageId, Id: '0' },
@@ -814,11 +876,11 @@ describe('addMessage / flushMessages', () => {
     })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 11, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 12, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 10, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 11, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 12, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
-    await expect(flushMessages(qrl, options, sendBuffer)).resolves.toEqual({
+    await expect(flushMessages(qrl, qname, options, sendBuffer)).resolves.toEqual({
       numFlushed: 3,
       results: [
         { MessageId: messageId, Id: '10' },
@@ -898,7 +960,7 @@ describe('addMessage / flushMessages', () => {
         ]
       })
 
-    await expect(flushMessages(qrl, opt, sendBuffer)).resolves.toEqual({
+    await expect(flushMessages(qrl, qname, opt, sendBuffer)).resolves.toEqual({
       numFlushed: 1,
       results: [
         {
@@ -932,15 +994,15 @@ describe('addMessage / flushMessages', () => {
     const sendBuffer = {}
 
     // First 9 should not flush
-    expect(addMessage(qrl, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 0, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 1, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 2, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 3, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 4, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 5, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 6, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 7, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 8, options, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
 
     // Now we should see a flush
     setSQSClient(sqsMock)
@@ -971,7 +1033,7 @@ describe('addMessage / flushMessages', () => {
       })
 
     // And the next one should flush all 10
-    expect(addMessage(qrl, cmd, 9, opt, sendBuffer)).resolves.toEqual({
+    expect(addMessage(qrl, qname, cmd, 9, opt, sendBuffer)).resolves.toEqual({
       numFlushed: 10,
       results: [
         { MessageId: messageId, Id: '0' },
@@ -988,11 +1050,11 @@ describe('addMessage / flushMessages', () => {
     })
 
     // And add three more
-    expect(addMessage(qrl, cmd, 10, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 11, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
-    expect(addMessage(qrl, cmd, 12, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 10, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 11, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
+    expect(addMessage(qrl, qname, cmd, 12, opt, sendBuffer)).resolves.toEqual({ numFlushed: 0, results: [] })
     // should flush those three
-    await expect(flushMessages(qrl, opt, sendBuffer))
+    await expect(flushMessages(qrl, qname, opt, sendBuffer))
       .rejects.toThrow('One or more message failures')
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(
