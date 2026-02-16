@@ -57,8 +57,12 @@
     "publish-latest": "npm publish --tag latest",
     "publish-next": "npm publish --tag next"
   },
-  "author": "Ryan Witt",
-  "license": "MIT",
+  "author": "SureDone, Inc.",
+  "contributors": [
+    "Ryan Witt <onecreativenerd@gmail.com>",
+    "Shane O'Hanlon <shane.c.ohanlon@gmail.com>"
+  ],
+  "license": "ISC",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/suredone/qdone.git"

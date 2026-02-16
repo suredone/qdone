@@ -1,5 +1,50 @@
 # Changelog
 
+v2.1.0 (February 2026)
+-----------------------
+
+First stable v2 release. v2 has been running in production since late 2022 across 56 alpha releases.
+
+### Bug Fixes
+
+- **Fix QueueDoesNotExist cache invalidation for `sendMessage`** ([#70](https://github.com/suredone/qdone/pull/70)) — When SQS returns `QueueDoesNotExist` (e.g. after `idle-queues --delete` removes a queue), qdone now invalidates the stale in-memory QRL cache, recreates the queue, and retries. Previously the stale URL was retried until backoff exhaustion.
+- **Fix QueueDoesNotExist cache invalidation for `sendMessageBatch`** ([#70](https://github.com/suredone/qdone/pull/70)) — Same fix applied to the batch enqueue path.
+- **Fix `check` command destructuring bug** ([#71](https://github.com/suredone/qdone/pull/71)) — `checkFailQueue` and `checkQueue` were incorrectly destructuring params.
+- **Add `check` to CLI help text** ([#71](https://github.com/suredone/qdone/pull/71)) — The `check` subcommand was functional but missing from `qdone --help`.
+
+v2.0.x-alpha (2022–2026)
+-------------------------
+
+Major rewrite of qdone. All releases published under the `next` npm tag.
+
+### Breaking Changes
+
+- Migrated from AWS SDK v2 to AWS SDK v3 (`@aws-sdk/client-sqs`, `@aws-sdk/client-cloudwatch`)
+- Converted to ES modules (`"type": "module"` in package.json). CommonJS consumers must import from `qdone/commonjs`.
+- Node.js >= 16 required
+
+### New Features
+
+- **Scheduler system** — New `SystemMonitor`, `QueueManager`, and `JobExecutor` architecture for managing workers at scale
+- **`monitor` command** ([#67](https://github.com/suredone/qdone/pull/67)) — Monitor multiple queues at once with prefix/suffix validation and FIFO support
+- **`check` command** ([#62](https://github.com/suredone/qdone/pull/62)) — Verify queue configuration matches expected attributes
+- **DLQ support** — Dead letter queues with `--dlq`, `--dlq-suffix`, and `--dlq-after` options
+- **External deduplication** ([#61](https://github.com/suredone/qdone/pull/61), [#64](https://github.com/suredone/qdone/pull/64)) — Redis-backed dedup with return of deduplication IDs to callers
+- **`--delay` option** — Delay delivery of messages by up to 900 seconds
+- **`--tag` option** — Add AWS tags to queues at creation time
+- **`--archive` flag** — Drain jobs to stdout
+- **`--fail-delay` option** — Delay on the entire fail queue
+- **Environment variable configuration** — All options configurable via env vars
+- **Sentry integration** — `--sentry-dsn` option for error tracking
+- **Memory control** — Configurable memory limits for workers
+
+### Improvements
+
+- Idle queue deletion improvements ([#66](https://github.com/suredone/qdone/pull/66)) — Including DLQ cleanup and orphan deletion
+- QRL cache and load calculation fixes ([#68](https://github.com/suredone/qdone/pull/68))
+- Faster worker ramp-up, allow multiple jobs from the same queue
+- Improved batch message handling and shared buffer fixes
+
 v.1.7.0
 -------
 
