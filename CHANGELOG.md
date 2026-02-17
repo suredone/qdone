@@ -1,5 +1,12 @@
 # Changelog
 
+v2.1.1 (February 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Fix missing CommonJS build in 2.1.0 package** — The 2.1.0 release was published without the `commonjs/` build artifacts, causing `require('qdone/commonjs')` to fail with `Cannot find module`. This patch re-includes the full CJS build.
+
 v2.1.0 (February 2026)
 -----------------------
 
