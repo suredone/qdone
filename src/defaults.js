@@ -142,7 +142,10 @@ export function getOptionsWithDefaults (options) {
 
     // Check
     create: options.create || process.env.QDONE_CREATE === 'true' || defaults.create,
-    overwrite: options.overwrite || process.env.QDONE_OVERWRITE === 'true' || defaults.overwrite
+    overwrite: options.overwrite || process.env.QDONE_OVERWRITE === 'true' || defaults.overwrite,
+
+    // Dependency injection
+    Redis: options.Redis
   }
 
   // Setting this env here means we don't have to in AWS SDK constructors
