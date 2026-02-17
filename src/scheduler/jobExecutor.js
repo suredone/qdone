@@ -324,7 +324,7 @@ export class JobExecutor {
       const queue = job.qname.slice(this.opt.prefix.length)
       const attributes = {
         queueName: job.qname,
-        messageId: job.message.MessageId,
+        messageId: job.message.MessageId || '',
         receiveCount: job.message.Attributes?.ApproximateReceiveCount || '1',
         sentTimestamp: job.message.Attributes?.SentTimestamp || '',
         firstReceiveTimestamp: job.message.Attributes?.ApproximateFirstReceiveTimestamp || '',
