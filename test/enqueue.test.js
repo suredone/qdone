@@ -1,5 +1,4 @@
 import { jest } from '@jest/globals'
-import { error } from 'console'
 import {
   CreateQueueCommand,
   GetQueueUrlCommand,
@@ -640,7 +639,6 @@ describe('sendMessage', () => {
     // Verify GetQueueUrl was called during queue recreation - this confirms the error handling code was executed
     expect(sqsMock).toHaveReceivedCommandTimes(GetQueueUrlCommand, 1)
   })
-
 })
 
 describe('sendMessageBatch', () => {
@@ -943,7 +941,6 @@ describe('addMessage / flushMessages', () => {
     const opt = getOptionsWithDefaults(options)
     const qname = 'testqueueDedupIdReturn'
     const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
-    const cmd = 'sd BulkStatusModel finalizeAll'
     const sqsMock = mockClient(client)
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const md5 = 'foobar'

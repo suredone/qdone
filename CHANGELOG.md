@@ -1,5 +1,24 @@
 # Changelog
 
+v2.2.0 (February 2026)
+-----------------------
+
+### New Features
+
+- **Expose SQS message attributes to job subprocesses** ([#86](https://github.com/suredone/qdone/pull/86)) — Worker now passes SQS message attributes (e.g. `ApproximateReceiveCount`, `SentTimestamp`, custom attributes) as environment variables to child processes.
+- **Add `ApproximateAgeOfOldestMessage` to monitor command** ([#85](https://github.com/suredone/qdone/pull/85)) — The `monitor` command now includes queue age metrics alongside message counts.
+
+### Bug Fixes
+
+- **Fix FIFO serial-execution using wrong SQS attribute name** ([#88](https://github.com/suredone/qdone/pull/88)) — FIFO serial execution was setting the wrong attribute, preventing single-concurrency group processing from working correctly.
+- **Fix `validateMessageOptions` rejecting per-message `delay` option** ([#90](https://github.com/suredone/qdone/pull/90)) — The `delay` option was incorrectly rejected when passed as a per-message option in `enqueue-batch`.
+- **Fix dedup tests failing without local Redis** ([#91](https://github.com/suredone/qdone/pull/91)) — `test/dedup.test.js` now uses ioredis-mock consistently, and patches ZADD GT/LT flag support missing from ioredis-mock 8.x.
+
+### Maintenance
+
+- Move `ioredis-mock` and `standard` to devDependencies ([#89](https://github.com/suredone/qdone/pull/89))
+- Fix lint warnings (unused imports, padded block)
+
 v2.1.1 (February 2026)
 -----------------------
 

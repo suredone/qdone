@@ -7,7 +7,7 @@ import { getCloudWatchClient } from './cloudWatch.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { GetQueueAttributesCommand, DeleteQueueCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix, qrlCacheSet } from './qrlCache.js'
+import { normalizeFailQueueName, normalizeDLQName, getQnameUrlPairs, fifoSuffix } from './qrlCache.js'
 import { getCache, setCache } from './cache.js'
 // const AWS = require('aws-sdk')
 
