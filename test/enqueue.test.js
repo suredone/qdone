@@ -472,6 +472,16 @@ describe('formatMessage', () => {
     const id = '1234'
     expect(formatMessage(cmd, id, opt)).toEqual({ MessageBody: cmd, Id: id })
   })
+  test('per-message delay sets DelaySeconds', async () => {
+    const opt = getOptionsWithDefaults()
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    expect(formatMessage(cmd, '0', opt, { delay: 30 })).toEqual({ MessageBody: cmd, Id: '0', DelaySeconds: 30 })
+  })
+  test('per-message delay overrides global delay', async () => {
+    const opt = getOptionsWithDefaults({ delay: 10 })
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    expect(formatMessage(cmd, '0', opt, { delay: 30 })).toEqual({ MessageBody: cmd, Id: '0', DelaySeconds: 30 })
+  })
 })
 
 describe('sendMessage', () => {
@@ -1279,6 +1289,50 @@ describe('enqueueBatch', () => {
         Entries: [
           { MessageBody: cmd, Id: '0' },
           { MessageBody: cmd, Id: '1' }
+        ]
+      })
+  })
+
+  test('enqueueBatch with per-message delay works', async () => {
+    const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
+    const opt = getOptionsWithDefaults({ prefix: '', uuidFunction: () => messageId })
+    const qname = 'testqueue'
+    const qrl = `https://sqs.us-east-1.amazonaws.com/foobar/${qname}`
+    const cmd = 'sd BulkStatusModel finalizeAll'
+    const sqsMock = mockClient(client)
+    const md5 = 'foobar'
+    const pairs = [
+      { queue: qname, command: cmd, messageOptions: { delay: 30 } },
+      { queue: qname, command: cmd, messageOptions: { delay: 60 } }
+    ]
+    setSQSClient(sqsMock)
+    sqsMock
+      .on(GetQueueUrlCommand, { QueueName: qname })
+      .resolves({ QueueUrl: qrl })
+      .on(SendMessageBatchCommand, { QueueUrl: qrl })
+      .resolves({
+        Successful: [
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '0' },
+          { MD5OfMessageBody: md5, MessageId: messageId, Id: '1' }
+        ]
+      })
+    await expect(
+      enqueueBatch(pairs, opt)
+    ).resolves.toEqual({
+      numFlushed: 2,
+      results: [
+        { MessageId: messageId, Id: '0' },
+        { MessageId: messageId, Id: '1' }
+      ]
+    })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(1, GetQueueUrlCommand, { QueueName: qname })
+    expect(sqsMock)
+      .toHaveReceivedNthCommandWith(2, SendMessageBatchCommand, {
+        QueueUrl: qrl,
+        Entries: [
+          { MessageBody: cmd, Id: '0', DelaySeconds: 30 },
+          { MessageBody: cmd, Id: '1', DelaySeconds: 60 }
         ]
       })
   })
