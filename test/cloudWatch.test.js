@@ -29,7 +29,8 @@ describe('putData', () => {
       contributingQueueNames: ['one', 'two', 'three'],
       ApproximateNumberOfMessages: 100,
       ApproximateNumberOfMessagesDelayed: 11,
-      ApproximateNumberOfMessagesNotVisible: 2
+      ApproximateNumberOfMessagesNotVisible: 2,
+      ApproximateAgeOfOldestMessage: 450
     }
     const now = new Date()
     await expect(putAggregateData(data, now)).resolves.toEqual()
@@ -38,6 +39,7 @@ describe('putData', () => {
     delete data.ApproximateNumberOfMessages
     delete data.ApproximateNumberOfMessagesDelayed
     delete data.ApproximateNumberOfMessagesNotVisible
+    delete data.ApproximateAgeOfOldestMessage
     await expect(putAggregateData(data, now)).resolves.toEqual()
     expect(cwMock)
       .toHaveReceivedNthSpecificCommandWith(1, PutMetricDataCommand, {
@@ -77,6 +79,13 @@ describe('putData', () => {
             Timestamp: now,
             Value: 2,
             Unit: 'Count'
+          },
+          {
+            MetricName: 'ApproximateAgeOfOldestMessage',
+            Dimensions: [{ Name: 'queueName', Value: queueName }],
+            Timestamp: now,
+            Value: 450,
+            Unit: 'Seconds'
           }
         ]
       })
@@ -118,6 +127,13 @@ describe('putData', () => {
             Timestamp: now,
             Value: 0,
             Unit: 'Count'
+          },
+          {
+            MetricName: 'ApproximateAgeOfOldestMessage',
+            Dimensions: [{ Name: 'queueName', Value: queueName }],
+            Timestamp: now,
+            Value: 0,
+            Unit: 'Seconds'
           }
         ]
       })

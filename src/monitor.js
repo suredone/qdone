@@ -44,8 +44,10 @@ export function interpretWildcard (queueName) {
  *  - ApproximateNumberOfMessages: Sum
  *  - ApproximateNumberOfMessagesDelayed: Sum
  *  - ApproximateNumberOfMessagesNotVisible: Sum
+ *  - ApproximateAgeOfOldestMessage: Max
  */
 export async function getAggregateData (queueName) {
+  const maxAttributes = new Set(['ApproximateAgeOfOldestMessage'])
   const { prefix, suffixRegex } = interpretWildcard(queueName)
   const qrls = await getMatchingQueues(prefix, suffixRegex)
   // debug({ qrls })
@@ -59,7 +61,11 @@ export async function getAggregateData (queueName) {
       const newAtrribute = parseInt(result.Attributes[key], 10)
       if (newAtrribute > 0) {
         total.contributingQueueNames.add(queue)
-        total[key] = (total[key] || 0) + newAtrribute
+        if (maxAttributes.has(key)) {
+          total[key] = Math.max(total[key] || 0, newAtrribute)
+        } else {
+          total[key] = (total[key] || 0) + newAtrribute
+        }
       }
     }
   }

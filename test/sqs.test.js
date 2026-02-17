@@ -154,12 +154,12 @@ describe('getQueueAttributes', () => {
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(1, GetQueueAttributesCommand, {
         QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_1_1021_failed',
-        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed']
+        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed', 'ApproximateAgeOfOldestMessage']
       })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(2, GetQueueAttributesCommand, {
         QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_1_1022_failed',
-        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed']
+        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed', 'ApproximateAgeOfOldestMessage']
       })
   })
 })

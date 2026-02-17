@@ -77,19 +77,22 @@ describe('getAggregateData', () => {
       .resolvesOnce({
         Attributes: {
           ApproximateNumberOfMessages: 10,
-          ApproximateNumberOfMessagesDelayed: 1
+          ApproximateNumberOfMessagesDelayed: 1,
+          ApproximateAgeOfOldestMessage: 300
         }
       })
       .resolvesOnce({
         Attributes: {
           ApproximateNumberOfMessages: 11,
-          ApproximateNumberOfMessagesNotVisible: 0
+          ApproximateNumberOfMessagesNotVisible: 0,
+          ApproximateAgeOfOldestMessage: 600
         }
       })
       .resolvesOnce({
         Attributes: {
           ApproximateNumberOfMessagesDelayed: 2,
-          ApproximateNumberOfMessagesNotVisible: 2
+          ApproximateNumberOfMessagesNotVisible: 2,
+          ApproximateAgeOfOldestMessage: 150
         }
       })
     const queueName = 'sdqd_amzn_orders_*_failed'
@@ -105,7 +108,8 @@ describe('getAggregateData', () => {
       ],
       ApproximateNumberOfMessages: 21,
       ApproximateNumberOfMessagesDelayed: 3,
-      ApproximateNumberOfMessagesNotVisible: 2
+      ApproximateNumberOfMessagesNotVisible: 2,
+      ApproximateAgeOfOldestMessage: 600
     })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(1, ListQueuesCommand, {
@@ -115,12 +119,12 @@ describe('getAggregateData', () => {
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(1, GetQueueAttributesCommand, {
         QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_0_1021_failed',
-        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed']
+        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed', 'ApproximateAgeOfOldestMessage']
       })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(2, GetQueueAttributesCommand, {
         QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_0_1022_failed',
-        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed']
+        AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed', 'ApproximateAgeOfOldestMessage']
       })
   })
 })
