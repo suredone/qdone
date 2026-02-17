@@ -1,6 +1,6 @@
 /* eslint-env jest */
 import { jest } from '@jest/globals'
-import Redis from 'ioredis-mock'
+import RedisMock from 'ioredis-mock'
 import { getOptionsWithDefaults } from '../src/defaults.js'
 import { shutdownCache, getCacheClient } from '../src/cache.js'
 import {
@@ -15,10 +15,56 @@ import {
   statMaintenance
 } from '../src/dedup.js'
 
+// ioredis-mock 8.x doesn't support ZADD GT/LT flags (ioredis-mock#1278).
+// Subclass to add support. Remove once ioredis-mock ships the fix.
+function zaddFilterGTLT (redis, origZadd, key, ...vals) {
+  if (!vals.some(v => v === 'GT' || v === 'LT')) return origZadd(key, ...vals)
+  const flags = []
+  while (['NX', 'XX', 'CH', 'INCR', 'GT', 'LT'].includes(vals[0])) flags.push(vals.shift())
+  const gt = flags.includes('GT')
+  const lt = flags.includes('LT')
+  const baseFlags = flags.filter(f => f !== 'GT' && f !== 'LT')
+  const map = redis.data.get(key)
+  const filtered = []
+  for (let i = 0; i < vals.length; i += 2) {
+    const score = Number(vals[i])
+    const member = vals[i + 1]
+    if (map && map.has(member)) {
+      const current = Number(map.get(member).score)
+      if (gt && score <= current) continue
+      if (lt && score >= current) continue
+    }
+    filtered.push(vals[i], vals[i + 1])
+  }
+  if (filtered.length === 0) return 0
+  return origZadd(key, ...baseFlags, ...filtered)
+}
+
+function patchPipelineZadd (redis, pipeline) {
+  const origZadd = pipeline.zadd.bind(pipeline)
+  pipeline.zadd = (key, ...vals) => {
+    const result = zaddFilterGTLT(redis, origZadd, key, ...vals)
+    return result === 0 ? pipeline : result
+  }
+  return pipeline
+}
+
+class Redis extends RedisMock {
+  constructor (...args) {
+    super(...args)
+    const origZadd = this.zadd
+    this.zadd = (key, ...vals) => zaddFilterGTLT(this, origZadd, key, ...vals)
+  }
+
+  multi (...args) { return patchPipelineZadd(this, super.multi(...args)) }
+  pipeline (...args) { return patchPipelineZadd(this, super.pipeline(...args)) }
+}
+
 const options = {
   cacheUri: 'redis://localhost',
   cacheTtlSeconds: 10,
-  cachePrefix: 'qdone:'
+  cachePrefix: 'qdone:',
+  Redis
 }
 
 jest.retryTimes(3)
