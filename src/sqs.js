@@ -55,8 +55,7 @@ export async function getQueueAttributes (qrls) {
       AttributeNames: [
         'ApproximateNumberOfMessages',
         'ApproximateNumberOfMessagesNotVisible',
-        'ApproximateNumberOfMessagesDelayed',
-        'ApproximateAgeOfOldestMessage'
+        'ApproximateNumberOfMessagesDelayed'
       ]
     }
     const command = new GetQueueAttributesCommand(input)
@@ -77,8 +76,7 @@ export async function getQueueAttributes (qrls) {
             Attributes: {
               ApproximateNumberOfMessages: '0',
               ApproximateNumberOfMessagesNotVisible: '0',
-              ApproximateNumberOfMessagesDelayed: '0',
-              ApproximateAgeOfOldestMessage: '0'
+              ApproximateNumberOfMessagesDelayed: '0'
             }
           }
         }

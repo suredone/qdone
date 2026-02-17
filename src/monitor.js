@@ -3,7 +3,8 @@
  */
 
 import { getMatchingQueues, getQueueAttributes } from './sqs.js'
-import { putAggregateData } from './cloudWatch.js'
+import { putAggregateData, getCloudWatchClient } from './cloudWatch.js'
+import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
 import { getOptionsWithDefaults } from './defaults.js'
 import { normalizeQueueName } from './qrlCache.js'
 import Debug from 'debug'
@@ -39,15 +40,43 @@ export function interpretWildcard (queueName) {
 }
 
 /**
+ * Gets ApproximateAgeOfOldestMessage for a single queue from CloudWatch.
+ * This metric is not available via the SQS GetQueueAttributes API.
+ */
+export async function getQueueAge (queueName) {
+  const now = new Date()
+  const params = {
+    StartTime: new Date(now.getTime() - 1000 * 60 * 5),
+    EndTime: now,
+    MetricName: 'ApproximateAgeOfOldestMessage',
+    Namespace: 'AWS/SQS',
+    Period: 300,
+    Dimensions: [{ Name: 'QueueName', Value: queueName }],
+    Statistics: ['Maximum']
+  }
+  const client = getCloudWatchClient()
+  const cmd = new GetMetricStatisticsCommand(params)
+  try {
+    const data = await client.send(cmd)
+    debug('getQueueAge', queueName, data)
+    if (!data.Datapoints || data.Datapoints.length === 0) return 0
+    return Math.max(...data.Datapoints.map(d => d.Maximum))
+  } catch (e) {
+    debug('getQueueAge error', queueName, e)
+    return 0
+  }
+}
+
+/**
  * Aggregates inmportant attributes across queues and reports a summary.
- * Attributes:
+ * Attributes (from SQS GetQueueAttributes):
  *  - ApproximateNumberOfMessages: Sum
  *  - ApproximateNumberOfMessagesDelayed: Sum
  *  - ApproximateNumberOfMessagesNotVisible: Sum
+ * Metrics (from CloudWatch):
  *  - ApproximateAgeOfOldestMessage: Max
  */
 export async function getAggregateData (queueName) {
-  const maxAttributes = new Set(['ApproximateAgeOfOldestMessage'])
   const { prefix, suffixRegex } = interpretWildcard(queueName)
   const qrls = await getMatchingQueues(prefix, suffixRegex)
   // debug({ qrls })
@@ -61,14 +90,18 @@ export async function getAggregateData (queueName) {
       const newAtrribute = parseInt(result.Attributes[key], 10)
       if (newAtrribute > 0) {
         total.contributingQueueNames.add(queue)
-        if (maxAttributes.has(key)) {
-          total[key] = Math.max(total[key] || 0, newAtrribute)
-        } else {
-          total[key] = (total[key] || 0) + newAtrribute
-        }
+        total[key] = (total[key] || 0) + newAtrribute
       }
     }
   }
+
+  // Fetch ApproximateAgeOfOldestMessage from CloudWatch (not available via SQS API)
+  // Only query queues with messages to minimize CloudWatch API costs
+  const ageResults = await Promise.all(
+    [...total.contributingQueueNames].map(queue => getQueueAge(queue))
+  )
+  total.ApproximateAgeOfOldestMessage = Math.max(0, ...ageResults)
+
   // debug({ total })
   // convert set to array
   total.contributingQueueNames = [...total.contributingQueueNames.values()]
