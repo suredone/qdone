@@ -85,6 +85,16 @@ export async function putAggregateData (total, timestamp) {
         Timestamp: now,
         Value: total.ApproximateNumberOfMessagesNotVisible || 0,
         Unit: 'Count'
+      },
+      {
+        MetricName: 'ApproximateAgeOfOldestMessage',
+        Dimensions: [{
+          Name: 'queueName',
+          Value: total.queueName
+        }],
+        Timestamp: now,
+        Value: total.ApproximateAgeOfOldestMessage || 0,
+        Unit: 'Seconds'
       }
     ]
   }
