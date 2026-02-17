@@ -322,7 +322,15 @@ export class JobExecutor {
       this.stats.runningJobs++
       this.stats.waitingJobs--
       const queue = job.qname.slice(this.opt.prefix.length)
-      const result = await job.callback(queue, job.payload)
+      const attributes = {
+        queueName: job.qname,
+        messageId: job.message.MessageId,
+        receiveCount: job.message.Attributes?.ApproximateReceiveCount || '1',
+        sentTimestamp: job.message.Attributes?.SentTimestamp || '',
+        firstReceiveTimestamp: job.message.Attributes?.ApproximateFirstReceiveTimestamp || '',
+        messageGroupId: job.message.Attributes?.MessageGroupId || ''
+      }
+      const result = await job.callback(queue, job.payload, attributes)
       debug('executeJob callback finished', { payload: job.payload, result })
       if (this.opt.verbose) {
         console.error(chalk.green('SUCCESS'), job.payload)

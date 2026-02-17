@@ -104,10 +104,21 @@ export async function executeJob (job, qname, qrl, opt) {
   const treeKiller = setTimeout(killTree, opt.killAfter * 1000)
   debug({ treeKiller: opt.killAfter * 1000, date: Date.now() })
 
+  // Build environment with SQS message attributes for child process
+  const env = {
+    ...process.env,
+    QDONE_QUEUE_NAME: qname,
+    SQS_MESSAGE_ID: job.MessageId || '',
+    SQS_RECEIVE_COUNT: job.Attributes?.ApproximateReceiveCount || '1',
+    SQS_SENT_TIMESTAMP: job.Attributes?.SentTimestamp || '',
+    SQS_FIRST_RECEIVE_TIMESTAMP: job.Attributes?.ApproximateFirstReceiveTimestamp || '',
+    SQS_MESSAGE_GROUP_ID: job.Attributes?.MessageGroupId || ''
+  }
+
   try {
     // Success path for job execution
     const { stdout, stderr } = await new Promise(function (resolve, reject) {
-      child = exec(cmd, function (err, stdout, stderr) {
+      child = exec(cmd, { env }, function (err, stdout, stderr) {
         if (err) {
           err.stdout = stdout
           err.stderr = stderr
