@@ -389,7 +389,7 @@ export class JobExecutor {
     for (const [job, i] of jobs.map((job, i) => [job, i])) {
       // Figure out if the next job needs to happen in serial, otherwise we can parallel execute
       const nextJob = jobs[i + 1]
-      const nextJobIsSerial = isFifo && nextJob && job.message?.Attributes?.GroupId === nextJob.message?.Attributes?.GroupId
+      const nextJobIsSerial = isFifo && nextJob && job.message?.Attributes?.MessageGroupId === nextJob.message?.Attributes?.MessageGroupId
 
       // console.log({ i, nextJobAtt: nextJob?.message?.Attributes, nextJobIsSerial })
       // Execute serial or parallel
