@@ -66,7 +66,7 @@ export function validateQueueName (opt, name) {
 }
 
 export function validateMessageOptions (messageOptions) {
-  const validKeys = ['deduplicationId', 'groupId']
+  const validKeys = ['deduplicationId', 'groupId', 'delay']
   if (typeof messageOptions === 'object' &&
       !Array.isArray(messageOptions) &&
       messageOptions !== null) {

@@ -55,6 +55,12 @@ describe('validateMessageOptions', () => {
     expect(validateMessageOptions({ deduplicationId: 1 })).toEqual({ deduplicationId: 1 })
     expect(validateMessageOptions({ groupId: 1, deduplicationId: 1 })).toEqual({ groupId: 1, deduplicationId: 1 })
   })
+  test('delay is a valid message option', () => {
+    expect(validateMessageOptions({ delay: 15 })).toEqual({ delay: 15 })
+    expect(validateMessageOptions({ delay: 0 })).toEqual({ delay: 0 })
+    expect(validateMessageOptions({ delay: 15, groupId: 'g1' })).toEqual({ delay: 15, groupId: 'g1' })
+    expect(validateMessageOptions({ delay: 15, groupId: 'g1', deduplicationId: 'd1' })).toEqual({ delay: 15, groupId: 'g1', deduplicationId: 'd1' })
+  })
 })
 
 describe('getOptionsWithDefaults', () => {
