@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.1 (February 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Fix monitor crash: `ApproximateAgeOfOldestMessage` is not a valid SQS attribute** ([#94](https://github.com/suredone/qdone/pull/94)) — `ApproximateAgeOfOldestMessage` is only available as a CloudWatch metric, not via the SQS `GetQueueAttributes` API. The monitor command now fetches it from CloudWatch using `GetMetricStatisticsCommand`, matching the pattern used by `idle-queues`. Only contributing queues (those with messages) are queried to minimize CloudWatch API costs.
+
 v2.2.0 (February 2026)
 -----------------------
 
