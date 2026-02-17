@@ -90,6 +90,15 @@ describe('getQueueAge', () => {
       .resolvesOnce({ Datapoints: [] })
     await expect(getQueueAge('test_queue')).resolves.toBe(0)
   })
+
+  test('returns 0 on CloudWatch error', async () => {
+    const cwMock = mockClient(cwClient)
+    setCloudWatchClient(cwMock)
+    cwMock
+      .on(GetMetricStatisticsCommand)
+      .rejectsOnce(new Error('ThrottlingException'))
+    await expect(getQueueAge('test_queue')).resolves.toBe(0)
+  })
 })
 
 describe('getAggregateData', () => {

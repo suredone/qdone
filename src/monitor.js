@@ -56,10 +56,15 @@ export async function getQueueAge (queueName) {
   }
   const client = getCloudWatchClient()
   const cmd = new GetMetricStatisticsCommand(params)
-  const data = await client.send(cmd)
-  debug('getQueueAge', queueName, data)
-  if (!data.Datapoints || data.Datapoints.length === 0) return 0
-  return Math.max(...data.Datapoints.map(d => d.Maximum))
+  try {
+    const data = await client.send(cmd)
+    debug('getQueueAge', queueName, data)
+    if (!data.Datapoints || data.Datapoints.length === 0) return 0
+    return Math.max(...data.Datapoints.map(d => d.Maximum))
+  } catch (e) {
+    debug('getQueueAge error', queueName, e)
+    return 0
+  }
 }
 
 /**
@@ -91,8 +96,9 @@ export async function getAggregateData (queueName) {
   }
 
   // Fetch ApproximateAgeOfOldestMessage from CloudWatch (not available via SQS API)
+  // Only query queues with messages to minimize CloudWatch API costs
   const ageResults = await Promise.all(
-    data.map(({ queue }) => getQueueAge(queue))
+    [...total.contributingQueueNames].map(queue => getQueueAge(queue))
   )
   total.ApproximateAgeOfOldestMessage = Math.max(0, ...ageResults)
 
