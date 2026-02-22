@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.2 (February 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Fix `dlq: true` default unreachable via API** ([#98](https://github.com/suredone/qdone/pull/98)) — `getOptionsWithDefaults()` used `||` to resolve `options.dlq`, which conflates `undefined` (option not passed) with explicit `false`, making the default `dlq: true` unreachable for any caller that doesn't explicitly pass it. Dynamically created queues got a fail queue but no dead queue. Switched to nullish coalescing (`??`) so `undefined` falls through to the default while explicit `false` is preserved. Fixes [#97](https://github.com/suredone/qdone/issues/97).
+
 v2.2.1 (February 2026)
 -----------------------
 
