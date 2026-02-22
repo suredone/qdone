@@ -70,11 +70,24 @@ describe('getOptionsWithDefaults', () => {
   test('blank prefix overrides default prefix', () => {
     expect(getOptionsWithDefaults({ prefix: '' })).toEqual(getOptionsWithDefaults({ prefix: '' }))
   })
-  test('can trun dlq off through options', () => {
-    expect(getOptionsWithDefaults({ dlq: true })).toEqual(getOptionsWithDefaults({ dlq: true }))
-    expect(getOptionsWithDefaults({ dlq: false })).toEqual(getOptionsWithDefaults({ dlq: false }))
-    expect(getOptionsWithDefaults({ dlq: 1 })).toEqual(getOptionsWithDefaults({ dlq: 1 }))
-    expect(getOptionsWithDefaults({ dlq: 0, dlqName: 0 })).toEqual(getOptionsWithDefaults({ dlq: 0 }))
+  test('dlq defaults to true when not specified', () => {
+    expect(getOptionsWithDefaults().dlq).toBe(true)
+    expect(getOptionsWithDefaults({}).dlq).toBe(true)
+  })
+  test('dlq can be explicitly enabled', () => {
+    expect(getOptionsWithDefaults({ dlq: true }).dlq).toBe(true)
+  })
+  test('dlq can be explicitly disabled', () => {
+    expect(getOptionsWithDefaults({ dlq: false }).dlq).toBe(false)
+  })
+  test('dlq enabled when dlq sub-options are set', () => {
+    expect(getOptionsWithDefaults({ dlqSuffix: '_custom_dead' }).dlq).toBe(true)
+    expect(getOptionsWithDefaults({ dlqAfter: 5 }).dlq).toBe(true)
+    expect(getOptionsWithDefaults({ 'dlq-suffix': '_custom_dead' }).dlq).toBe(true)
+  })
+  test('dlq falsy values disable dlq', () => {
+    expect(getOptionsWithDefaults({ dlq: 0 }).dlq).toBeFalsy()
+    expect(getOptionsWithDefaults({ dlq: 0, dlqName: 0 }).dlq).toEqual(getOptionsWithDefaults({ dlq: 0 }).dlq)
   })
   test('externalDedup requires a cacheUri option', () => {
     expect(() => getOptionsWithDefaults({ externalDedup: true })).toThrow('requires the')

@@ -90,8 +90,9 @@ export function getOptionsWithDefaults (options) {
   // For API invocations don't force caller to supply default options
   if (!options) options = {}
 
-  // Activate DLQ if any option is set
-  const dlq = options.dlq || !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'] || options.dlqSuffix || options.dlqAfter || options.dlqName)
+  // Activate DLQ if any option is set. Use ?? so that undefined (not passed)
+  // falls through to the default, while explicit false is preserved.
+  const dlq = options.dlq ?? (!!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'] || options.dlqSuffix || options.dlqAfter || options.dlqName) || undefined)
 
   const opt = {
     // Shared
@@ -123,7 +124,7 @@ export function getOptionsWithDefaults (options) {
     delay: options.delay || process.env.QDONE_DELAY || defaults.delay,
     sendRetries: options.sendRetries || options['send-retries'] || process.env.QDONE_SEND_RETRIES || defaults.sendRetries,
     failDelay: options.failDelay || options['fail-delay'] || process.env.QDONE_FAIL_DELAY || defaults.failDelay,
-    dlq: dlq === false ? false : defaults.dlq,
+    dlq: dlq ?? defaults.dlq,
     dlqSuffix: options.dlqSuffix || options['dlq-suffix'] || process.env.QDONE_DLQ_SUFFIX || defaults.dlqSuffix,
     dlqAfter: options.dlqAfter || options['dlq-after'] || process.env.QDONE_DLQ_AFTER || defaults.dlqAfter,
     tags: options.tags || undefined,
