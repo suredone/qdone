@@ -1202,7 +1202,7 @@ describe('enqueue', () => {
   })
 
   test('should print traceback and exit 1 with error', async () => {
-    const options = {}
+    const options = { dlq: false }
     const err = new Error('Queue cannot be created.')
     err.name = 'SomeOtherError'
     err.Code = 'AWS.SimpleQueueService.SomeOtherError'
