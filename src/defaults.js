@@ -90,9 +90,10 @@ export function getOptionsWithDefaults (options) {
   // For API invocations don't force caller to supply default options
   if (!options) options = {}
 
-  // Activate DLQ if any option is set. Use ?? so that undefined (not passed)
-  // falls through to the default, while explicit false is preserved.
-  const dlq = options.dlq ?? (!!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'] || options.dlqSuffix || options.dlqAfter || options.dlqName) || undefined)
+  // Activate DLQ if any sub-option is set. Use ?? so that undefined (not
+  // passed) falls through to the default, while explicit false is preserved.
+  const hasDlqSubOption = !!(options['dlq-suffix'] || options['dlq-after'] || options['dlq-name'] || options.dlqSuffix || options.dlqAfter || options.dlqName)
+  const dlq = options.dlq ?? (hasDlqSubOption || undefined)
 
   const opt = {
     // Shared
