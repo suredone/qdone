@@ -280,6 +280,18 @@ describe('dedupShouldEnqueue', () => {
       [null, [expectedKey, expireAt + '']]
     ])
   })
+  test('sets expireat to a unix timestamp in seconds, not milliseconds', async () => {
+    const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true }))
+    const client = getCacheClient(opt)
+    const spy = jest.spyOn(client, 'expireat')
+    const message = addDedupParamsToMessage({ MessageBody: 'ls -al' }, opt)
+    await dedupShouldEnqueue(message, opt)
+    expect(spy).toHaveBeenCalledTimes(1)
+    const timestamp = spy.mock.calls[0][1]
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    expect(timestamp).toBeGreaterThanOrEqual(nowSeconds)
+    expect(timestamp).toBeLessThanOrEqual(nowSeconds + opt.dedupPeriod + 1)
+  })
 })
 
 describe('dedupShouldEnqueueMulti', () => {
@@ -321,6 +333,17 @@ describe('dedupShouldEnqueueMulti', () => {
       [null, [expectedKey1, '1', expectedKey2, '2']],
       [null, [expectedKey1, expireAt + '', expectedKey2, expireAt + '']]
     ])
+  })
+  test('sets expireat to a unix timestamp in seconds, not milliseconds', async () => {
+    const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true }))
+    const message = addDedupParamsToMessage({ MessageBody: 'ls -alh' }, opt)
+    await dedupShouldEnqueueMulti([message], opt)
+    const dedupId = message.MessageAttributes.QdoneDeduplicationId.StringValue
+    const cacheKey = getCacheKey(dedupId, opt)
+    const client = getCacheClient(opt)
+    const ttl = await client.ttl(cacheKey)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(opt.dedupPeriod)
   })
 })
 
