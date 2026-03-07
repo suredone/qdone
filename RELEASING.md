@@ -48,11 +48,24 @@
 
 After publishing, update these files in [suredone/suredone](https://github.com/suredone/suredone):
 
-- `deploy/image/provision.sh` — the `QDONE_VERSION` default
+- `deploy/versions.sh` — the canonical `QDONE_VERSION` pin (this is what AMI builds actually use)
+- `deploy/image/provision.sh` — the `QDONE_VERSION` fallback default (only applies when `versions.sh` is absent)
 - `ui/server/package.json` — qdone dependency
 - `data-models/reports/package.json` — qdone dependency
 
-Create a single PR for all three changes.
+Then regenerate the lockfile:
+
+```
+pnpm install
+```
+
+This updates `pnpm-lock.yaml` to reflect the new qdone version in the above `package.json` files.
+
+Create a single PR for all changes.
+
+> **Warning:** `deploy/versions.sh` is sourced by `provision.sh` at startup and overrides
+> its `${QDONE_VERSION:-...}` default. If you only update `provision.sh`, the version in
+> `versions.sh` wins and new AMI builds will install the old version.
 
 ## npm Dist Tags
 
