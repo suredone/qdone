@@ -1,5 +1,16 @@
 # Changelog
 
+v2.2.3 (March 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Fix dedup EXPIREAT receiving milliseconds instead of seconds** ([#103](https://github.com/suredone/qdone/pull/103)) — `EXPIREAT` expects Unix timestamps in seconds, but was being passed milliseconds from `Date.now()`, causing dedup keys to expire far in the future. Now correctly converts to seconds. Includes regression tests for ms/s unit mismatches.
+
+### Maintenance
+
+- **Consolidate dependabot security updates** ([#104](https://github.com/suredone/qdone/pull/104)) — Bump minimatch 3.1.2→3.1.5 (ReDoS fix), ajv 6.12.6→6.14.0 (CVE fix), and normalize pnpm-lock.yaml transitive deps for AWS SDK.
+
 v2.2.2 (February 2026)
 -----------------------
 
