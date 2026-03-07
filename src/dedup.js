@@ -112,7 +112,7 @@ export async function statMaintenance (opt) {
   const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
   const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
   const client = getCacheClient(opt)
-  const now = new Date().getTime()
+  const now = Math.floor(Date.now() / 1000)
 
   // Grab a batch of expired keys
   debug({ statMaintenance: { aboutToGo: true, expirationSet } })
@@ -140,7 +140,7 @@ export async function dedupShouldEnqueue (message, opt) {
   const client = getCacheClient(opt)
   const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
   const cacheKey = getCacheKey(dedupId, opt)
-  const expireAt = new Date().getTime() + opt.dedupPeriod
+  const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
   const copies = await client.incr(cacheKey)
   debug({ action: 'shouldEnqueue', cacheKey, copies })
   if (copies === 1) {
@@ -163,7 +163,7 @@ export async function dedupShouldEnqueue (message, opt) {
  */
 export async function dedupShouldEnqueueMulti (messages, opt) {
   debug({ dedupShouldEnqueueMulti: { messages, opt } })
-  const expireAt = new Date().getTime() + opt.dedupPeriod
+  const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
   // Increment all
   const incrPipeline = getCacheClient(opt).pipeline()
   for (const message of messages) {

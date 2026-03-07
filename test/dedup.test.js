@@ -163,7 +163,7 @@ describe('addDedupParamsToMessage', () => {
 describe('updateStats', () => {
   test('updates duplicateSet and expirationSet keys', async () => {
     const opt = getOptionsWithDefaults({ ...options })
-    const expireAt = new Date().getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     await updateStats('test', 2, expireAt, opt)
@@ -182,7 +182,7 @@ describe('updateStats', () => {
   })
   test('does nothing if duplicates is <1', async () => {
     const opt = getOptionsWithDefaults({ ...options })
-    const expireAt = new Date().getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     await updateStats('test', 0, expireAt, opt)
@@ -201,7 +201,7 @@ describe('updateStats', () => {
   })
   test('works with a provided pipeline', async () => {
     const opt = getOptionsWithDefaults({ ...options })
-    const expireAt = new Date().getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
     const client = getCacheClient(opt)
@@ -227,7 +227,7 @@ describe('statMaintenance', () => {
     const opt = getOptionsWithDefaults({ ...options })
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
-    const expireAt = new Date().getTime() - 1
+    const expireAt = Math.floor(Date.now() / 1000) - 1
     await updateStats('test', 2, expireAt, opt)
     await updateStats('test', 3, expireAt, opt)
     await updateStats('test2', 2, expireAt, opt)
@@ -264,7 +264,7 @@ describe('dedupShouldEnqueue', () => {
     const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true, dedupStats: true }))
     const message = addDedupParamsToMessage({ MessageBody: 'ls -al' }, opt)
     await dedupShouldEnqueue(message, opt)
-    const expireAt = new Date().getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     await dedupShouldEnqueue(message, opt)
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
@@ -279,6 +279,18 @@ describe('dedupShouldEnqueue', () => {
       [null, [expectedKey, '1']],
       [null, [expectedKey, expireAt + '']]
     ])
+  })
+  test('sets expireat to a unix timestamp in seconds, not milliseconds', async () => {
+    const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true }))
+    const client = getCacheClient(opt)
+    const spy = jest.spyOn(client, 'expireat')
+    const message = addDedupParamsToMessage({ MessageBody: 'ls -al' }, opt)
+    await dedupShouldEnqueue(message, opt)
+    expect(spy).toHaveBeenCalledTimes(1)
+    const timestamp = spy.mock.calls[0][1]
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    expect(timestamp).toBeGreaterThanOrEqual(nowSeconds)
+    expect(timestamp).toBeLessThanOrEqual(nowSeconds + opt.dedupPeriod + 1)
   })
 })
 
@@ -305,7 +317,7 @@ describe('dedupShouldEnqueueMulti', () => {
     const message2 = addDedupParamsToMessage({ MessageBody: 'ls -alh 2' }, opt)
     const message3 = addDedupParamsToMessage({ MessageBody: 'ls -alh 3' }, opt)
     const messages = [message1, message1, message2, message2, message2, message3]
-    const expireAt = new Date().getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     await dedupShouldEnqueueMulti(messages, opt)
     const duplicateSet = opt.cachePrefix + 'dedup-stats:duplicateSet'
     const expirationSet = opt.cachePrefix + 'dedup-stats:expirationSet'
@@ -321,6 +333,17 @@ describe('dedupShouldEnqueueMulti', () => {
       [null, [expectedKey1, '1', expectedKey2, '2']],
       [null, [expectedKey1, expireAt + '', expectedKey2, expireAt + '']]
     ])
+  })
+  test('sets expireat to a unix timestamp in seconds, not milliseconds', async () => {
+    const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true }))
+    const message = addDedupParamsToMessage({ MessageBody: 'ls -alh' }, opt)
+    await dedupShouldEnqueueMulti([message], opt)
+    const dedupId = message.MessageAttributes.QdoneDeduplicationId.StringValue
+    const cacheKey = getCacheKey(dedupId, opt)
+    const client = getCacheClient(opt)
+    const ttl = await client.ttl(cacheKey)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(opt.dedupPeriod)
   })
 })
 
@@ -350,8 +373,7 @@ describe('dedupSuccessfullyProcessed', () => {
     const opt = getOptionsWithDefaults(Object.assign({ externalDedup: true, dedupStats: true }, options))
     const message = addDedupParamsToMessage({ MessageBody: 'ls -alh' }, opt)
     await dedupShouldEnqueue(message, opt)
-    const now = new Date()
-    const expireAt = now.getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     await dedupShouldEnqueue(message, opt)
 
     // Check stats exist
@@ -369,11 +391,11 @@ describe('dedupSuccessfullyProcessed', () => {
       [null, [expectedKey, expireAt + '']]
     ])
 
-    // Fake out the random number geneartor
-    jest
-      .spyOn(Math, 'random')
-      .mockImplementation(() => 0.005)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Set stat expiration scores to the past so statMaintenance cleans them
+    await client.zadd(expirationSet, Math.floor(Date.now() / 1000) - 1, expectedKey)
+
+    // Fake out the random number generator
+    jest.spyOn(Math, 'random').mockImplementation(() => 0.005)
     await expect(dedupSuccessfullyProcessed(message, opt)).resolves.toBe(1)
     jest.restoreAllMocks()
 
@@ -418,8 +440,7 @@ describe('dedupSuccessfullyProcessedMulti', () => {
   })
   test('executes stat maintenance if needed', async () => {
     const opt = getOptionsWithDefaults(Object.assign({ externalDedup: true, dedupStats: true }, options))
-    const now = new Date()
-    const expireAt = now.getTime() + opt.dedupPeriod
+    const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
     const send1 = addDedupParamsToMessage({ MessageBody: 'ls -alh 1' }, opt)
     const send2 = addDedupParamsToMessage({ MessageBody: 'ls -alh 2' }, opt)
     const send3 = addDedupParamsToMessage({ MessageBody: 'ls -alh 3' }, opt)
@@ -448,11 +469,14 @@ describe('dedupSuccessfullyProcessedMulti', () => {
       [null, [expectedKey1, expireAt + '', expectedKey3, expireAt + '', expectedKey2, expireAt + '']]
     ])
 
-    // Fake out the random number geneartor
-    jest
-      .spyOn(Math, 'random')
-      .mockImplementation(() => 2 / 100.0)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Set stat expiration scores to the past so statMaintenance cleans them
+    const pastTime = Math.floor(Date.now() / 1000) - 1
+    await client.zadd(expirationSet, pastTime, expectedKey1)
+    await client.zadd(expirationSet, pastTime, expectedKey2)
+    await client.zadd(expirationSet, pastTime, expectedKey3)
+
+    // Fake out the random number generator
+    jest.spyOn(Math, 'random').mockImplementation(() => 2 / 100.0)
     await expect(dedupSuccessfullyProcessedMulti(gets, opt)).resolves.toEqual(3)
     jest.restoreAllMocks()
 
