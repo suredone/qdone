@@ -5,7 +5,7 @@
 import { getMatchingQueues, getQueueAttributes } from './sqs.js'
 import { putAggregateData, getCloudWatchClient } from './cloudWatch.js'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { getOptionsWithDefaults } from './defaults.js'
+import { getOptionsWithDefaults, defaults } from './defaults.js'
 import { normalizeQueueName } from './qrlCache.js'
 import Debug from 'debug'
 const debug = Debug('qdone:monitor')
@@ -18,7 +18,7 @@ export async function monitor (queue, save, options) {
   const opt = getOptionsWithDefaults(options)
   const queueName = normalizeQueueName(queue, opt)
   debug({ options, opt, queue, queueName })
-  const data = await getAggregateData(queueName)
+  const data = await getAggregateData(queueName, opt)
   console.log(data)
   if (save) {
     if (opt.verbose) process.stderr.write('Saving to CloudWatch...')
@@ -76,7 +76,7 @@ export async function getQueueAge (queueName) {
  * Metrics (from CloudWatch):
  *  - ApproximateAgeOfOldestMessage: Max
  */
-export async function getAggregateData (queueName) {
+export async function getAggregateData (queueName, opt) {
   const { prefix, suffixRegex } = interpretWildcard(queueName)
   const qrls = await getMatchingQueues(prefix, suffixRegex)
   // debug({ qrls })
@@ -97,8 +97,21 @@ export async function getAggregateData (queueName) {
 
   // Fetch ApproximateAgeOfOldestMessage from CloudWatch (not available via SQS API)
   // Only query queues with messages to minimize CloudWatch API costs
+  // Filter out dead and failed queues for age calculation only — their messages
+  // age indefinitely by design, polluting the active age metric.
+  // But if the pattern itself targets dead/failed queues, don't filter them out.
+  const failSuffix = (opt && opt.failSuffix) || defaults.failSuffix
+  const dlqSuffix = (opt && opt.dlqSuffix) || defaults.dlqSuffix
+  const strippedPattern = queueName.replace(/\.fifo$/, '')
+  const patternTargetsDeadFailed = strippedPattern.endsWith(failSuffix) || strippedPattern.endsWith(dlqSuffix)
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const deadFailedRegex = new RegExp(`(${esc(failSuffix)}|${esc(dlqSuffix)})(\\.fifo)?$`)
+  const activeQueueNames = patternTargetsDeadFailed
+    ? [...total.contributingQueueNames]
+    : [...total.contributingQueueNames].filter(q => !deadFailedRegex.test(q))
+
   const ageResults = await Promise.all(
-    [...total.contributingQueueNames].map(queue => getQueueAge(queue))
+    activeQueueNames.map(queue => getQueueAge(queue))
   )
   total.ApproximateAgeOfOldestMessage = Math.max(0, ...ageResults)
 

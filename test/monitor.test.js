@@ -143,6 +143,7 @@ describe('getAggregateData', () => {
           ApproximateNumberOfMessagesNotVisible: 2
         }
       })
+    // When the pattern itself targets _failed queues, age is still computed
     cwMock
       .on(GetMetricStatisticsCommand)
       .resolvesOnce({ Datapoints: [{ Maximum: 300 }] })
@@ -164,6 +165,12 @@ describe('getAggregateData', () => {
       ApproximateNumberOfMessagesNotVisible: 2,
       ApproximateAgeOfOldestMessage: 600
     })
+    expect(cwMock)
+      .toHaveReceivedNthSpecificCommandWith(1, GetMetricStatisticsCommand, {
+        MetricName: 'ApproximateAgeOfOldestMessage',
+        Namespace: 'AWS/SQS',
+        Dimensions: [{ Name: 'QueueName', Value: 'sdqd_amzn_orders_0_1021_failed' }]
+      })
     expect(sqsMock)
       .toHaveReceivedNthSpecificCommandWith(1, ListQueuesCommand, {
         QueueNamePrefix: 'sdqd_amzn_orders_',
@@ -179,11 +186,89 @@ describe('getAggregateData', () => {
         QueueUrl: 'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_amzn_orders_0_1022_failed',
         AttributeNames: ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed']
       })
-    expect(cwMock)
-      .toHaveReceivedNthSpecificCommandWith(1, GetMetricStatisticsCommand, {
-        MetricName: 'ApproximateAgeOfOldestMessage',
-        Namespace: 'AWS/SQS',
-        Dimensions: [{ Name: 'QueueName', Value: 'sdqd_amzn_orders_0_1021_failed' }]
+  })
+
+  test('excludes dead and failed queues from age calculation', async () => {
+    const sqsMock = mockClient(sqsClient)
+    setSQSClient(sqsMock)
+    const cwMock = mockClient(cwClient)
+    setCloudWatchClient(cwMock)
+    sqsMock
+      .on(ListQueuesCommand)
+      .resolvesOnce({
+        QueueUrls: [
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_bulk_channel_123.fifo',
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_bulk_channel_123_failed.fifo',
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_bulk_channel_123_dead.fifo',
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_bulk_channel_456.fifo'
+        ]
       })
+      .on(GetQueueAttributesCommand)
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '5' } }) // active 123
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '2' } }) // failed 123
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '1' } }) // dead 123
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '3' } }) // active 456
+    cwMock
+      .on(GetMetricStatisticsCommand)
+      .resolvesOnce({ Datapoints: [{ Maximum: 120 }] }) // active 123: 2 min
+      .resolvesOnce({ Datapoints: [{ Maximum: 60 }] }) // active 456: 1 min
+
+    const opt = { failSuffix: '_failed', dlqSuffix: '_dead' }
+    const result = await getAggregateData('sdqd_bulk_channel_*.fifo', opt)
+
+    // Age should be max of active queues only (120), NOT the dead queue age
+    expect(result.ApproximateAgeOfOldestMessage).toBe(120)
+
+    // Contributing queues should still include all queues (for depth metrics)
+    expect(result.contributingQueueNames).toEqual(expect.arrayContaining([
+      'sdqd_bulk_channel_123.fifo',
+      'sdqd_bulk_channel_123_failed.fifo',
+      'sdqd_bulk_channel_123_dead.fifo',
+      'sdqd_bulk_channel_456.fifo'
+    ]))
+
+    // CloudWatch should only be called for active queues (2 calls, not 4)
+    expect(cwMock).toHaveReceivedCommandTimes(GetMetricStatisticsCommand, 2)
+    expect(cwMock).toHaveReceivedNthSpecificCommandWith(1, GetMetricStatisticsCommand, {
+      Dimensions: [{ Name: 'QueueName', Value: 'sdqd_bulk_channel_123.fifo' }]
+    })
+    expect(cwMock).toHaveReceivedNthSpecificCommandWith(2, GetMetricStatisticsCommand, {
+      Dimensions: [{ Name: 'QueueName', Value: 'sdqd_bulk_channel_456.fifo' }]
+    })
+
+    // Depth metrics should still aggregate all queues
+    expect(result.ApproximateNumberOfMessages).toBe(11)
+    expect(result.totalQueues).toBe(4)
+  })
+
+  test('excludes dead and failed queues from age for non-fifo queues', async () => {
+    const sqsMock = mockClient(sqsClient)
+    setSQSClient(sqsMock)
+    const cwMock = mockClient(cwClient)
+    setCloudWatchClient(cwMock)
+    sqsMock
+      .on(ListQueuesCommand)
+      .resolvesOnce({
+        QueueUrls: [
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_test_queue_1',
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_test_queue_1_failed',
+          'https://sqs.us-east-1.amazonaws.com/foobar/sdqd_test_queue_1_dead'
+        ]
+      })
+      .on(GetQueueAttributesCommand)
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '5' } })
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '2' } })
+      .resolvesOnce({ Attributes: { ApproximateNumberOfMessages: '1' } })
+    cwMock
+      .on(GetMetricStatisticsCommand)
+      .resolvesOnce({ Datapoints: [{ Maximum: 90 }] })
+
+    const opt = { failSuffix: '_failed', dlqSuffix: '_dead' }
+    const result = await getAggregateData('sdqd_test_queue_*', opt)
+
+    expect(result.ApproximateAgeOfOldestMessage).toBe(90)
+    expect(cwMock).toHaveReceivedCommandTimes(GetMetricStatisticsCommand, 1)
+    expect(result.totalQueues).toBe(3)
+    expect(result.ApproximateNumberOfMessages).toBe(8)
   })
 })
