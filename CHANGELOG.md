@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.4 (March 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Exclude dead/failed queues from AgeOfOldestMessage calculation** ([#106](https://github.com/suredone/qdone/pull/106)) — Dead (`_dead`) and failed (`_failed`) queue messages age indefinitely by design, polluting the `ApproximateAgeOfOldestMessage` metric when monitoring wildcard patterns like `bulk_channel_*.fifo`. The monitor now filters them out of the age computation while still including them in depth/count metrics. When a pattern itself targets dead/failed queues (e.g. `*_failed.fifo`), the filter is skipped. Also adds `--dlq-suffix` to the `monitor` CLI command. Closes [#105](https://github.com/suredone/qdone/issues/105).
+
 v2.2.3 (March 2026)
 -----------------------
 
