@@ -126,6 +126,20 @@ describe('enqueue', () => {
   })
 })
 
+describe('monitor', () => {
+  test('qdone monitor --dlq-suffix _custom_dead testQueue* # custom dlq suffix gets passed correctly', async () => {
+    const monitor = jest.fn()
+    await run(['monitor', '--verbose', '--dlq-suffix', '_custom_dead', 'testQueue*'], monitor)
+    expect(monitor).toHaveBeenCalledTimes(1)
+    expect(monitor).toHaveBeenCalledWith('testQueue*', undefined, expect.objectContaining({
+      'dlq-suffix': '_custom_dead',
+      verbose: true,
+      quiet: false,
+      _unknown: ['testQueue*']
+    }))
+  })
+})
+
 // Batch loading
 describe('loadBatchFiles', () => {
   test('test/fixtures/test-unique01-x24.batch', async () => {

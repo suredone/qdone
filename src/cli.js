@@ -197,10 +197,11 @@ export async function check (argv, testHook) {
 }
 
 const monitorOptionDefinitions = [
-  { name: 'save', alias: 's', type: Boolean, description: 'Saves data to CloudWatch' }
+  { name: 'save', alias: 's', type: Boolean, description: 'Saves data to CloudWatch' },
+  { name: 'dlq-suffix', type: String, description: `Suffix to append to each queue to generate DLQ name [default: ${defaults.dlqSuffix}]` }
 ]
 
-export async function monitor (argv) {
+export async function monitor (argv, testHook) {
   const optionDefinitions = [].concat(monitorOptionDefinitions, globalOptionDefinitions)
   const usageSections = [
     { content: 'usage: qdone monitor <queuePattern> ', raw: true },
@@ -234,7 +235,8 @@ export async function monitor (argv) {
 
   // Load module after AWS global load
   setupAWS(options)
-  const { monitor } = await import('./monitor.js')
+  const { monitor: monitorOriginal } = await import('./monitor.js')
+  const monitor = testHook || monitorOriginal
   return monitor(queue, options.save, options)
 }
 
