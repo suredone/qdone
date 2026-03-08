@@ -5,7 +5,7 @@
 import { getMatchingQueues, getQueueAttributes } from './sqs.js'
 import { putAggregateData, getCloudWatchClient } from './cloudWatch.js'
 import { GetMetricStatisticsCommand } from '@aws-sdk/client-cloudwatch'
-import { getOptionsWithDefaults } from './defaults.js'
+import { getOptionsWithDefaults, defaults } from './defaults.js'
 import { normalizeQueueName } from './qrlCache.js'
 import Debug from 'debug'
 const debug = Debug('qdone:monitor')
@@ -100,11 +100,12 @@ export async function getAggregateData (queueName, opt) {
   // Filter out dead and failed queues for age calculation only — their messages
   // age indefinitely by design, polluting the active age metric.
   // But if the pattern itself targets dead/failed queues, don't filter them out.
-  const failSuffix = (opt && opt.failSuffix) || '_failed'
-  const dlqSuffix = (opt && opt.dlqSuffix) || '_dead'
+  const failSuffix = (opt && opt.failSuffix) || defaults.failSuffix
+  const dlqSuffix = (opt && opt.dlqSuffix) || defaults.dlqSuffix
   const strippedPattern = queueName.replace(/\.fifo$/, '')
   const patternTargetsDeadFailed = strippedPattern.endsWith(failSuffix) || strippedPattern.endsWith(dlqSuffix)
-  const deadFailedRegex = new RegExp(`(${failSuffix}|${dlqSuffix})(\\.fifo)?$`)
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const deadFailedRegex = new RegExp(`(${esc(failSuffix)}|${esc(dlqSuffix)})(\\.fifo)?$`)
   const activeQueueNames = patternTargetsDeadFailed
     ? [...total.contributingQueueNames]
     : [...total.contributingQueueNames].filter(q => !deadFailedRegex.test(q))
