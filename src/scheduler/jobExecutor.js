@@ -77,6 +77,10 @@ export class JobExecutor {
     clearTimeout(job.killSignalTimer)
   }
 
+  getExecutionTimeMs (job, start = new Date()) {
+    return start - job.executionStart
+  }
+
   scheduleKillAfter (job) {
     if (!this.opt.killAfter) return
     clearTimeout(job.killTimer)
@@ -91,8 +95,9 @@ export class JobExecutor {
     if (!job.executionStart || job.status !== 'running') return
     if (job.killed) return
 
-    const executionTime = Math.round((start - job.executionStart) / 1000)
-    if (executionTime < this.opt.killAfter) return
+    const executionTimeMs = this.getExecutionTimeMs(job, start)
+    if (executionTimeMs < this.opt.killAfter * 1000) return
+    const executionTime = Math.floor(executionTimeMs / 1000)
 
     job.killDue = true
     if (!job.pid) {
@@ -211,8 +216,8 @@ export class JobExecutor {
         // Uses executionStart (when runJob began) so FIFO serial jobs aren't
         // penalized for queue wait time.
         if (this.opt.killAfter && job.executionStart && !job.killed) {
-          const executionTime = Math.round((start - job.executionStart) / 1000)
-          if (executionTime >= this.opt.killAfter) {
+          const executionTimeMs = this.getExecutionTimeMs(job, start)
+          if (executionTimeMs >= this.opt.killAfter * 1000) {
             job.killDue = true
             this.killJob(job, start)
           }
@@ -229,8 +234,9 @@ export class JobExecutor {
           // jobs should not have their visibility reduced prematurely.
           const doubled = job.visibilityTimeout * 2
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
+          const executionTimeMs = job.executionStart ? this.getExecutionTimeMs(job, start) : 0
           const secondsUntilKill = (this.opt.killAfter && job.executionStart)
-            ? Math.max(1, this.opt.killAfter - Math.round((start - job.executionStart) / 1000))
+            ? Math.max(1, Math.ceil((this.opt.killAfter * 1000 - executionTimeMs) / 1000))
             : Infinity
           job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
           job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time

@@ -35,6 +35,7 @@ function makeMessage (id = 'test-msg-1') {
 }
 
 function makeExecutor (overrides = {}) {
+  const killTree = overrides.killTree || jest.fn((_pid, _signal, callback) => callback?.())
   const opt = getOptionsWithDefaults({
     ...cacheOptions,
     killAfter: 60,
@@ -42,6 +43,7 @@ function makeExecutor (overrides = {}) {
     disableLog: true,
     ...overrides
   })
+  opt.killTree = killTree
   // Create executor but immediately clear the maintenance timer
   // so it doesn't run during tests
   const executor = new JobExecutor(opt)
@@ -81,7 +83,8 @@ describe('JobExecutor kill-after', () => {
   afterAll(shutdownCache)
 
   test('job exceeding killAfter with registered PID is killed', async () => {
-    const executor = makeExecutor({ killAfter: 10 })
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 10, killTree })
     const msg = makeMessage('kill-test')
     const callback = async () => {}
 
@@ -89,16 +92,18 @@ describe('JobExecutor kill-after', () => {
     // Simulate runJob having started
     job.status = 'running'
     job.executionStart = new Date(Date.now() - 15000) // 15s ago, exceeds killAfter=10
-    job.pid = 99999 // fake PID — treeKill will fail but that's fine
+    job.pid = 12345
 
     await executor.maintainVisibility()
 
     expect(job.killed).toBe(true)
     expect(executor.stats.jobsKilled).toBe(1)
+    expect(killTree).toHaveBeenCalledWith(12345, 'SIGTERM', expect.any(Function))
   })
 
   test('jobsKilled stat is correctly incremented', async () => {
-    const executor = makeExecutor({ killAfter: 5 })
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 5, killTree })
 
     // Add two jobs that both exceed killAfter
     for (const id of ['kill-1', 'kill-2']) {
@@ -111,6 +116,7 @@ describe('JobExecutor kill-after', () => {
     await executor.maintainVisibility()
 
     expect(executor.stats.jobsKilled).toBe(2)
+    expect(killTree).toHaveBeenCalledTimes(2)
   })
 
   test('visibility timeout is capped by killAfter', async () => {
@@ -209,29 +215,56 @@ describe('JobExecutor kill-after', () => {
   })
 
   test('killed flag prevents double-kill', async () => {
-    const executor = makeExecutor({ killAfter: 5 })
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 5, killTree })
     const msg = makeMessage('double-kill')
     const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
 
     job.status = 'running'
     job.executionStart = new Date(Date.now() - 10000)
-    job.pid = 99999
+    job.pid = 12345
 
     // First maintenance cycle — should kill
     await executor.maintainVisibility()
     expect(job.killed).toBe(true)
     expect(executor.stats.jobsKilled).toBe(1)
+    expect(killTree).toHaveBeenCalledTimes(1)
 
     // Second maintenance cycle — should NOT kill again
     await executor.maintainVisibility()
     expect(executor.stats.jobsKilled).toBe(1) // still 1
+    expect(killTree).toHaveBeenCalledTimes(1)
+  })
+
+  test('maintainVisibility waits for the exact killAfter deadline', async () => {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2026-03-24T00:00:10.000Z'))
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 10, killTree })
+    const msg = makeMessage('exact-maintenance-deadline')
+    const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    job.status = 'running'
+    job.executionStart = new Date(Date.now() - 9500)
+    job.pid = 12345
+
+    await executor.maintainVisibility()
+    expect(job.killed).toBeUndefined()
+    expect(executor.stats.jobsKilled).toBe(0)
+    expect(killTree).not.toHaveBeenCalled()
+
+    jest.setSystemTime(new Date(Date.now() + 500))
+
+    await executor.maintainVisibility()
+    expect(job.killed).toBe(true)
+    expect(executor.stats.jobsKilled).toBe(1)
+    expect(killTree).toHaveBeenCalledWith(12345, 'SIGTERM', expect.any(Function))
   })
 
   test('killAfter uses the exact deadline instead of waiting for maintenance', async () => {
-    jest.useFakeTimers()
-    const executor = makeExecutor({ killAfter: 1 })
     const killTree = jest.fn((pid, signal, callback) => callback?.())
-    executor.opt.killTree = killTree
+    jest.useFakeTimers()
+    const executor = makeExecutor({ killAfter: 1, killTree })
 
     const promise = executor.executeJobs(
       [makeMessage('exact-deadline')],
