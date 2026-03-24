@@ -110,31 +110,37 @@ export class JobExecutor {
         // Any other job state gets visibility accounting
         debug('processing', { job, jobRunTime })
 
-        // Kill-after enforcement: terminate child process if it exceeds the deadline
-        if (this.opt.killAfter && job.pid && jobRunTime >= this.opt.killAfter && !job.killed) {
+        // Kill-after enforcement: terminate child process if it exceeds the deadline.
+        // Use executionStart (when runJob began) rather than job.start (when message
+        // was received) so FIFO serial jobs aren't penalized for queue wait time.
+        const executionTime = job.executionStart
+          ? Math.round((start - job.executionStart) / 1000)
+          : null
+        if (this.opt.killAfter && job.pid && executionTime !== null && executionTime >= this.opt.killAfter && !job.killed) {
           job.killed = true
           this.stats.jobsKilled++
+          const pid = job.pid // capture before async SIGKILL to avoid PID mutation race
           const logData = {
             event: 'JOB_KILL_AFTER',
             timestamp: start,
             queue: job.qname,
             messageId: job.message.MessageId,
-            pid: job.pid,
-            jobRunTime,
+            pid,
+            executionTime,
             killAfter: this.opt.killAfter,
             payload: job.payload
           }
           if (this.opt.verbose) {
-            console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), job.pid,
-              chalk.red('after'), jobRunTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
+            console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), pid,
+              chalk.red('after'), executionTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
           } else if (!this.opt.disableLog) {
             console.log(JSON.stringify(logData))
           }
           try {
-            treeKill(job.pid, 'SIGTERM')
+            treeKill(pid, 'SIGTERM')
             setTimeout(() => {
-              try { process.kill(job.pid, 0) } catch (e) { return } // already dead
-              try { treeKill(job.pid, 'SIGKILL') } catch (e) { /* already dead */ }
+              try { process.kill(pid, 0) } catch (e) { return } // already dead
+              try { treeKill(pid, 'SIGKILL') } catch (e) { /* already dead */ }
             }, SIGKILL_DELAY_MS)
           } catch (e) {
             debug('treeKill error (process may have already exited)', e.message)
@@ -354,6 +360,7 @@ export class JobExecutor {
         }))
       }
       job.status = 'running'
+      job.executionStart = new Date()
       this.stats.runningJobs++
       this.stats.waitingJobs--
       const queue = job.qname.slice(this.opt.prefix.length)
