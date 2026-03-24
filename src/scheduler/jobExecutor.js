@@ -7,6 +7,7 @@ import { ChangeMessageVisibilityBatchCommand, DeleteMessageBatchCommand } from '
 
 import chalk from 'chalk'
 import Debug from 'debug'
+import treeKill from 'tree-kill'
 
 import { dedupSuccessfullyProcessed } from '../dedup.js'
 import { getSQSClient } from '../sqs.js'
@@ -14,6 +15,7 @@ import { getSQSClient } from '../sqs.js'
 const debug = Debug('qdone:jobExecutor')
 
 const maxJobSeconds = 12 * 60 * 60
+const SIGKILL_DELAY_MS = 5000
 
 export class JobExecutor {
   constructor (opt) {
@@ -29,7 +31,8 @@ export class JobExecutor {
       timeoutsExtended: 0,
       jobsSucceeded: 0,
       jobsFailed: 0,
-      jobsDeleted: 0
+      jobsDeleted: 0,
+      jobsKilled: 0
     }
     this.maintainPromise = this.maintainVisibility()
     debug({ this: this })
@@ -106,6 +109,38 @@ export class JobExecutor {
       } else if (job.status !== 'deleting') {
         // Any other job state gets visibility accounting
         debug('processing', { job, jobRunTime })
+
+        // Kill-after enforcement: terminate child process if it exceeds the deadline
+        if (this.opt.killAfter && job.pid && jobRunTime >= this.opt.killAfter && !job.killed) {
+          job.killed = true
+          this.stats.jobsKilled++
+          const logData = {
+            event: 'JOB_KILL_AFTER',
+            timestamp: start,
+            queue: job.qname,
+            messageId: job.message.MessageId,
+            pid: job.pid,
+            jobRunTime,
+            killAfter: this.opt.killAfter,
+            payload: job.payload
+          }
+          if (this.opt.verbose) {
+            console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), job.pid,
+              chalk.red('after'), jobRunTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
+          } else if (!this.opt.disableLog) {
+            console.log(JSON.stringify(logData))
+          }
+          try {
+            treeKill(job.pid, 'SIGTERM')
+            setTimeout(() => {
+              try { process.kill(job.pid, 0) } catch (e) { return } // already dead
+              try { treeKill(job.pid, 'SIGKILL') } catch (e) { /* already dead */ }
+            }, SIGKILL_DELAY_MS)
+          } catch (e) {
+            debug('treeKill error (process may have already exited)', e.message)
+          }
+        }
+
         if (jobRunTime >= job.extendAtSecond) {
           // Add it to our organized list of jobs
           const jobsToExtend = jobsToExtendByQrl[job.qrl] || []
@@ -115,10 +150,10 @@ export class JobExecutor {
           // Update the visibility timeout, double every time, up to max
           const doubled = job.visibilityTimeout * 2
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
-          // const secondsUntilKill = Math.max(1, this.opt.killAfter - jobRunTime)
-          job.visibilityTimeout = Math.min(doubled, secondsUntilMax) //, secondsUntilKill)
+          const secondsUntilKill = this.opt.killAfter ? Math.max(1, this.opt.killAfter - jobRunTime) : Infinity
+          job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
           job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
-          debug({ doubled, secondsUntilMax, job })
+          debug({ doubled, secondsUntilMax, secondsUntilKill, job })
         }
       }
     }
@@ -328,7 +363,8 @@ export class JobExecutor {
         receiveCount: job.message.Attributes?.ApproximateReceiveCount || '1',
         sentTimestamp: job.message.Attributes?.SentTimestamp || '',
         firstReceiveTimestamp: job.message.Attributes?.ApproximateFirstReceiveTimestamp || '',
-        messageGroupId: job.message.Attributes?.MessageGroupId || ''
+        messageGroupId: job.message.Attributes?.MessageGroupId || '',
+        registerPid: (pid) => { job.pid = pid }
       }
       const result = await job.callback(queue, job.payload, attributes)
       debug('executeJob callback finished', { payload: job.payload, result })
