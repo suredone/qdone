@@ -138,7 +138,7 @@ export class JobExecutor {
               if (err) debug('treeKill SIGTERM error', err.message)
             })
             setTimeout(() => {
-              try { process.kill(pid, 0) } catch (e) { return } // already dead
+              try { process.kill(pid, 0) } catch (e) { if (e.code === 'ESRCH') return } // only skip if truly gone
               treeKill(pid, 'SIGKILL', (err) => {
                 if (err) debug('treeKill SIGKILL error', err.message)
               })
