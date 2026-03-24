@@ -111,39 +111,38 @@ export class JobExecutor {
         debug('processing', { job, jobRunTime })
 
         // Kill-after enforcement: terminate child process if it exceeds the deadline.
-        // Use executionStart (when runJob began) rather than job.start (when message
-        // was received) so FIFO serial jobs aren't penalized for queue wait time.
-        const executionTime = job.executionStart
-          ? Math.round((start - job.executionStart) / 1000)
-          : null
-        if (this.opt.killAfter && job.pid && executionTime !== null && executionTime >= this.opt.killAfter && !job.killed) {
-          job.killed = true
-          this.stats.jobsKilled++
-          const pid = job.pid // capture before async SIGKILL to avoid PID mutation race
-          const logData = {
-            event: 'JOB_KILL_AFTER',
-            timestamp: start,
-            queue: job.qname,
-            messageId: job.message.MessageId,
-            pid,
-            executionTime,
-            killAfter: this.opt.killAfter,
-            payload: job.payload
-          }
-          if (this.opt.verbose) {
-            console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), pid,
-              chalk.red('after'), executionTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
-          } else if (!this.opt.disableLog) {
-            console.log(JSON.stringify(logData))
-          }
-          try {
-            treeKill(pid, 'SIGTERM')
+        // Uses executionStart (when runJob began) so FIFO serial jobs aren't
+        // penalized for queue wait time.
+        if (this.opt.killAfter && job.executionStart && !job.killed) {
+          const executionTime = Math.round((start - job.executionStart) / 1000)
+          if (job.pid && executionTime >= this.opt.killAfter) {
+            job.killed = true
+            this.stats.jobsKilled++
+            const pid = job.pid
+            if (this.opt.verbose) {
+              console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), pid,
+                chalk.red('after'), executionTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
+            } else if (!this.opt.disableLog) {
+              console.log(JSON.stringify({
+                event: 'JOB_KILL_AFTER',
+                timestamp: start,
+                queue: job.qname,
+                messageId: job.message.MessageId,
+                pid,
+                executionTime,
+                killAfter: this.opt.killAfter,
+                payload: job.payload
+              }))
+            }
+            treeKill(pid, 'SIGTERM', (err) => {
+              if (err) debug('treeKill SIGTERM error', err.message)
+            })
             setTimeout(() => {
               try { process.kill(pid, 0) } catch (e) { return } // already dead
-              try { treeKill(pid, 'SIGKILL') } catch (e) { /* already dead */ }
-            }, SIGKILL_DELAY_MS)
-          } catch (e) {
-            debug('treeKill error (process may have already exited)', e.message)
+              treeKill(pid, 'SIGKILL', (err) => {
+                if (err) debug('treeKill SIGKILL error', err.message)
+              })
+            }, SIGKILL_DELAY_MS).unref()
           }
         }
 
@@ -154,12 +153,13 @@ export class JobExecutor {
           jobsToExtendByQrl[job.qrl] = jobsToExtend
 
           // Update the visibility timeout, double every time, up to max.
-          // Use executionTime for kill cap (if running) so FIFO waiting jobs
-          // aren't penalized, falling back to jobRunTime before execution starts.
+          // Only cap at killAfter once execution has started — waiting FIFO
+          // jobs should not have their visibility reduced prematurely.
           const doubled = job.visibilityTimeout * 2
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
-          const killBasis = executionTime !== null ? executionTime : jobRunTime
-          const secondsUntilKill = this.opt.killAfter ? Math.max(1, this.opt.killAfter - killBasis) : Infinity
+          const secondsUntilKill = (this.opt.killAfter && job.executionStart)
+            ? Math.max(1, this.opt.killAfter - Math.round((start - job.executionStart) / 1000))
+            : Infinity
           job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
           job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
           debug({ doubled, secondsUntilMax, secondsUntilKill, job })
@@ -374,7 +374,14 @@ export class JobExecutor {
         sentTimestamp: job.message.Attributes?.SentTimestamp || '',
         firstReceiveTimestamp: job.message.Attributes?.ApproximateFirstReceiveTimestamp || '',
         messageGroupId: job.message.Attributes?.MessageGroupId || '',
-        registerPid: (pid) => { job.pid = pid }
+        /** Call with a child process PID to enable kill-after process termination. */
+        registerPid: (pid) => {
+          if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 || pid === process.pid) {
+            debug('registerPid: rejected invalid PID', pid)
+            return
+          }
+          job.pid = pid
+        }
       }
       const result = await job.callback(queue, job.payload, attributes)
       debug('executeJob callback finished', { payload: job.payload, result })
