@@ -304,4 +304,203 @@ describe('JobExecutor kill-after', () => {
     expect(job.visibilityTimeout).toBe(240)
     expect(job.killed).toBeUndefined()
   })
+
+  test('shutdown logs and exits immediately when idle', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const executor = makeExecutor({ verbose: true })
+    executor.maintainPromise = Promise.resolve()
+
+    await executor.shutdown()
+
+    expect(executor.shutdownRequested).toBe(true)
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('Shutting down jobExecutor')
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('All workers done, finishing shutdown of jobExecutor')
+
+    errorSpy.mockRestore()
+  })
+
+  test('job counters report active and running jobs per queue', () => {
+    const executor = makeExecutor()
+    const runningJob = executor.addJob(makeMessage('running-job'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const waitingJob = executor.addJob(makeMessage('waiting-job'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const otherQueueJob = executor.addJob(makeMessage('other-queue-job'), async () => {}, 'sdqd_otherqueue', 'https://sqs/sdqd_otherqueue')
+
+    runningJob.status = 'running'
+    waitingJob.status = 'waiting'
+    otherQueueJob.status = 'running'
+    executor.stats.runningJobs = 2
+
+    expect(executor.activeJobCount()).toBe(3)
+    expect(executor.runningJobCount()).toBe(2)
+    expect(executor.runningJobCountForQueue('sdqd_testqueue')).toBe(1)
+    expect(executor.runningJobCountForQueue('sdqd_otherqueue')).toBe(1)
+    expect(executor.runningJobCountForQueue('sdqd_missing')).toBe(0)
+  })
+
+  test('killJob logs kill-after events and escalates to SIGKILL when pid stays alive', async () => {
+    jest.useFakeTimers()
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true)
+    const executor = makeExecutor({ killAfter: 5, killTree, disableLog: false })
+    const job = executor.addJob(makeMessage('kill-escalation'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    job.status = 'running'
+    job.executionStart = new Date(Date.now() - 6000)
+    job.pid = 12345
+
+    executor.killJob(job, new Date())
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"JOB_KILL_AFTER"'))
+    expect(killTree).toHaveBeenCalledWith(12345, 'SIGTERM', expect.any(Function))
+
+    await jest.advanceTimersByTimeAsync(5000)
+
+    expect(processKillSpy).toHaveBeenCalledWith(12345, 0)
+    expect(killTree).toHaveBeenCalledWith(12345, 'SIGKILL', expect.any(Function))
+
+    processKillSpy.mockRestore()
+    logSpy.mockRestore()
+  })
+
+  test('setRunningVisibilityTimeout logs failures in verbose mode', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    sqsMock.on(ChangeMessageVisibilityCommand).rejects(new Error('boom'))
+    const executor = makeExecutor({ killAfter: 30, verbose: true })
+    const job = executor.addJob(makeMessage('visibility-failure'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    job.visibilityTimeout = 120
+
+    await executor.setRunningVisibilityTimeout(job)
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED_TO_SET_VISIBILITY_TIMEOUT'), expect.any(Object))
+
+    errorSpy.mockRestore()
+  })
+
+  test('maintainVisibility logs stats and handles extension batch success and failure', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const executor = makeExecutor({ verbose: true })
+    const failedJob = executor.addJob(makeMessage('extend-failed'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const successfulJob = executor.addJob(makeMessage('extend-successful'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const staleFailedJob = executor.addJob(makeMessage('stale-failed'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    failedJob.status = 'running'
+    failedJob.executionStart = new Date()
+    failedJob.extendAtSecond = 0
+    successfulJob.status = 'running'
+    successfulJob.executionStart = new Date()
+    successfulJob.extendAtSecond = 0
+    staleFailedJob.status = 'failed'
+    executor.stats.runningJobs = 2
+    executor.stats.waitingJobs = 0
+
+    sqsMock.on(ChangeMessageVisibilityBatchCommand).resolves({
+      Failed: [{ Id: failedJob.message.MessageId }],
+      Successful: [{ Id: successfulJob.message.MessageId }]
+    })
+
+    await executor.maintainVisibility()
+
+    expect(executor.stats.timeoutsExtended).toBe(1)
+    expect(executor.jobsByMessageId[failedJob.message.MessageId]).toBeUndefined()
+    expect(executor.jobsByMessageId[successfulJob.message.MessageId]).toBeDefined()
+    expect(executor.jobsByMessageId[staleFailedJob.message.MessageId]).toBeUndefined()
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('FAILED_TO_EXTEND_JOB')
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('Extended')
+
+    errorSpy.mockRestore()
+  })
+
+  test('maintainVisibility deletes completed jobs and logs batch results', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    const executor = makeExecutor({ disableLog: false })
+    const deleteSuccessJob = executor.addJob(makeMessage('delete-success'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const deleteFailedJob = executor.addJob(makeMessage('delete-failed'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    deleteSuccessJob.status = 'complete'
+    deleteFailedJob.status = 'complete'
+
+    sqsMock.on(DeleteMessageBatchCommand).resolves({
+      Failed: [{ Id: deleteFailedJob.message.MessageId }],
+      Successful: [{ Id: deleteSuccessJob.message.MessageId }]
+    })
+
+    await executor.maintainVisibility()
+
+    expect(executor.stats.jobsDeleted).toBe(1)
+    expect(executor.jobsByMessageId[deleteSuccessJob.message.MessageId]).toBeUndefined()
+    expect(executor.jobsByMessageId[deleteFailedJob.message.MessageId]).toBeUndefined()
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"DELETE_MESSAGES"'))
+    expect(errorSpy.mock.calls.flat().join(' ')).toContain('FAILED_TO_DELETE_JOB')
+
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  test('addJob logs message receipt and rejects duplicate message ids', () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    const executor = makeExecutor({ disableLog: false })
+    const msg = makeMessage('duplicate-message')
+    const originalJob = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"MESSAGE_RECEIVED"'))
+
+    let duplicateError
+    try {
+      executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    } catch (err) {
+      duplicateError = err
+    }
+
+    expect(duplicateError.message).toContain('Saw job duplicate-message twice')
+    expect(duplicateError.job).toBe(originalJob)
+
+    logSpy.mockRestore()
+  })
+
+  test('runJob logs success and failure events when logging is enabled', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {})
+    const executor = makeExecutor({ disableLog: false })
+    const successJob = executor.addJob(makeMessage('run-success'), async () => 'ok', 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const failedJob = executor.addJob(makeMessage('run-failure'), async () => {
+      throw new Error('boom')
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(successJob)
+    await executor.runJob(failedJob)
+
+    const logs = logSpy.mock.calls.map(call => call[0])
+    expect(logs.some(line => line.includes('"event":"MESSAGE_PROCESSING_START"'))).toBe(true)
+    expect(logs.some(line => line.includes('"event":"MESSAGE_PROCESSING_COMPLETE"'))).toBe(true)
+    expect(logs.some(line => line.includes('"event":"MESSAGE_PROCESSING_FAILED"'))).toBe(true)
+
+    logSpy.mockRestore()
+  })
+
+  test('runJob logs verbose success output', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const executor = makeExecutor({ verbose: true })
+    const job = executor.addJob(makeMessage('verbose-success'), async () => 'ok', 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    const output = errorSpy.mock.calls.flat().join(' ')
+    expect(output).toContain('Got message:')
+    expect(output).toContain('Running:')
+    expect(output).toContain('SUCCESS')
+    expect(output).toContain('done')
+
+    errorSpy.mockRestore()
+  })
+
+  test('executeJobs refuses new work while shutting down', async () => {
+    const executor = makeExecutor()
+    executor.shutdownRequested = true
+
+    await expect(
+      executor.executeJobs([makeMessage('shutdown-block')], async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    ).rejects.toThrow('jobExecutor is shutting down so cannot execute new jobs')
+  })
 })
