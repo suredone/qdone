@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.5 (March 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Implement `--kill-after` enforcement in consumer/jobExecutor path** ([#110](https://github.com/suredone/qdone/pull/110)) — The `--kill-after` flag was silently ignored in the production `consumer.js`/`jobExecutor.js` code path since the v2 rewrite. Only the legacy `worker.js` path had a working implementation, meaning runaway child processes could run indefinitely. This adds visibility timeout capping (messages route to the failed queue when the deadline passes), a `registerPid()` API for callbacks to opt in to process termination (SIGTERM → SIGKILL), and execution-start-based timing so FIFO serial jobs aren't penalized for queue wait time. Includes PID validation, graceful shutdown support (`.unref()`), and 8 unit tests. Closes [#109](https://github.com/suredone/qdone/issues/109).
+
 v2.2.4 (March 2026)
 -----------------------
 
