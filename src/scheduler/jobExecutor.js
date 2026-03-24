@@ -3,7 +3,11 @@
  * their visibility timeouts and deleting them when they are successful.
  */
 
-import { ChangeMessageVisibilityBatchCommand, DeleteMessageBatchCommand } from '@aws-sdk/client-sqs'
+import {
+  ChangeMessageVisibilityBatchCommand,
+  ChangeMessageVisibilityCommand,
+  DeleteMessageBatchCommand
+} from '@aws-sdk/client-sqs'
 
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -15,6 +19,7 @@ import { getSQSClient } from '../sqs.js'
 const debug = Debug('qdone:jobExecutor')
 
 const maxJobSeconds = 12 * 60 * 60
+const defaultVisibilityTimeout = 120
 const SIGKILL_DELAY_MS = 5000
 
 export class JobExecutor {
@@ -67,6 +72,98 @@ export class JobExecutor {
     return runningCount
   }
 
+  clearJobTimers (job) {
+    clearTimeout(job.killTimer)
+    clearTimeout(job.killSignalTimer)
+  }
+
+  scheduleKillAfter (job) {
+    if (!this.opt.killAfter) return
+    clearTimeout(job.killTimer)
+    job.killTimer = setTimeout(() => {
+      job.killDue = true
+      this.killJob(job, new Date())
+    }, this.opt.killAfter * 1000)
+    job.killTimer.unref?.()
+  }
+
+  killJob (job, start = new Date()) {
+    if (!job.executionStart || job.status !== 'running') return
+    if (job.killed) return
+
+    const executionTime = Math.round((start - job.executionStart) / 1000)
+    if (executionTime < this.opt.killAfter) return
+
+    job.killDue = true
+    if (!job.pid) {
+      debug('killAfter reached before PID registration', { messageId: job.message?.MessageId, executionTime })
+      return
+    }
+
+    job.killed = true
+    this.stats.jobsKilled++
+    const pid = job.pid
+    const killTree = this.opt.killTree || treeKill
+
+    if (this.opt.verbose) {
+      console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), pid,
+        chalk.red('after'), executionTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
+    } else if (!this.opt.disableLog) {
+      console.log(JSON.stringify({
+        event: 'JOB_KILL_AFTER',
+        timestamp: start,
+        queue: job.qname,
+        messageId: job.message.MessageId,
+        pid,
+        executionTime,
+        killAfter: this.opt.killAfter,
+        payload: job.payload
+      }))
+    }
+
+    killTree(pid, 'SIGTERM', (err) => {
+      if (err) debug('treeKill SIGTERM error', err.message)
+    })
+
+    clearTimeout(job.killSignalTimer)
+    job.killSignalTimer = setTimeout(() => {
+      try { process.kill(pid, 0) } catch (e) { if (e.code === 'ESRCH') return }
+      killTree(pid, 'SIGKILL', (err) => {
+        if (err) debug('treeKill SIGKILL error', err.message)
+      })
+    }, SIGKILL_DELAY_MS)
+    job.killSignalTimer.unref?.()
+  }
+
+  async setRunningVisibilityTimeout (job) {
+    if (!this.opt.killAfter) return
+
+    const visibilityTimeout = Math.max(1, Math.min(job.visibilityTimeout, this.opt.killAfter))
+    if (visibilityTimeout >= job.visibilityTimeout) return
+
+    job.visibilityTimeout = visibilityTimeout
+    job.extendAtSecond = Math.round(job.visibilityTimeout / 2)
+
+    const input = {
+      QueueUrl: job.qrl,
+      ReceiptHandle: job.message.ReceiptHandle,
+      VisibilityTimeout: job.visibilityTimeout
+    }
+    debug({ ChangeMessageVisibility: input })
+
+    try {
+      const result = await getSQSClient().send(new ChangeMessageVisibilityCommand(input))
+      debug('ChangeMessageVisibility returned', result)
+      this.stats.sqsCalls++
+      this.stats.timeoutsExtended++
+    } catch (err) {
+      debug('ChangeMessageVisibility error', err)
+      if (this.opt.verbose) {
+        console.error(chalk.red('FAILED_TO_SET_VISIBILITY_TIMEOUT'), { err, input })
+      }
+    }
+  }
+
   /**
    * Changes message visibility on all running jobs using as few calls as possible.
    */
@@ -115,34 +212,9 @@ export class JobExecutor {
         // penalized for queue wait time.
         if (this.opt.killAfter && job.executionStart && !job.killed) {
           const executionTime = Math.round((start - job.executionStart) / 1000)
-          if (job.pid && executionTime >= this.opt.killAfter) {
-            job.killed = true
-            this.stats.jobsKilled++
-            const pid = job.pid
-            if (this.opt.verbose) {
-              console.error(chalk.red('KILLING'), job.prettyQname, chalk.red('pid'), pid,
-                chalk.red('after'), executionTime, chalk.red('seconds (limit:'), this.opt.killAfter + ')')
-            } else if (!this.opt.disableLog) {
-              console.log(JSON.stringify({
-                event: 'JOB_KILL_AFTER',
-                timestamp: start,
-                queue: job.qname,
-                messageId: job.message.MessageId,
-                pid,
-                executionTime,
-                killAfter: this.opt.killAfter,
-                payload: job.payload
-              }))
-            }
-            treeKill(pid, 'SIGTERM', (err) => {
-              if (err) debug('treeKill SIGTERM error', err.message)
-            })
-            setTimeout(() => {
-              try { process.kill(pid, 0) } catch (e) { if (e.code === 'ESRCH') return } // only skip if truly gone
-              treeKill(pid, 'SIGKILL', (err) => {
-                if (err) debug('treeKill SIGKILL error', err.message)
-              })
-            }, SIGKILL_DELAY_MS).unref()
+          if (executionTime >= this.opt.killAfter) {
+            job.killDue = true
+            this.killJob(job, start)
           }
         }
 
@@ -208,7 +280,7 @@ export class JobExecutor {
         const result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
         debug('ChangeMessageVisibilityBatch returned', result)
         this.stats.sqsCalls++
-        if (result.Failed) {
+        if (result.Failed?.length) {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
             console.error('FAILED_TO_EXTEND_JOB', { failedEntry: failed, job: this.jobsByMessageId[failed.Id] })
@@ -216,7 +288,7 @@ export class JobExecutor {
             if (this.jobsByMessageId[failed.Id]) this.jobsByMessageId[failed.Id].status = 'failed'
           }
         }
-        if (result.Successful) {
+        if (result.Successful?.length) {
           const count = result.Successful.length || 0
           this.stats.timeoutsExtended += count
           if (this.opt.verbose) {
@@ -252,7 +324,7 @@ export class JobExecutor {
         debug({ DeleteMessageBatch: input })
         const result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
         this.stats.sqsCalls++
-        if (result.Failed) {
+        if (result.Failed?.length) {
           console.error('FAILED_MESSAGES', result.Failed)
           for (const failed of result.Failed) {
             console.error('FAILED_TO_DELETE_JOB', { failedEntry: failed, job: this.jobsByMessageId[failed.Id] })
@@ -260,7 +332,7 @@ export class JobExecutor {
             if (this.jobsByMessageId[failed.Id]) this.jobsByMessageId[failed.Id].status = 'failed'
           }
         }
-        if (result.Successful) {
+        if (result.Successful?.length) {
           const count = result.Successful.length || 0
           this.stats.jobsDeleted += count
           if (this.opt.verbose) {
@@ -298,7 +370,6 @@ export class JobExecutor {
 
   addJob (message, callback, qname, qrl) {
     // Create job entry and track it
-    const defaultVisibilityTimeout = 120
     const job = {
       status: 'waiting',
       start: new Date(),
@@ -366,6 +437,8 @@ export class JobExecutor {
       job.executionStart = new Date()
       this.stats.runningJobs++
       this.stats.waitingJobs--
+      this.scheduleKillAfter(job)
+      await this.setRunningVisibilityTimeout(job)
       const queue = job.qname.slice(this.opt.prefix.length)
       const attributes = {
         queueName: job.qname,
@@ -381,6 +454,7 @@ export class JobExecutor {
             return
           }
           job.pid = pid
+          if (job.killDue && !job.killed) this.killJob(job, new Date())
         }
       }
       const result = await job.callback(queue, job.payload, attributes)
@@ -423,9 +497,11 @@ export class JobExecutor {
           err
         }))
       }
+    } finally {
+      this.clearJobTimers(job)
+      this.stats.activeJobs--
+      this.stats.runningJobs--
     }
-    this.stats.activeJobs--
-    this.stats.runningJobs--
   }
 
   async executeJobs (messages, callback, qname, qrl) {

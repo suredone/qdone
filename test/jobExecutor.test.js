@@ -1,9 +1,11 @@
 import {
+  ChangeMessageVisibilityCommand,
   ChangeMessageVisibilityBatchCommand,
   DeleteMessageBatchCommand
 } from '@aws-sdk/client-sqs'
 import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
+import { jest } from '@jest/globals'
 
 import { JobExecutor } from '../src/scheduler/jobExecutor.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
@@ -17,6 +19,7 @@ const cacheOptions = {
   cacheUri: 'redis://localhost',
   Redis: (await import('ioredis-mock')).default
 }
+const executors = []
 
 function makeMessage (id = 'test-msg-1') {
   return {
@@ -43,7 +46,18 @@ function makeExecutor (overrides = {}) {
   // so it doesn't run during tests
   const executor = new JobExecutor(opt)
   clearTimeout(executor.maintainVisibilityTimeout)
+  executors.push(executor)
   return executor
+}
+
+function cleanupExecutors () {
+  for (const executor of executors.splice(0)) {
+    clearTimeout(executor.maintainVisibilityTimeout)
+    for (const job of executor.jobs) {
+      clearTimeout(job.killTimer)
+      clearTimeout(job.killSignalTimer)
+    }
+  }
 }
 
 describe('JobExecutor kill-after', () => {
@@ -53,11 +67,14 @@ describe('JobExecutor kill-after', () => {
     shutdownCache()
     sqsMock = mockClient(client)
     setSQSClient(sqsMock)
+    sqsMock.on(ChangeMessageVisibilityCommand).resolves({})
     sqsMock.on(ChangeMessageVisibilityBatchCommand).resolves({ Successful: [], Failed: [] })
     sqsMock.on(DeleteMessageBatchCommand).resolves({ Successful: [], Failed: [] })
   })
 
   afterEach(() => {
+    cleanupExecutors()
+    jest.useRealTimers()
     sqsMock.restore()
   })
 
@@ -113,6 +130,23 @@ describe('JobExecutor kill-after', () => {
     expect(job.visibilityTimeout).toBeGreaterThan(0)
   })
 
+  test('runJob shrinks the initial visibility timeout to killAfter', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('initial-visibility')
+    const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.visibilityTimeout).toBe(30)
+    expect(job.extendAtSecond).toBe(15)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 1)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand)[0].args[0].input).toEqual({
+      QueueUrl: 'https://sqs/sdqd_testqueue',
+      ReceiptHandle: msg.ReceiptHandle,
+      VisibilityTimeout: 30
+    })
+  })
+
   test('job without registered PID is not killed but visibility is still capped', async () => {
     const executor = makeExecutor({ killAfter: 60 })
     const msg = makeMessage('no-pid-test')
@@ -155,31 +189,23 @@ describe('JobExecutor kill-after', () => {
   test('registerPid validates input', async () => {
     const executor = makeExecutor()
     const msg = makeMessage('validate-pid')
-    const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      attributes.registerPid(0)
+      expect(job.pid).toBeUndefined()
+      attributes.registerPid(1)
+      expect(job.pid).toBeUndefined()
+      attributes.registerPid(-5)
+      expect(job.pid).toBeUndefined()
+      attributes.registerPid('123')
+      expect(job.pid).toBeUndefined()
+      attributes.registerPid(process.pid)
+      expect(job.pid).toBeUndefined()
 
-    // Simulate runJob setting up attributes
-    job.status = 'running'
-    job.executionStart = new Date()
-    const registerPid = (pid) => {
-      if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 || pid === process.pid) return
-      job.pid = pid
-    }
+      attributes.registerPid(12345)
+      expect(job.pid).toBe(12345)
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
 
-    // Invalid PIDs
-    registerPid(0)
-    expect(job.pid).toBeUndefined()
-    registerPid(1)
-    expect(job.pid).toBeUndefined()
-    registerPid(-5)
-    expect(job.pid).toBeUndefined()
-    registerPid('123')
-    expect(job.pid).toBeUndefined()
-    registerPid(process.pid)
-    expect(job.pid).toBeUndefined()
-
-    // Valid PID
-    registerPid(12345)
-    expect(job.pid).toBe(12345)
+    await executor.runJob(job)
   })
 
   test('killed flag prevents double-kill', async () => {
@@ -199,6 +225,33 @@ describe('JobExecutor kill-after', () => {
     // Second maintenance cycle — should NOT kill again
     await executor.maintainVisibility()
     expect(executor.stats.jobsKilled).toBe(1) // still 1
+  })
+
+  test('killAfter uses the exact deadline instead of waiting for maintenance', async () => {
+    jest.useFakeTimers()
+    const executor = makeExecutor({ killAfter: 1 })
+    const killTree = jest.fn((pid, signal, callback) => callback?.())
+    executor.opt.killTree = killTree
+
+    const promise = executor.executeJobs(
+      [makeMessage('exact-deadline')],
+      async (_queue, _payload, attributes) => {
+        attributes.registerPid(12345)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      },
+      'sdqd_testqueue',
+      'https://sqs/sdqd_testqueue'
+    )
+
+    await jest.advanceTimersByTimeAsync(999)
+    expect(killTree).not.toHaveBeenCalled()
+
+    await jest.advanceTimersByTimeAsync(1)
+    expect(killTree).toHaveBeenCalledWith(12345, 'SIGTERM', expect.any(Function))
+
+    await jest.advanceTimersByTimeAsync(1000)
+    await promise
+    expect(executor.stats.jobsKilled).toBe(1)
   })
 
   test('waiting FIFO job does not get visibility capped', async () => {
