@@ -153,10 +153,13 @@ export class JobExecutor {
           jobsToExtend.push(job)
           jobsToExtendByQrl[job.qrl] = jobsToExtend
 
-          // Update the visibility timeout, double every time, up to max
+          // Update the visibility timeout, double every time, up to max.
+          // Use executionTime for kill cap (if running) so FIFO waiting jobs
+          // aren't penalized, falling back to jobRunTime before execution starts.
           const doubled = job.visibilityTimeout * 2
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
-          const secondsUntilKill = this.opt.killAfter ? Math.max(1, this.opt.killAfter - jobRunTime) : Infinity
+          const killBasis = executionTime !== null ? executionTime : jobRunTime
+          const secondsUntilKill = this.opt.killAfter ? Math.max(1, this.opt.killAfter - killBasis) : Infinity
           job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
           job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
           debug({ doubled, secondsUntilMax, secondsUntilKill, job })
