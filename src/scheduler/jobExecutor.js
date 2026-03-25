@@ -188,8 +188,7 @@ export class JobExecutor {
 
     job.executionMode = 'inline'
     job.killDue = false
-    clearTimeout(job.killTimer)
-    clearTimeout(job.killSignalTimer)
+    this.clearJobTimers(job)
 
     if (job.status === 'running' && job.visibilityTimeout < defaultVisibilityTimeout) {
       await this.setJobVisibilityTimeout(job, defaultVisibilityTimeout)
@@ -508,6 +507,10 @@ export class JobExecutor {
         messageGroupId: job.message.Attributes?.MessageGroupId || '',
         /** Call with a child process PID to enable kill-after process termination. */
         registerPid: (pid) => {
+          if (job.executionMode === 'inline') {
+            debug('registerPid ignored after registerInlineExecution', { messageId: job.message?.MessageId })
+            return
+          }
           if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 || pid === process.pid) {
             debug('registerPid: rejected invalid PID', pid)
             return

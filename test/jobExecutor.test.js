@@ -188,6 +188,55 @@ describe('JobExecutor kill-after', () => {
     expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
   })
 
+  test('registerInlineExecution is ignored after registerPid', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('pid-first')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      attributes.registerPid(12345)
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('child_process')
+    expect(job.pid).toBe(12345)
+    expect(job.visibilityTimeout).toBe(30)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 1)
+  })
+
+  test('registerPid is ignored after registerInlineExecution', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-first')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+      attributes.registerPid(12345)
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.pid).toBeUndefined()
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
+  test('registerInlineExecution is idempotent', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-idempotent')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
   test('inline jobs exceeding killAfter are not visibility capped or killed', async () => {
     const executor = makeExecutor({ killAfter: 60 })
     const msg = makeMessage('inline-overrun')
