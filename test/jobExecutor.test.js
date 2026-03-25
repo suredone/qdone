@@ -173,6 +173,39 @@ describe('JobExecutor kill-after', () => {
     expect(job.visibilityTimeout).toBe(1)
   })
 
+  test('registerInlineExecution restores default visibility for inline jobs', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-restore')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
+  test('inline jobs exceeding killAfter are not visibility capped or killed', async () => {
+    const executor = makeExecutor({ killAfter: 60 })
+    const msg = makeMessage('inline-overrun')
+    const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    job.status = 'running'
+    job.executionStart = new Date(Date.now() - 90000)
+    job.executionMode = 'inline'
+    job.extendAtSecond = 0
+
+    await executor.maintainVisibility()
+
+    expect(job.visibilityTimeout).toBe(240)
+    expect(job.killed).toBeUndefined()
+    expect(executor.stats.jobsKilled).toBe(0)
+    expect(job.inlineKillAfterLogged).toBe(true)
+  })
+
   test('job completing within killAfter is not affected', async () => {
     const executor = makeExecutor({ killAfter: 3600 })
     const msg = makeMessage('ok-test')
