@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.6 (March 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Allow inline jobs to opt out of kill-after enforcement** ([#111](https://github.com/suredone/qdone/pull/111)) — Jobs that execute inline (without spawning a child process) were incorrectly subject to `--kill-after` visibility timeout capping. This adds a callback path for inline jobs to signal that kill-after should not apply, while preserving PID-based enforcement for true child-process jobs. Centralizes the enforcement decision via `shouldEnforceKillAfter` and hardens inline registration.
+
 v2.2.5 (March 2026)
 -----------------------
 
