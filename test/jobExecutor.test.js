@@ -255,6 +255,35 @@ describe('JobExecutor kill-after', () => {
     expect(job.inlineKillAfterLogged).toBe(true)
   })
 
+  test('registerPid after killDue triggers immediate kill', async () => {
+    jest.useFakeTimers()
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 1, killTree })
+
+    const promise = executor.executeJobs(
+      [makeMessage('late-pid')],
+      async (_queue, _payload, attributes) => {
+        // Delay PID registration until after the kill deadline
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        attributes.registerPid(54321)
+      },
+      'sdqd_testqueue',
+      'https://sqs/sdqd_testqueue'
+    )
+
+    // Advance past the killAfter deadline — killDue set, but no PID yet
+    await jest.advanceTimersByTimeAsync(1000)
+    expect(killTree).not.toHaveBeenCalled()
+
+    // Advance to where the callback registers the PID — should kill immediately
+    await jest.advanceTimersByTimeAsync(500)
+    expect(killTree).toHaveBeenCalledWith(54321, 'SIGTERM', expect.any(Function))
+    expect(executor.stats.jobsKilled).toBe(1)
+
+    await jest.advanceTimersByTimeAsync(5000)
+    await promise
+  })
+
   test('job completing within killAfter is not affected', async () => {
     const executor = makeExecutor({ killAfter: 3600 })
     const msg = makeMessage('ok-test')

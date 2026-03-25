@@ -98,7 +98,7 @@ export class JobExecutor {
   killJob (job, start = new Date()) {
     if (!job.executionStart || job.status !== 'running') return
     if (job.killed) return
-    if (job.executionMode === 'inline') return
+    if (!this.shouldEnforceKillAfter(job)) return
 
     const executionTimeMs = this.getExecutionTimeMs(job, start)
     if (executionTimeMs < this.opt.killAfter * 1000) return
@@ -238,7 +238,6 @@ export class JobExecutor {
       this.maintainPromise = this.maintainVisibility()
     }, nextCheckInMs)
 
-    // debug('maintainVisibility', this.jobs)
     const start = new Date()
     const jobsToExtendByQrl = {}
     const jobsToDeleteByQrl = {}
@@ -250,7 +249,6 @@ export class JobExecutor {
       const job = this.jobs[i]
       const jobRunTime = Math.round((start - job.start) / 1000)
       jobStatuses[job.status] = (jobStatuses[job.status] || 0) + 1
-      // debug('considering job', job)
       if (job.status === 'complete') {
         const jobsToDelete = jobsToDeleteByQrl[job.qrl] || []
         job.status = 'deleting'
@@ -579,15 +577,12 @@ export class JobExecutor {
     const isFifo = qrl.endsWith('.fifo')
     const runningJobs = []
 
-    // console.log(jobs)
-
     // Begin executing
     for (const [job, i] of jobs.map((job, i) => [job, i])) {
       // Figure out if the next job needs to happen in serial, otherwise we can parallel execute
       const nextJob = jobs[i + 1]
       const nextJobIsSerial = isFifo && nextJob && job.message?.Attributes?.MessageGroupId === nextJob.message?.Attributes?.MessageGroupId
 
-      // console.log({ i, nextJobAtt: nextJob?.message?.Attributes, nextJobIsSerial })
       // Execute serial or parallel
       if (nextJobIsSerial) await this.runJob(job)
       else runningJobs.push(this.runJob(job))
