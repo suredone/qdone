@@ -173,6 +173,117 @@ describe('JobExecutor kill-after', () => {
     expect(job.visibilityTimeout).toBe(1)
   })
 
+  test('registerInlineExecution restores default visibility for inline jobs', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-restore')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
+  test('registerInlineExecution is ignored after registerPid', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('pid-first')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      attributes.registerPid(12345)
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('child_process')
+    expect(job.pid).toBe(12345)
+    expect(job.visibilityTimeout).toBe(30)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 1)
+  })
+
+  test('registerPid is ignored after registerInlineExecution', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-first')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+      attributes.registerPid(12345)
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.pid).toBeUndefined()
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
+  test('registerInlineExecution is idempotent', async () => {
+    const executor = makeExecutor({ killAfter: 30 })
+    const msg = makeMessage('inline-idempotent')
+    const job = executor.addJob(msg, async (_queue, _payload, attributes) => {
+      await attributes.registerInlineExecution()
+      await attributes.registerInlineExecution()
+    }, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    await executor.runJob(job)
+
+    expect(job.executionMode).toBe('inline')
+    expect(job.visibilityTimeout).toBe(120)
+    expect(sqsMock).toHaveReceivedCommandTimes(ChangeMessageVisibilityCommand, 2)
+    expect(sqsMock.commandCalls(ChangeMessageVisibilityCommand).map(call => call.args[0].input.VisibilityTimeout)).toEqual([30, 120])
+  })
+
+  test('inline jobs exceeding killAfter are not visibility capped or killed', async () => {
+    const executor = makeExecutor({ killAfter: 60 })
+    const msg = makeMessage('inline-overrun')
+    const job = executor.addJob(msg, async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+
+    job.status = 'running'
+    job.executionStart = new Date(Date.now() - 90000)
+    job.executionMode = 'inline'
+    job.extendAtSecond = 0
+
+    await executor.maintainVisibility()
+
+    expect(job.visibilityTimeout).toBe(240)
+    expect(job.killed).toBeUndefined()
+    expect(executor.stats.jobsKilled).toBe(0)
+    expect(job.inlineKillAfterLogged).toBe(true)
+  })
+
+  test('registerPid after killDue triggers immediate kill', async () => {
+    jest.useFakeTimers()
+    const killTree = jest.fn((_pid, _signal, callback) => callback?.())
+    const executor = makeExecutor({ killAfter: 1, killTree })
+
+    const promise = executor.executeJobs(
+      [makeMessage('late-pid')],
+      async (_queue, _payload, attributes) => {
+        // Delay PID registration until after the kill deadline
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        attributes.registerPid(54321)
+      },
+      'sdqd_testqueue',
+      'https://sqs/sdqd_testqueue'
+    )
+
+    // Advance past the killAfter deadline — killDue set, but no PID yet
+    await jest.advanceTimersByTimeAsync(1000)
+    expect(killTree).not.toHaveBeenCalled()
+
+    // Advance to where the callback registers the PID — should kill immediately
+    await jest.advanceTimersByTimeAsync(500)
+    expect(killTree).toHaveBeenCalledWith(54321, 'SIGTERM', expect.any(Function))
+    expect(executor.stats.jobsKilled).toBe(1)
+
+    await jest.advanceTimersByTimeAsync(5000)
+    await promise
+  })
+
   test('job completing within killAfter is not affected', async () => {
     const executor = makeExecutor({ killAfter: 3600 })
     const msg = makeMessage('ok-test')

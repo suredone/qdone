@@ -81,6 +81,10 @@ export class JobExecutor {
     return start - job.executionStart
   }
 
+  shouldEnforceKillAfter (job) {
+    return !!(this.opt.killAfter && job.executionMode !== 'inline')
+  }
+
   scheduleKillAfter (job) {
     if (!this.opt.killAfter) return
     clearTimeout(job.killTimer)
@@ -94,6 +98,7 @@ export class JobExecutor {
   killJob (job, start = new Date()) {
     if (!job.executionStart || job.status !== 'running') return
     if (job.killed) return
+    if (!this.shouldEnforceKillAfter(job)) return
 
     const executionTimeMs = this.getExecutionTimeMs(job, start)
     if (executionTimeMs < this.opt.killAfter * 1000) return
@@ -140,14 +145,10 @@ export class JobExecutor {
     job.killSignalTimer.unref?.()
   }
 
-  async setRunningVisibilityTimeout (job) {
-    if (!this.opt.killAfter) return
-
-    const visibilityTimeout = Math.max(1, Math.min(job.visibilityTimeout, this.opt.killAfter))
-    if (visibilityTimeout >= job.visibilityTimeout) return
-
+  async setJobVisibilityTimeout (job, visibilityTimeout, start = new Date()) {
     job.visibilityTimeout = visibilityTimeout
-    job.extendAtSecond = Math.round(job.visibilityTimeout / 2)
+    const jobRunTime = Math.round((start - job.start) / 1000)
+    job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2)
 
     const input = {
       QueueUrl: job.qrl,
@@ -166,6 +167,55 @@ export class JobExecutor {
       if (this.opt.verbose) {
         console.error(chalk.red('FAILED_TO_SET_VISIBILITY_TIMEOUT'), { err, input })
       }
+    }
+  }
+
+  async setRunningVisibilityTimeout (job) {
+    if (!this.shouldEnforceKillAfter(job)) return
+
+    const visibilityTimeout = Math.max(1, Math.min(job.visibilityTimeout, this.opt.killAfter))
+    if (visibilityTimeout >= job.visibilityTimeout) return
+
+    await this.setJobVisibilityTimeout(job, visibilityTimeout)
+  }
+
+  async registerInlineExecution (job) {
+    if (job.executionMode === 'inline') return
+    if (job.executionMode === 'child_process') {
+      debug('registerInlineExecution ignored after registerPid', { messageId: job.message?.MessageId })
+      return
+    }
+
+    job.executionMode = 'inline'
+    job.killDue = false
+    this.clearJobTimers(job)
+
+    if (job.status === 'running' && job.visibilityTimeout < defaultVisibilityTimeout) {
+      await this.setJobVisibilityTimeout(job, defaultVisibilityTimeout)
+    }
+  }
+
+  logInlineKillAfterOverrun (job, start = new Date()) {
+    if (!this.opt.killAfter || !job.executionStart || job.inlineKillAfterLogged) return
+
+    const executionTimeMs = this.getExecutionTimeMs(job, start)
+    if (executionTimeMs < this.opt.killAfter * 1000) return
+
+    job.inlineKillAfterLogged = true
+    const executionTime = Math.floor(executionTimeMs / 1000)
+    if (this.opt.verbose) {
+      console.error(chalk.yellow('INLINE_JOB_EXCEEDED_KILL_AFTER'), job.prettyQname,
+        chalk.yellow('after'), executionTime, chalk.yellow('seconds (limit:'), this.opt.killAfter + ')')
+    } else if (!this.opt.disableLog) {
+      console.log(JSON.stringify({
+        event: 'INLINE_JOB_EXCEEDED_KILL_AFTER',
+        timestamp: start,
+        queue: job.qname,
+        messageId: job.message.MessageId,
+        executionTime,
+        killAfter: this.opt.killAfter,
+        payload: job.payload
+      }))
     }
   }
 
@@ -188,7 +238,6 @@ export class JobExecutor {
       this.maintainPromise = this.maintainVisibility()
     }, nextCheckInMs)
 
-    // debug('maintainVisibility', this.jobs)
     const start = new Date()
     const jobsToExtendByQrl = {}
     const jobsToDeleteByQrl = {}
@@ -200,7 +249,6 @@ export class JobExecutor {
       const job = this.jobs[i]
       const jobRunTime = Math.round((start - job.start) / 1000)
       jobStatuses[job.status] = (jobStatuses[job.status] || 0) + 1
-      // debug('considering job', job)
       if (job.status === 'complete') {
         const jobsToDelete = jobsToDeleteByQrl[job.qrl] || []
         job.status = 'deleting'
@@ -215,12 +263,14 @@ export class JobExecutor {
         // Kill-after enforcement: terminate child process if it exceeds the deadline.
         // Uses executionStart (when runJob began) so FIFO serial jobs aren't
         // penalized for queue wait time.
-        if (this.opt.killAfter && job.executionStart && !job.killed) {
+        if (this.shouldEnforceKillAfter(job) && job.executionStart && !job.killed) {
           const executionTimeMs = this.getExecutionTimeMs(job, start)
           if (executionTimeMs >= this.opt.killAfter * 1000) {
             job.killDue = true
             this.killJob(job, start)
           }
+        } else if (job.executionMode === 'inline') {
+          this.logInlineKillAfterOverrun(job, start)
         }
 
         if (jobRunTime >= job.extendAtSecond) {
@@ -235,7 +285,7 @@ export class JobExecutor {
           const doubled = job.visibilityTimeout * 2
           const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
           const executionTimeMs = job.executionStart ? this.getExecutionTimeMs(job, start) : 0
-          const secondsUntilKill = (this.opt.killAfter && job.executionStart)
+          const secondsUntilKill = (this.shouldEnforceKillAfter(job) && job.executionStart)
             ? Math.max(1, Math.ceil((this.opt.killAfter * 1000 - executionTimeMs) / 1000))
             : Infinity
           job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
@@ -455,12 +505,21 @@ export class JobExecutor {
         messageGroupId: job.message.Attributes?.MessageGroupId || '',
         /** Call with a child process PID to enable kill-after process termination. */
         registerPid: (pid) => {
+          if (job.executionMode === 'inline') {
+            debug('registerPid ignored after registerInlineExecution', { messageId: job.message?.MessageId })
+            return
+          }
           if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1 || pid === process.pid) {
             debug('registerPid: rejected invalid PID', pid)
             return
           }
+          job.executionMode = 'child_process'
           job.pid = pid
           if (job.killDue && !job.killed) this.killJob(job, new Date())
+        },
+        /** Call before inline work starts to opt out of kill-after visibility expiry. */
+        registerInlineExecution: async () => {
+          await this.registerInlineExecution(job)
         }
       }
       const result = await job.callback(queue, job.payload, attributes)
@@ -518,15 +577,12 @@ export class JobExecutor {
     const isFifo = qrl.endsWith('.fifo')
     const runningJobs = []
 
-    // console.log(jobs)
-
     // Begin executing
     for (const [job, i] of jobs.map((job, i) => [job, i])) {
       // Figure out if the next job needs to happen in serial, otherwise we can parallel execute
       const nextJob = jobs[i + 1]
       const nextJobIsSerial = isFifo && nextJob && job.message?.Attributes?.MessageGroupId === nextJob.message?.Attributes?.MessageGroupId
 
-      // console.log({ i, nextJobAtt: nextJob?.message?.Attributes, nextJobIsSerial })
       // Execute serial or parallel
       if (nextJobIsSerial) await this.runJob(job)
       else runningJobs.push(this.runJob(job))
