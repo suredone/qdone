@@ -43,6 +43,8 @@ export const defaults = Object.freeze({
   activeOnly: false,
   maxConcurrentJobs: 100,
   maxMemoryPercent: 70,
+  commandPolicy: 'off',
+  commandAllowlistFile: undefined,
 
   // Idle Queues
   idleFor: 60,
@@ -137,6 +139,8 @@ export function getOptionsWithDefaults (options) {
     activeOnly: options.activeOnly || options['active-only'] || process.env.QDONE_ACTIVE_ONLY === 'true' || defaults.activeOnly,
     maxConcurrentJobs: options.maxConcurrentJobs || process.env.QDONE_MAX_CONCURRENT_JOBS || defaults.maxConcurrentJobs,
     maxMemoryPercent: options.maxMemoryPercent || process.env.QDONE_MAX_MEMORY_PERCENT || defaults.maxMemoryPercent,
+    commandPolicy: options.commandPolicy || options['command-policy'] || process.env.QDONE_COMMAND_POLICY || defaults.commandPolicy,
+    commandAllowlistFile: options.commandAllowlistFile || options['command-allowlist-file'] || process.env.QDONE_COMMAND_ALLOWLIST_FILE || defaults.commandAllowlistFile,
 
     // Idle Queues
     idleFor: options.idleFor || options['idle-for'] || process.env.QDONE_IDLE_FOR || defaults.idleFor,

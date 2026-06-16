@@ -237,3 +237,25 @@ describe('setupAWS', () => {
     expect(process.env.AWS_REGION).toEqual(region)
   })
 })
+
+describe('command policy options', () => {
+  test('defaults to off with no allowlist file', () => {
+    const opt = getOptionsWithDefaults({})
+    expect(opt.commandPolicy).toBe('off')
+    expect(opt.commandAllowlistFile).toBeUndefined()
+  })
+  test('reads kebab-case CLI options', () => {
+    const opt = getOptionsWithDefaults({ 'command-policy': 'enforce', 'command-allowlist-file': '/x.json' })
+    expect(opt.commandPolicy).toBe('enforce')
+    expect(opt.commandAllowlistFile).toBe('/x.json')
+  })
+  test('reads env vars', () => {
+    process.env.QDONE_COMMAND_POLICY = 'audit'
+    process.env.QDONE_COMMAND_ALLOWLIST_FILE = '/env.json'
+    const opt = getOptionsWithDefaults({})
+    expect(opt.commandPolicy).toBe('audit')
+    expect(opt.commandAllowlistFile).toBe('/env.json')
+    delete process.env.QDONE_COMMAND_POLICY
+    delete process.env.QDONE_COMMAND_ALLOWLIST_FILE
+  })
+})

@@ -266,6 +266,42 @@ The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The timeout
 doubles every subsequent call but never exceeds `--kill-after`.
 
+### Command allowlist policy
+
+By default the worker executes each message body as a shell command. For
+hardened deployments you can restrict the worker to a pre-approved set of
+commands with `--command-policy` (env `QDONE_COMMAND_POLICY`) and
+`--command-allowlist-file` (env `QDONE_COMMAND_ALLOWLIST_FILE`):
+
+- `off` (default) — no change; the message body runs via the shell as before.
+- `audit` — each body is parsed and checked against the allowlist; violations
+  are logged (`COMMAND_POLICY_VIOLATION`) and reported to Sentry, but the job
+  **still runs** via the shell. Use this to validate an allowlist in production
+  with zero behavioral change.
+- `enforce` — violations are rejected (the message is left for SQS redrive →
+  DLQ, never deleted), and allowed commands are executed with **no shell**
+  (`execFile`), so shell metacharacters in arguments are inert. A missing or
+  invalid allowlist file fails **open** (logs `COMMAND_POLICY_MISCONFIG`, runs
+  via the shell) so a misconfiguration cannot take down the fleet.
+
+The allowlist is JSON. Each binary maps to one matcher:
+
+```json
+{
+  "version": 1,
+  "binaries": {
+    "/usr/bin/php": { "scriptDirs": ["/srv/app/jobs/"], "scripts": ["import.php", "export.php"] },
+    "/usr/bin/mytool": { "subcommands": ["sync", "report"] },
+    "/usr/bin/npm": { "fixedPrefix": ["--prefix", "/srv/app", "run", "command"], "commands": ["processEvent"] }
+  }
+}
+```
+
+A body is allowed only if it parses to a flat argument list (no operators,
+pipes, redirects, globs, substitutions, or backticks) whose first token is an
+allowlisted binary and whose script/subcommand/command matches that binary's
+matcher.
+
 ### Dynamically removing queues
 
 If you have workers listening on a dynamic number of queues, then any idle queues will negatively impact how quickly jobs can be dequeued and/or increase the number of unecessary API calls. You can discover which queues are idle using the `idle-queues` command:

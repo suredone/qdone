@@ -8,7 +8,7 @@ import {
   DeleteMessageCommand,
   QueueDoesNotExist
 } from '@aws-sdk/client-sqs'
-import { exec } from 'child_process' // node:child_process
+import { exec, execFile } from 'child_process' // node:child_process
 import treeKill from 'tree-kill'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -18,6 +18,8 @@ import { normalizeQueueName, getQnameUrlPairs } from './qrlCache.js'
 import { getOptionsWithDefaults } from './defaults.js'
 import { cheapIdleCheck } from './idleQueues.js'
 import { getSQSClient } from './sqs.js'
+import { checkCommand } from './commandPolicy.js'
+import { reportEvent } from './sentry.js'
 
 const debug = Debug('qdone:worker')
 
@@ -42,6 +44,55 @@ export async function executeJob (job, qname, qrl, opt) {
     console.log(cmd)
     return { noJobs: 0, jobsSucceeded: 1, jobsFailed: 0 }
   }
+
+  // Command allowlist policy. 'off' (default) is a pure no-op and skips this
+  // entirely. 'audit' logs/alerts on violations but still runs via the existing
+  // shell path. 'enforce' rejects violations and runs validated commands via
+  // execFile (no shell). NOTE: this is the only path that executes a job body as
+  // a process; src/scheduler/jobExecutor.js delegates to a caller-supplied
+  // callback and does not exec bodies — if that ever changes, apply checkCommand
+  // there too.
+  let argv = null
+  if (opt.commandPolicy && opt.commandPolicy !== 'off') {
+    const check = checkCommand(job.Body, opt)
+    if (check.misconfig) {
+      // Config error (missing/invalid allowlist): fail OPEN to avoid an outage,
+      // but alert loudly so the misconfiguration is caught.
+      const misconfig = {
+        event: 'COMMAND_POLICY_MISCONFIG',
+        timestamp: new Date(),
+        policy: opt.commandPolicy,
+        queue: qname,
+        messageId: job.MessageId,
+        reason: check.misconfig
+      }
+      console.log(JSON.stringify(misconfig))
+      await reportEvent(opt, 'error', 'qdone command policy misconfigured (failing open)', { commandPolicy: misconfig })
+    } else if (!check.ok) {
+      const violation = {
+        event: 'COMMAND_POLICY_VIOLATION',
+        timestamp: new Date(),
+        policy: opt.commandPolicy,
+        queue: qname,
+        messageId: job.MessageId,
+        command: job.Body,
+        reason: check.reason
+      }
+      console.log(JSON.stringify(violation))
+      await reportEvent(opt, 'error', 'qdone command policy violation', { commandPolicy: violation })
+      if (opt.commandPolicy === 'enforce') {
+        if (opt.verbose) console.error(chalk.red('  REJECTED by command policy: ') + check.reason)
+        // Do NOT delete and do NOT execute. Returning jobsFailed leaves the
+        // message for SQS redrive → DLQ (after dlqAfter receives), preserving a
+        // false positive for inspection and bounding a malicious message.
+        return { noJobs: 0, jobsSucceeded: 0, jobsFailed: 1 }
+      }
+      // audit: fall through, argv stays null → existing shell path
+    } else if (opt.commandPolicy === 'enforce') {
+      argv = check.argv // validated → run without a shell
+    }
+  }
+
   if (opt.verbose) console.error(chalk.blue('  Executing job command:'), cmd)
 
   const jobStart = new Date()
@@ -118,13 +169,18 @@ export async function executeJob (job, qname, qrl, opt) {
   try {
     // Success path for job execution
     const { stdout, stderr } = await new Promise(function (resolve, reject) {
-      child = exec(cmd, { env }, function (err, stdout, stderr) {
+      const cb = function (err, stdout, stderr) {
         if (err) {
           err.stdout = stdout
           err.stderr = stderr
           reject(err)
         } else resolve({ stdout, stderr })
-      })
+      }
+      // enforce + valid → run `nice <argv...>` with no shell. Otherwise (off /
+      // audit / enforce-misconfig) → unchanged shell exec of `nice <body>`.
+      child = argv
+        ? execFile('nice', argv, { env }, cb)
+        : exec(cmd, { env }, cb)
     })
 
     debug('exec.then', Date.now())

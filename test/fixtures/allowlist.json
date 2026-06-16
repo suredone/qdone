@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "binaries": {
+    "/usr/bin/php": {
+      "scriptDirs": ["/var/sdapp/suredone/jobs/"],
+      "scripts": ["ebay-products-import.php", "channel-products-import.php"]
+    },
+    "/usr/bin/sd": { "subcommands": ["LogModel", "UsageModel"] },
+    "/usr/bin/npm": {
+      "fixedPrefix": ["--prefix", "/var/sdapp/suredone/ui/server", "run", "command"],
+      "commands": ["processEvent", "processWebhook"]
+    }
+  }
+}
