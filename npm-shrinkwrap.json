@@ -12,6 +12,7 @@
         "@aws-sdk/client-cloudwatch": "3.465.0",
         "@aws-sdk/client-sqs": "3.465.0",
         "@sentry/node": "^7.120.4",
+        "@smithy/node-http-handler": "2.5.0",
         "chalk": "^4.1.2",
         "command-line-args": "^5.2.1",
         "command-line-commands": "^3.0.2",
@@ -17579,6 +17580,10 @@
     },
     "node_modules/@sentry/node": {
       "resolved": "node_modules/.pnpm/@sentry+node@7.120.4/node_modules/@sentry/node",
+      "link": true
+    },
+    "node_modules/@smithy/node-http-handler": {
+      "resolved": "node_modules/.pnpm/@smithy+node-http-handler@2.5.0/node_modules/@smithy/node-http-handler",
       "link": true
     },
     "node_modules/aws-sdk-client-mock": {

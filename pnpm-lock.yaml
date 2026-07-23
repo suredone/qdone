@@ -24,6 +24,9 @@ importers:
       '@sentry/node':
         specifier: ^7.120.4
         version: 7.120.4
+      '@smithy/node-http-handler':
+        specifier: 2.5.0
+        version: 2.5.0
       chalk:
         specifier: ^4.1.2
         version: 4.1.2

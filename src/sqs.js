@@ -3,9 +3,19 @@
  */
 
 import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand, QueueDoesNotExist } from '@aws-sdk/client-sqs'
+import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { basename } from 'path'
 import Debug from 'debug'
 const debug = Debug('qdone:sqs')
+
+// Long-poll receives use WaitTimeSeconds up to the SQS maximum of 20s, so give
+// the socket comfortably more than that before treating it as hung. Without an
+// explicit requestTimeout a silently-dropped TCP connection leaves a receive
+// pending forever — the consumer then leaks that receive's concurrency
+// accounting and eventually goes deaf. connectionTimeout guards the TCP handshake.
+const maxLongPollSeconds = 20
+const requestTimeout = (maxLongPollSeconds + 20) * 1000
+const connectionTimeout = 5000
 
 /**
  * Utility function to return an instantiated, shared SQSClient.
@@ -13,7 +23,9 @@ const debug = Debug('qdone:sqs')
 let client
 export function getSQSClient () {
   if (client) return client
-  client = new SQSClient()
+  client = new SQSClient({
+    requestHandler: new NodeHttpHandler({ connectionTimeout, requestTimeout })
+  })
   return client
 }
 

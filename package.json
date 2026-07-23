@@ -15,6 +15,7 @@
     "@aws-sdk/client-cloudwatch": "3.465.0",
     "@aws-sdk/client-sqs": "3.465.0",
     "@sentry/node": "^7.120.4",
+    "@smithy/node-http-handler": "2.5.0",
     "chalk": "^4.1.2",
     "command-line-args": "^5.2.1",
     "command-line-commands": "^3.0.2",

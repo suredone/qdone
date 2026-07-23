@@ -615,3 +615,52 @@ describe('JobExecutor kill-after', () => {
     ).rejects.toThrow('jobExecutor is shutting down so cannot execute new jobs')
   })
 })
+
+describe('JobExecutor maintainVisibility resilience', () => {
+  let sqsMock
+
+  beforeEach(() => {
+    shutdownCache()
+    sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock.on(ChangeMessageVisibilityCommand).resolves({})
+    sqsMock.on(ChangeMessageVisibilityBatchCommand).resolves({ Successful: [], Failed: [] })
+    sqsMock.on(DeleteMessageBatchCommand).resolves({ Successful: [], Failed: [] })
+  })
+
+  afterEach(() => {
+    cleanupExecutors()
+    jest.useRealTimers()
+    sqsMock.restore()
+  })
+
+  afterAll(shutdownCache)
+
+  test('a failing DeleteMessageBatch does not abort the run or strand the job', async () => {
+    sqsMock.on(DeleteMessageBatchCommand).rejects(new Error('sqs unavailable'))
+    const executor = makeExecutor()
+    const job = executor.addJob(makeMessage('del-fail'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    job.status = 'complete' // maintainVisibility will try to delete it
+
+    await expect(executor.maintainVisibility()).resolves.toBeUndefined()
+
+    // Not left stranded in the 'deleting' state; cleaned up at the end of the pass.
+    expect(executor.jobs).toHaveLength(0)
+    expect(executor.jobsByMessageId[job.message.MessageId]).toBeUndefined()
+  })
+
+  test('a failing ChangeMessageVisibilityBatch does not abort the maintenance run', async () => {
+    sqsMock.on(ChangeMessageVisibilityBatchCommand).rejects(new Error('sqs unavailable'))
+    const executor = makeExecutor()
+    const job = executor.addJob(makeMessage('ext-fail'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
+    job.status = 'running'
+    job.start = new Date(Date.now() - 3600 * 1000) // long ago, so it is due for extension
+    job.executionStart = new Date()
+
+    await expect(executor.maintainVisibility()).resolves.toBeUndefined()
+
+    // Still tracked and running; a batch failure must not drop the job.
+    expect(executor.jobs).toContain(job)
+    expect(job.status).toBe('running')
+  })
+})

@@ -90,10 +90,18 @@ export async function processMessages (queues, callback, options) {
     if (opt.verbose) {
       console.error(chalk.blue('Listening on: '), qname)
     }
+    // Reserve concurrency and mark the queue as in-flight up front, then release
+    // both in the finally so no receive-error path (including a hung socket) can
+    // leak them. A leaked reservation eventually pins allowedJobs to 0, and a
+    // leaked listeningQrls entry makes the queue permanently unpollable — either
+    // way the worker goes silently deaf while the process still looks healthy.
     maxReturnCount += maxMessages
+    listeningQrls.add(qrl)
     try {
-      listeningQrls.add(qrl)
       const messages = await getMessages(qrl, opt, maxMessages)
+      // Successful receive: release the queue immediately so the scheduler can
+      // issue another receive on it while this batch executes (receive/execute
+      // overlap); the finally below stays as the error-path safety net.
       listeningQrls.delete(qrl)
 
       if (!shutdownRequested) {
@@ -109,16 +117,27 @@ export async function processMessages (queues, callback, options) {
           queueManager.updateIcehouse(qrl, true)
         }
       }
-
-      // Max job accounting
-      maxReturnCount -= maxMessages
     } catch (e) {
-      // If the queue has been cleaned up, we should back off anyway
-      if (e instanceof QueueDoesNotExist) {
-        queueManager.updateIcehouse(qrl, true)
-      } else {
-        throw e
+      // Treat any receive/execute error like an empty receive: back the queue
+      // off through the icehouse and swallow it. listen() is called
+      // fire-and-forget, so rethrowing surfaces as an unhandled rejection (which
+      // a lenient global handler may not even crash on). QueueDoesNotExist is an
+      // expected, benign result of idle-queue GC, so it stays quiet.
+      queueManager.updateIcehouse(qrl, true)
+      if (!(e instanceof QueueDoesNotExist) && !opt.disableLog) {
+        console.log(JSON.stringify({
+          event: 'RECEIVE_ERROR',
+          timestamp: new Date(),
+          queue: qname,
+          qrl,
+          errorName: e?.name,
+          errorMessage: e?.message
+        }))
       }
+    } finally {
+      // Always release the accounting, whatever happened above.
+      listeningQrls.delete(qrl)
+      maxReturnCount -= maxMessages
     }
   }
 
@@ -166,7 +185,9 @@ export async function processMessages (queues, callback, options) {
       if (jobsLeft <= 0) break
       if (listeningQrls.has(qrl)) continue
       const maxMessages = Math.min(10, jobsLeft)
-      listen(qname, qrl, maxMessages)
+      // listen() is guaranteed not to throw, but keep a defensive catch so a
+      // future regression can never turn this fire-and-forget into a crash.
+      listen(qname, qrl, maxMessages).catch(e => debug('unexpected listen rejection', e))
       jobsLeft -= maxMessages
       // debug({ listenedTo: { qname, maxMessages, jobsLeft } })
     }

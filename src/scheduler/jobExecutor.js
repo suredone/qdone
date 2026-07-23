@@ -333,7 +333,28 @@ export class JobExecutor {
         // Change batch
         const input = { QueueUrl: qrl, Entries: entries }
         debug({ ChangeMessageVisibilityBatch: input })
-        const result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
+        let result
+        try {
+          result = await getSQSClient().send(new ChangeMessageVisibilityBatchCommand(input))
+        } catch (err) {
+          // A single batch failure must not abort the whole maintenance run and
+          // strand the remaining queues (or the end-of-pass cleanup). Log and
+          // move on; jobs we couldn't extend get re-evaluated next cycle.
+          debug('ChangeMessageVisibilityBatch error', err)
+          if (this.opt.verbose) {
+            console.error(chalk.red('FAILED_TO_EXTEND_BATCH'), { qrl, error: err?.message })
+          } else if (!this.opt.disableLog) {
+            console.log(JSON.stringify({
+              event: 'EXTEND_VISIBILITY_ERROR',
+              timestamp: start,
+              qrl,
+              count: entries.length,
+              errorName: err?.name,
+              errorMessage: err?.message
+            }))
+          }
+          continue
+        }
         debug('ChangeMessageVisibilityBatch returned', result)
         this.stats.sqsCalls++
         if (result.Failed?.length) {
@@ -378,7 +399,28 @@ export class JobExecutor {
         // Delete batch
         const input = { QueueUrl: qrl, Entries: entries }
         debug({ DeleteMessageBatch: input })
-        const result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
+        let result
+        try {
+          result = await getSQSClient().send(new DeleteMessageBatchCommand(input))
+        } catch (err) {
+          // Don't let one failed delete batch abort the run and leave jobs
+          // stranded in the 'deleting' state; they are cleaned up at the end of
+          // the pass and any redelivery is guarded by dedup.
+          debug('DeleteMessageBatch error', err)
+          if (this.opt.verbose) {
+            console.error(chalk.red('FAILED_TO_DELETE_BATCH'), { qrl, error: err?.message })
+          } else if (!this.opt.disableLog) {
+            console.log(JSON.stringify({
+              event: 'DELETE_MESSAGES_ERROR',
+              timestamp: start,
+              qrl,
+              count: entries.length,
+              errorName: err?.name,
+              errorMessage: err?.message
+            }))
+          }
+          continue
+        }
         this.stats.sqsCalls++
         if (result.Failed?.length) {
           console.error('FAILED_MESSAGES', result.Failed)
