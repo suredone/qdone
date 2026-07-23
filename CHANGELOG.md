@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.7 (July 2026)
+-----------------------
+
+### Bug Fixes
+
+- **Release consumer receive accounting on every path; add SQS client timeouts** ([#115](https://github.com/suredone/qdone/pull/115)) — A `ReceiveMessage` failure in `consumer.js` leaked its concurrency accounting: `maxReturnCount` and the `listeningQrls` entry were only released on the success path, and non-`QueueDoesNotExist` errors were rethrown out of a fire-and-forget `listen()` call as unhandled rejections. Enough leaked receives pin `allowedJobs` to 0 and mark every queue as already-polled, so the worker stops receiving from all queues while the process still looks healthy. Reserves accounting up front and releases it in a `finally`, backs the queue off through the icehouse and logs (`RECEIVE_ERROR`) instead of rethrowing, adds explicit `connectionTimeout`/`requestTimeout` to the shared SQS client so a silently-dropped socket can't leave a receive pending forever, and hardens `jobExecutor.js` maintenance so a single failed visibility/delete batch call no longer aborts the run for the remaining queues. Observed in production 2026-07-22 as a synchronized five-host silent receive death following a routine idle-queue GC burst. Closes [#114](https://github.com/suredone/qdone/issues/114).
+
 v2.2.6 (March 2026)
 -----------------------
 
