@@ -99,6 +99,10 @@ export async function processMessages (queues, callback, options) {
     listeningQrls.add(qrl)
     try {
       const messages = await getMessages(qrl, opt, maxMessages)
+      // Successful receive: release the queue immediately so the scheduler can
+      // issue another receive on it while this batch executes (receive/execute
+      // overlap); the finally below stays as the error-path safety net.
+      listeningQrls.delete(qrl)
 
       if (!shutdownRequested) {
         if (messages.length) {
