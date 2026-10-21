@@ -1,10 +1,12 @@
 /* eslint-env jest */
 
+import { jest } from '@jest/globals'
 import Redis from 'ioredis-mock'
 import { URL } from 'url'
 import {
   clusterOptionsFromUri,
   getCacheClient,
+  resetCache,
   shutdownCache,
   setCache,
   getCache
@@ -17,7 +19,7 @@ const opt = {
   Redis
 }
 
-beforeEach(shutdownCache)
+beforeEach(resetCache)
 afterEach(async () => getCacheClient(opt).flushall())
 afterAll(shutdownCache)
 
@@ -49,7 +51,7 @@ describe('getCacheClient', () => {
       Object.assign({}, opt, { cacheUri: 'rediss-cluster://localhost:6379' })
     )).not.toThrow()
   })
-  test('hands the seed node, TLS and password to the cluster client', () => {
+  test('hands the seed node, TLS and password to the cluster client', async () => {
     const calls = []
     class RedisStub {
       static Cluster = class {
@@ -67,7 +69,7 @@ describe('getCacheClient', () => {
     expect(calls[0].options.redisOptions.tls).toEqual({})
     expect(calls[0].options.redisOptions.password).toBe('s3cret@pass')
     expect(calls[0].options.slotsRefreshInterval).toBe(60 * 1000)
-    shutdownCache()
+    await resetCache()
   })
   test('returns an identical client on subsequent calls', () => {
     const client1 = getCacheClient(opt)
@@ -111,5 +113,18 @@ describe('getCache', function () {
     await expect(
       getCache('supercalafragalisticexpealadocious', opt)
     ).resolves.toBeUndefined()
+  })
+})
+
+describe('shutdownCache', () => {
+  test('closes the client, refuses new clients, and is idempotent', async () => {
+    const client = getCacheClient(opt)
+    const quit = jest.spyOn(client, 'quit')
+    await shutdownCache()
+    await shutdownCache()
+    expect(quit).toHaveBeenCalledTimes(1)
+    expect(() => getCacheClient(opt)).toThrow('qdone cache is shut down')
+    await resetCache()
+    expect(() => getCacheClient(opt)).not.toThrow()
   })
 })

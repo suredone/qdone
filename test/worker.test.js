@@ -8,7 +8,7 @@ import 'aws-sdk-client-mock-jest'
 import { executeJob } from '../src/worker.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import { getOptionsWithDefaults } from '../src/defaults.js'
-import { shutdownCache } from '../src/cache.js'
+import { resetCache, shutdownCache } from '../src/cache.js'
 
 getSQSClient()
 const client = getSQSClient()
@@ -22,8 +22,8 @@ const cacheOptions = {
 describe('executeJob', () => {
   let sqsMock
 
-  beforeEach(() => {
-    shutdownCache()
+  beforeEach(async () => {
+    await resetCache()
     sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock.on(DeleteMessageCommand).resolves({})
