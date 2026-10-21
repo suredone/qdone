@@ -1,5 +1,52 @@
 # Changelog
 
+v2.3.0 (October 2026)
+-----------------------
+
+The behaviour SureDone's production fleet has run as a local patch on 2.2.x, now upstream. Minor version because
+five behaviours change for existing users; each is listed below.
+
+### Features
+
+- **Shutdown phases and embedder controls** (consumer, jobExecutor) — `requestShutdown()` is idempotent and returns
+  one shared promise; the phase moves `running` → `draining` → `stopped`. New exports `getShutdownStatus()` (phase,
+  listeners, receives, active/waiting/running jobs) and `forceTerminateActiveJobs()` (SIGTERM then SIGKILL for every
+  registered job, with a per-job signal report). `processMessages()` called after a shutdown returns the shutdown
+  promise. `registerPid(pid, { processGroup })` lets a callback opt a whole process group into termination.
+- **`--drain-pending-receives`** (`QDONE_DRAIN_PENDING_RECEIVES=true`) — on shutdown, wait for in-flight receives
+  and run the jobs they return instead of cancelling them, so a message returned during shutdown is not left to
+  redrive after its visibility timeout. Off by default.
+- **`--batch-limit`** (`QDONE_BATCH_LIMIT`, 1–10, default 10) — messages per receive, bounded by the jobs the
+  consumer can still admit.
+- **`--empty-receive-backoff-seconds`** (`QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS`, 1–120) — cap on the icehouse wait
+  after a successful empty receive. Receive and execute errors keep the escalating backoff.
+- **Separate SQS maintenance client** — deletes and visibility extensions use their own sockets (16) instead of
+  queueing behind up to 50 long-poll receives. `shutdownSQSClient()` closes both clients after accepted work drains.
+- **Kill tuning options** — `forceKillDelayMs`, `forceSignalTimeoutMs`, `killProcessGroup`, `killTree` are accepted
+  as API options (dependency injection for embedders and tests).
+- **`--include-dead`** for `qdone worker` and `qdone check`.
+
+### Bug fixes
+
+- A rejected visibility extension keeps execution custody of the running job and retries on a bounded schedule
+  instead of dropping the job (`FAILED_TO_EXTEND_JOB`); a late failure never overwrites a newer visibility update.
+- `dedupSuccessfullyProcessed()` opens the cache client only for messages that carry a dedup id, so consumers
+  without `--cache-uri` no longer throw from the post-delete step.
+- `AbortError` and `TimeoutError` raised during shutdown no longer print `RECEIVE_ERROR`.
+- The cache URI is redacted wherever options reach Sentry: `enqueue`/`enqueueBatch` extras and the CLI's
+  `withSentry` context. Previously a `--cache-uri` with a password reached Sentry verbatim when a command threw.
+
+### Behaviour changes (read before upgrading)
+
+1. `qdone worker '*'` and `qdone check '*'` **skip dead queues** (`--dlq-suffix`) unless `--include-dead` is given,
+   as they already skipped failed queues.
+2. A job callback that resolves **after** its process was killed by `--kill-after` is now treated as failed.
+3. **Waiting FIFO jobs count against `--max-concurrent-jobs`**, so FIFO consumers admit fewer receives.
+4. `requestShutdown()` **closes the shared SQS and Redis clients for the rest of the process**; `getSQSClient()` and
+   `getCacheClient()` throw afterwards. Embedders that need a fresh client after a shutdown use `resetCache()` /
+   a new process.
+5. `externalDedup` precedence: an explicit `externalDedup: false` now overrides `QDONE_EXTERNAL_DEDUP=true`.
+
 v2.2.8 (October 2026)
 -----------------------
 
