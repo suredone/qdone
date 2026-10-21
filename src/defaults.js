@@ -87,6 +87,12 @@ export function validateMessageOptions (messageOptions) {
  * By convention, we name the variable "options" if it comes from the user
  * and "opt" if it has already passed through this function.
  */
+// The first value that was actually given. Unlike `??`, a null stays and is rejected by the range checks
+// below instead of silently falling through to the next source.
+function firstGiven (...values) {
+  return values.find(value => value !== undefined)
+}
+
 // An environment variable read as a number, or undefined when unset; the range checks below reject bad values.
 function envInteger (name) {
   const raw = process.env[name]
@@ -146,9 +152,10 @@ export function getOptionsWithDefaults (options) {
     activeOnly: options.activeOnly || options['active-only'] || process.env.QDONE_ACTIVE_ONLY === 'true' || defaults.activeOnly,
     drainPendingReceives: options.drainPendingReceives === true || options['drain-pending-receives'] === true ||
       process.env.QDONE_DRAIN_PENDING_RECEIVES === 'true',
-    batchLimit: options.batchLimit ?? options['batch-limit'] ?? envInteger('QDONE_BATCH_LIMIT') ?? defaults.batchLimit,
-    emptyReceiveBackoffSeconds: options.emptyReceiveBackoffSeconds ?? options['empty-receive-backoff-seconds'] ??
-      envInteger('QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS'),
+    batchLimit: firstGiven(options.batchLimit, options['batch-limit'], envInteger('QDONE_BATCH_LIMIT'), defaults.batchLimit),
+    emptyReceiveBackoffSeconds: firstGiven(
+      options.emptyReceiveBackoffSeconds, options['empty-receive-backoff-seconds'], envInteger('QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS')
+    ),
     maxConcurrentJobs: options.maxConcurrentJobs || process.env.QDONE_MAX_CONCURRENT_JOBS || defaults.maxConcurrentJobs,
     maxMemoryPercent: options.maxMemoryPercent || process.env.QDONE_MAX_MEMORY_PERCENT || defaults.maxMemoryPercent,
 
