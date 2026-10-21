@@ -10,7 +10,7 @@ import { jest } from '@jest/globals'
 import { JobExecutor } from '../src/scheduler/jobExecutor.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import { getOptionsWithDefaults } from '../src/defaults.js'
-import { shutdownCache } from '../src/cache.js'
+import { resetCache, shutdownCache } from '../src/cache.js'
 
 getSQSClient()
 const client = getSQSClient()
@@ -65,8 +65,8 @@ function cleanupExecutors () {
 describe('JobExecutor kill-after', () => {
   let sqsMock
 
-  beforeEach(() => {
-    shutdownCache()
+  beforeEach(async () => {
+    await resetCache()
     sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock.on(ChangeMessageVisibilityCommand).resolves({})
@@ -514,7 +514,12 @@ describe('JobExecutor kill-after', () => {
     await executor.maintainVisibility()
 
     expect(executor.stats.timeoutsExtended).toBe(1)
-    expect(executor.jobsByMessageId[failedJob.message.MessageId]).toBeUndefined()
+    // A rejected extension keeps execution custody of the running job: the lease is not treated as
+    // granted, and the next extension attempt is bounded rather than dropped.
+    expect(executor.jobsByMessageId[failedJob.message.MessageId]).toBe(failedJob)
+    expect(failedJob.status).toBe('running')
+    expect(failedJob.extendAtSecond).toBeGreaterThan(0)
+    expect(Number.isFinite(failedJob.extendAtSecond)).toBe(true)
     expect(executor.jobsByMessageId[successfulJob.message.MessageId]).toBeDefined()
     expect(executor.jobsByMessageId[staleFailedJob.message.MessageId]).toBeUndefined()
     expect(errorSpy.mock.calls.flat().join(' ')).toContain('FAILED_TO_EXTEND_JOB')
@@ -619,8 +624,8 @@ describe('JobExecutor kill-after', () => {
 describe('JobExecutor maintainVisibility resilience', () => {
   let sqsMock
 
-  beforeEach(() => {
-    shutdownCache()
+  beforeEach(async () => {
+    await resetCache()
     sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock.on(ChangeMessageVisibilityCommand).resolves({})
