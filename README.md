@@ -539,7 +539,14 @@ If a queue name ends with the * (wildcard) character, worker will listen on all 
     -k, --kill-after number   Kill job after this many seconds [default: 30]
     -w, --wait-time number    Listen at most this long on each queue [default: 20]
     --include-failed          When using '*' do not ignore fail queues.
+    --include-dead            Allow processing dead queues, including explicitly named queues.
     --active-only             Listen only to queues with pending messages.
+    --batch-limit number      Maximum messages per SQS receive, 1 to 10 [default: 10]
+    --empty-receive-backoff-seconds number
+                              Cap on the wait after an empty receive, 1 to 120 seconds. Receive
+                              errors keep the escalating backoff.
+    --drain-pending-receives  On shutdown, wait for in-flight receives and run the jobs they return
+                              instead of cancelling them.
     --drain                   Run until no more work is found and quit. NOTE: if used with
                              --wait-time 0, this option will not drain queues.
     --prefix string           Prefix to place at the front of each SQS queue name [default: qdone_]

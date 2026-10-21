@@ -18,7 +18,7 @@ import { mockClient } from 'aws-sdk-client-mock'
 import 'aws-sdk-client-mock-jest'
 
 import Redis from 'ioredis-mock'
-import { setCache, getCacheClient, shutdownCache } from '../src/cache.js'
+import { setCache, getCacheClient, resetCache, shutdownCache } from '../src/cache.js'
 import { qrlCacheSet } from '../src/qrlCache.js'
 
 // Redis setup
@@ -28,7 +28,7 @@ const cacheOpt = {
   cachePrefix: 'qdone:',
   Redis
 }
-beforeEach(shutdownCache)
+beforeEach(resetCache)
 afterEach(async () => getCacheClient(cacheOpt).flushall())
 afterAll(shutdownCache)
 

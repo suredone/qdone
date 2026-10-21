@@ -16,12 +16,18 @@ const debug = Debug('qdone:sqs')
 const maxLongPollSeconds = 20
 const requestTimeout = (maxLongPollSeconds + 20) * 1000
 const connectionTimeout = 5000
+// Deletes and visibility extensions get their own sockets: on the shared pool they queue behind
+// up to 50 long-poll receives, and a request that waits past connectionTimeout for a socket fails.
+const maintenanceMaxSockets = 16
 
 /**
  * Utility function to return an instantiated, shared SQSClient.
  */
 let client
+let maintenanceClient
+let shutdownRequested = false
 export function getSQSClient () {
+  if (shutdownRequested) throw new Error('qdone SQS client is shut down')
   if (client) return client
   client = new SQSClient({
     requestHandler: new NodeHttpHandler({ connectionTimeout, requestTimeout })
@@ -30,10 +36,40 @@ export function getSQSClient () {
 }
 
 /**
- * Utility function to set the client explicitly, used in testing.
+ * Returns the client for message deletes and visibility changes, separate from receives.
  */
-export function setSQSClient (explicitClient) {
+export function getSQSMaintenanceClient () {
+  if (shutdownRequested) throw new Error('qdone SQS client is shut down')
+  if (maintenanceClient) return maintenanceClient
+  maintenanceClient = new SQSClient({
+    requestHandler: new NodeHttpHandler({
+      connectionTimeout,
+      requestTimeout,
+      httpsAgent: { maxSockets: maintenanceMaxSockets }
+    })
+  })
+  return maintenanceClient
+}
+
+/**
+ * Utility function to set the clients explicitly, used in testing.
+ */
+export function setSQSClient (explicitClient, explicitMaintenanceClient = explicitClient) {
   client = explicitClient
+  maintenanceClient = explicitMaintenanceClient
+}
+
+/**
+ * Closes both SQS clients' sockets after all accepted work has drained.
+ */
+export async function shutdownSQSClient () {
+  if (shutdownRequested) return
+
+  shutdownRequested = true
+  const clients = new Set([client, maintenanceClient])
+  client = undefined
+  maintenanceClient = undefined
+  await Promise.all([...clients].map(sqsClient => sqsClient?.destroy?.()))
 }
 
 /**

@@ -6,6 +6,9 @@ const debug = Debug('qdone:cache')
 class UsageError extends Error {}
 
 let client
+// Set by the consumer's shutdown: a dedup or idle check that runs after the cache was closed must not
+// open a fresh connection and keep the process alive.
+let shutdownRequested = false
 
 /**
  * Build the ioredis Cluster options for a redis-cluster:// or rediss-cluster:// URI.
@@ -36,6 +39,7 @@ export function clusterOptionsFromUri (url) {
  * credentials from the URI), redis-cluster:// and rediss-cluster:// for a cluster.
  */
 export function getCacheClient (opt) {
+  if (shutdownRequested) throw new Error('qdone cache is shut down')
   const RedisClass = opt.Redis || Redis
   if (client) {
     return client
@@ -55,9 +59,27 @@ export function getCacheClient (opt) {
   }
 }
 
-export function shutdownCache () {
-  if (client) client.quit()
+/**
+ * Closes the cache client for good and refuses new clients afterwards. Awaits the QUIT so a final
+ * dedup acknowledgement is flushed before the socket goes.
+ */
+export async function shutdownCache () {
+  if (shutdownRequested) return
+  shutdownRequested = true
+  const cacheClient = client
   client = undefined
+  if (cacheClient) await cacheClient.quit()
+}
+
+/**
+ * Drops the current client without the shutdown latch, so a test (or a long-lived embedder) can
+ * start over with a fresh connection.
+ */
+export async function resetCache () {
+  const cacheClient = client
+  client = undefined
+  shutdownRequested = false
+  if (cacheClient) await cacheClient.quit()
 }
 
 /**

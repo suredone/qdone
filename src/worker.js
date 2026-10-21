@@ -275,10 +275,10 @@ export async function listen (queues, options) {
   // all, filtering out failed queues if the user wants that
   const selectedPairs = (opt.activeOnly ? activePairs : pairs)
     .filter(({ qname }) => {
-      const suf = opt.failSuffix + (opt.fifo ? '.fifo' : '')
-      const isFailQueue = qname.slice(-suf.length) === suf
-      const shouldInclude = opt.includeFailed ? true : !isFailQueue
-      return shouldInclude
+      const baseName = qname.endsWith('.fifo') ? qname.slice(0, -5) : qname
+      const isFailQueue = baseName.endsWith(opt.failSuffix)
+      const isDeadQueue = baseName.endsWith(opt.dlqSuffix)
+      return (opt.includeFailed || !isFailQueue) && (opt.includeDead || !isDeadQueue)
     })
 
   // But only if we have queues to listen on

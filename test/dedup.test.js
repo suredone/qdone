@@ -2,7 +2,7 @@
 import { jest } from '@jest/globals'
 import RedisMock from 'ioredis-mock'
 import { getOptionsWithDefaults } from '../src/defaults.js'
-import { shutdownCache, getCacheClient } from '../src/cache.js'
+import { getCacheClient, resetCache, shutdownCache } from '../src/cache.js'
 import {
   getCacheKey,
   getDeduplicationId,
@@ -69,7 +69,7 @@ const options = {
 
 jest.retryTimes(3)
 
-beforeEach(shutdownCache)
+beforeEach(resetCache)
 afterEach(async () => {
   jest.restoreAllMocks()
   await getCacheClient(options).flushall()

@@ -28,6 +28,7 @@ import {
 } from './dedup.js'
 import { getOptionsWithDefaults, validateMessageOptions } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
+import { redactCacheUri } from './sentry.js'
 
 const debug = Debug('qdone:enqueue')
 
@@ -453,7 +454,7 @@ export async function enqueue (queue, command, options) {
   debug('enqueue(', { queue, command }, ')')
   const opt = getOptionsWithDefaults(options)
   if (opt.sentryDsn) {
-    setExtra({ qdoneOperation: 'enqueue', args: { queue, command, opt } })
+    setExtra({ qdoneOperation: 'enqueue', args: { queue, command, opt: redactCacheUri(opt) } })
   }
   try {
     const qrl = await getOrCreateQueue(queue, opt)
@@ -472,7 +473,7 @@ export async function enqueueBatch (pairs, options) {
   debug('enqueueBatch(', pairs, ')')
   const opt = getOptionsWithDefaults(options)
   if (opt.sentryDsn) {
-    setExtra({ qdoneOperation: 'enqueueBatch', args: { pairs, opt } })
+    setExtra({ qdoneOperation: 'enqueueBatch', args: { pairs, opt: redactCacheUri(opt) } })
   }
   try {
     const allResults = []

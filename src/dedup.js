@@ -206,9 +206,9 @@ export async function dedupShouldEnqueueMulti (messages, opt) {
  */
 export async function dedupSuccessfullyProcessed (message, opt) {
   debug({ dedupSuccessfullyProcessed: { message, opt } })
-  const client = getCacheClient(opt)
   const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
   if (dedupId) {
+    const client = getCacheClient(opt)
     const cacheKey = getCacheKey(dedupId, opt)
     const count = await client.del(cacheKey)
     // Probabalistic stat maintenance
