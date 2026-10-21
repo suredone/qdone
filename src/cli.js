@@ -321,7 +321,11 @@ export async function worker (argv, testHook) {
     { name: 'kill-after', alias: 'k', type: Number, defaultValue: 30, description: 'Kill job after this many seconds [default: 30]' },
     { name: 'wait-time', alias: 'w', type: Number, defaultValue: 20, description: 'Listen at most this long on each queue [default: 20]' },
     { name: 'include-failed', type: Boolean, description: 'When using \'*\' do not ignore fail queues.' },
+    { name: 'include-dead', type: Boolean, description: 'Allow processing dead queues, including explicitly named queues.' },
     { name: 'active-only', type: Boolean, description: 'Listen only to queues with pending messages.' },
+    { name: 'batch-limit', type: Number, description: 'Maximum messages per SQS receive, 1 to 10 [default: 10]' },
+    { name: 'empty-receive-backoff-seconds', type: Number, description: 'Cap on the wait after an empty receive, 1 to 120 seconds. Receive errors keep the escalating backoff.' },
+    { name: 'drain-pending-receives', type: Boolean, description: 'On shutdown, wait for in-flight receives and run the jobs they return instead of cancelling them.' },
     { name: 'drain', type: Boolean, description: 'Run until no more work is found and quit. NOTE: if used with  --wait-time 0, this option will not drain queues.' },
     { name: 'archive', type: Boolean, description: 'Does not run jobs, just prints commands to stdout. Use this flag for draining a queue and recording the commands that were in it.' },
     { name: 'fifo', alias: 'f', type: Boolean, description: 'Automatically adds .fifo to queue names. Only listens to fifo queues when using \'*\'.' }

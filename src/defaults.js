@@ -42,6 +42,7 @@ export const defaults = Object.freeze({
   archive: false,
   activeOnly: false,
   maxConcurrentJobs: 100,
+  batchLimit: 10,
   maxMemoryPercent: 70,
 
   // Idle Queues
@@ -86,6 +87,14 @@ export function validateMessageOptions (messageOptions) {
  * By convention, we name the variable "options" if it comes from the user
  * and "opt" if it has already passed through this function.
  */
+// An environment variable read as a number, or undefined when unset; the range checks below reject bad values.
+function envInteger (name) {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : raw
+}
+
 export function getOptionsWithDefaults (options) {
   // For API invocations don't force caller to supply default options
   if (!options) options = {}
@@ -107,7 +116,7 @@ export function getOptionsWithDefaults (options) {
     disableLog: options.disableLog || options['disable-log'] || process.env.QDONE_DISABLE_LOG === 'true' || defaults.disableLog,
     includeFailed: options.includeFailed || options['include-failed'] || process.env.QDONE_INCLUDE_FAILED === 'true' || defaults.includeFailed,
     includeDead: options.includeDead || options['include-dead'] || process.env.QDONE_INCLUDE_DEAD === 'true' || defaults.includeDead,
-    externalDedup: options.externalDedup || options['external-dedup'] || process.env.QDONE_EXTERNAL_DEDUP === 'true' || defaults.externalDedup,
+    externalDedup: options.externalDedup ?? options['external-dedup'] ?? (process.env.QDONE_EXTERNAL_DEDUP === 'true' || defaults.externalDedup),
     dedupPeriod: options.dedupPeriod || options['dedup-period'] || process.env.QDONE_DEDUP_PERIOD || defaults.dedupPeriod,
     dedupStats: options.dedupStats || options['dedup-stats'] || process.env.QDONE_DEDUP_STATS === 'true' || defaults.dedupStats,
 
@@ -135,6 +144,11 @@ export function getOptionsWithDefaults (options) {
     killAfter: options.killAfter || options['kill-after'] || process.env.QDONE_KILL_AFTER || defaults.killAfter,
     archive: options.archive || process.env.QDONE_ARCHIVE === 'true' || defaults.archive,
     activeOnly: options.activeOnly || options['active-only'] || process.env.QDONE_ACTIVE_ONLY === 'true' || defaults.activeOnly,
+    drainPendingReceives: options.drainPendingReceives === true || options['drain-pending-receives'] === true ||
+      process.env.QDONE_DRAIN_PENDING_RECEIVES === 'true',
+    batchLimit: options.batchLimit ?? options['batch-limit'] ?? envInteger('QDONE_BATCH_LIMIT') ?? defaults.batchLimit,
+    emptyReceiveBackoffSeconds: options.emptyReceiveBackoffSeconds ?? options['empty-receive-backoff-seconds'] ??
+      envInteger('QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS'),
     maxConcurrentJobs: options.maxConcurrentJobs || process.env.QDONE_MAX_CONCURRENT_JOBS || defaults.maxConcurrentJobs,
     maxMemoryPercent: options.maxMemoryPercent || process.env.QDONE_MAX_MEMORY_PERCENT || defaults.maxMemoryPercent,
 
@@ -147,13 +161,24 @@ export function getOptionsWithDefaults (options) {
     overwrite: options.overwrite || process.env.QDONE_OVERWRITE === 'true' || defaults.overwrite,
 
     // Dependency injection
-    Redis: options.Redis
+    Redis: options.Redis,
+    forceKillDelayMs: options.forceKillDelayMs,
+    forceSignalTimeoutMs: options.forceSignalTimeoutMs,
+    killProcessGroup: options.killProcessGroup,
+    killTree: options.killTree
   }
 
   // Setting this env here means we don't have to in AWS SDK constructors
   process.env.AWS_REGION = opt.region
 
   // Validation
+  if (!Number.isInteger(opt.batchLimit) || opt.batchLimit < 1 || opt.batchLimit > 10) {
+    throw new Error('batchLimit must be an integer between 1 and 10.')
+  }
+  if (opt.emptyReceiveBackoffSeconds !== undefined &&
+    (!Number.isInteger(opt.emptyReceiveBackoffSeconds) || opt.emptyReceiveBackoffSeconds < 1 || opt.emptyReceiveBackoffSeconds > 120)) {
+    throw new Error('emptyReceiveBackoffSeconds must be an integer between 1 and 120.')
+  }
   opt.cacheTtlSeconds = validateInteger(opt, 'cacheTtlSeconds')
   opt.messageRetentionPeriod = validateInteger(opt, 'messageRetentionPeriod')
   opt.delay = validateInteger(opt, 'delay')

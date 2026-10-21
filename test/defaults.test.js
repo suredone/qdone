@@ -237,3 +237,76 @@ describe('setupAWS', () => {
     expect(process.env.AWS_REGION).toEqual(region)
   })
 })
+
+describe('batch and receive tuning options', () => {
+  test('batchLimit defaults to 10 and accepts 1 to 10', () => {
+    expect(getOptionsWithDefaults({}).batchLimit).toBe(10)
+    expect(getOptionsWithDefaults({ batchLimit: 1 }).batchLimit).toBe(1)
+    expect(getOptionsWithDefaults({ batchLimit: 5 }).batchLimit).toBe(5)
+  })
+  test('batchLimit outside 1 to 10 or non-integer throws', () => {
+    for (const batchLimit of [0, 11, 2.5, '3']) {
+      expect(() => getOptionsWithDefaults({ batchLimit })).toThrow(/batchLimit must be an integer between 1 and 10/)
+    }
+  })
+  test('emptyReceiveBackoffSeconds is optional and bounded to 1 to 120 seconds', () => {
+    expect(getOptionsWithDefaults({}).emptyReceiveBackoffSeconds).toBeUndefined()
+    expect(getOptionsWithDefaults({ emptyReceiveBackoffSeconds: 5 }).emptyReceiveBackoffSeconds).toBe(5)
+    for (const emptyReceiveBackoffSeconds of [0, 121, 1.5, '5']) {
+      expect(() => getOptionsWithDefaults({ emptyReceiveBackoffSeconds }))
+        .toThrow(/emptyReceiveBackoffSeconds must be an integer between 1 and 120/)
+    }
+  })
+  test('drainPendingReceives is off unless set to exactly true', () => {
+    expect(getOptionsWithDefaults({}).drainPendingReceives).toBe(false)
+    expect(getOptionsWithDefaults({ drainPendingReceives: 'yes' }).drainPendingReceives).toBe(false)
+    expect(getOptionsWithDefaults({ drainPendingReceives: true }).drainPendingReceives).toBe(true)
+  })
+  test('an explicit externalDedup: false wins over the environment', () => {
+    const previous = process.env.QDONE_EXTERNAL_DEDUP
+    process.env.QDONE_EXTERNAL_DEDUP = 'true'
+    try {
+      expect(getOptionsWithDefaults({ cacheUri: 'redis://localhost', externalDedup: false }).externalDedup).toBe(false)
+      expect(getOptionsWithDefaults({ cacheUri: 'redis://localhost' }).externalDedup).toBe(true)
+    } finally {
+      if (previous === undefined) delete process.env.QDONE_EXTERNAL_DEDUP
+      else process.env.QDONE_EXTERNAL_DEDUP = previous
+    }
+  })
+  test('kill tuning options pass through untouched', () => {
+    const opt = getOptionsWithDefaults({ forceKillDelayMs: 1500, forceSignalTimeoutMs: 400, killProcessGroup: true, killTree: false })
+    expect(opt.forceKillDelayMs).toBe(1500)
+    expect(opt.forceSignalTimeoutMs).toBe(400)
+    expect(opt.killProcessGroup).toBe(true)
+    expect(opt.killTree).toBe(false)
+  })
+})
+
+describe('worker tuning flags and environment', () => {
+  const keys = ['QDONE_BATCH_LIMIT', 'QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS', 'QDONE_DRAIN_PENDING_RECEIVES']
+  const saved = {}
+  beforeEach(() => { for (const k of keys) { saved[k] = process.env[k]; delete process.env[k] } })
+  afterEach(() => { for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k] } })
+
+  test('kebab-case CLI options map to the worker tuning options', () => {
+    const opt = getOptionsWithDefaults({ 'batch-limit': 3, 'empty-receive-backoff-seconds': 7, 'drain-pending-receives': true })
+    expect(opt.batchLimit).toBe(3)
+    expect(opt.emptyReceiveBackoffSeconds).toBe(7)
+    expect(opt.drainPendingReceives).toBe(true)
+  })
+  test('environment variables apply when no option is given and are validated', () => {
+    process.env.QDONE_BATCH_LIMIT = '4'
+    process.env.QDONE_EMPTY_RECEIVE_BACKOFF_SECONDS = '9'
+    process.env.QDONE_DRAIN_PENDING_RECEIVES = 'true'
+    const opt = getOptionsWithDefaults({})
+    expect(opt.batchLimit).toBe(4)
+    expect(opt.emptyReceiveBackoffSeconds).toBe(9)
+    expect(opt.drainPendingReceives).toBe(true)
+    process.env.QDONE_BATCH_LIMIT = 'lots'
+    expect(() => getOptionsWithDefaults({})).toThrow(/batchLimit must be an integer between 1 and 10/)
+  })
+  test('an explicit option wins over the environment', () => {
+    process.env.QDONE_BATCH_LIMIT = '4'
+    expect(getOptionsWithDefaults({ batchLimit: 2 }).batchLimit).toBe(2)
+  })
+})
