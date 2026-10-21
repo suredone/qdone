@@ -8,8 +8,32 @@ class UsageError extends Error {}
 let client
 
 /**
+ * Build the ioredis Cluster options for a redis-cluster:// or rediss-cluster:// URI.
+ *
+ * The seed node is handed over as host and port with any URI password in the node options, because
+ * ioredis does not carry credentials from a node URL string reliably. With TLS the cluster must
+ * connect to the node hostnames it announces instead of resolving them first, since the
+ * certificates name the hosts (ioredis' documented ElastiCache handling).
+ */
+export function clusterOptionsFromUri (url) {
+  const tls = url.protocol === 'rediss-cluster:'
+  const password = url.password ? decodeURIComponent(url.password) : undefined
+  const clusterOptions = { slotsRefreshInterval: 60 * 1000, redisOptions: {} }
+  if (tls) {
+    clusterOptions.dnsLookup = (address, callback) => callback(null, address)
+    clusterOptions.redisOptions.tls = {}
+  }
+  if (password) clusterOptions.redisOptions.password = password
+  return {
+    nodes: [{ host: url.hostname, port: Number(url.port) || 6379 }],
+    clusterOptions
+  }
+}
+
+/**
  * Internal function to setup redis client. Parses URI to figure out
- * how to connect.
+ * how to connect: redis:// and rediss:// for a single node (ioredis reads TLS and
+ * credentials from the URI), redis-cluster:// and rediss-cluster:// for a cluster.
  */
 export function getCacheClient (opt) {
   const RedisClass = opt.Redis || Redis
@@ -17,13 +41,13 @@ export function getCacheClient (opt) {
     return client
   } else if (opt.cacheUri) {
     const url = new URL(opt.cacheUri)
-    if (url.protocol === 'redis:') {
+    if (url.protocol === 'redis:' || url.protocol === 'rediss:') {
       client = new RedisClass(url.toString())
-    } else if (url.protocol === 'redis-cluster:') {
-      url.protocol = 'redis:'
-      client = new RedisClass.Cluster([url.toString()], { slotsRefreshInterval: 60 * 1000 })
+    } else if (url.protocol === 'redis-cluster:' || url.protocol === 'rediss-cluster:') {
+      const { nodes, clusterOptions } = clusterOptionsFromUri(url)
+      client = new RedisClass.Cluster(nodes, clusterOptions)
     } else {
-      throw new UsageError(`Only redis:// or redis-cluster:// URLs are currently supported. Got: ${url.protocol}`)
+      throw new UsageError(`Only redis://, rediss://, redis-cluster:// or rediss-cluster:// URLs are supported. Got: ${url.protocol}`)
     }
     return client
   } else {

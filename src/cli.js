@@ -38,7 +38,7 @@ const globalOptionDefinitions = [
   { name: 'quiet', alias: 'q', type: Boolean, description: 'Turn on production logging. Automatically set if stderr is not a tty.' },
   { name: 'verbose', alias: 'v', type: Boolean, description: 'Turn on verbose output. Automatically set if stderr is a tty.' },
   { name: 'version', alias: 'V', type: Boolean, description: 'Show version number' },
-  { name: 'cache-uri', type: String, description: 'URL to caching cluster. Only redis://... currently supported.' },
+  { name: 'cache-uri', type: String, description: 'URL to caching cluster: redis://, rediss://, redis-cluster:// or rediss-cluster://.' },
   { name: 'cache-prefix', type: String, description: `Prefix for all keys in cache. [default: ${defaults.cachePrefix}]` },
   { name: 'cache-ttl-seconds', type: Number, description: `Number of seconds to cache GetQueueAttributes calls. [default: ${defaults.cacheTtlSeconds}]` },
   { name: 'help', type: Boolean, description: 'Print full help message.' },
