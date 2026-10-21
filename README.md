@@ -479,7 +479,7 @@ Global Options
     -q, --quiet                  Turn on production logging. Automatically set if stderr is not a tty.
     -v, --verbose                Turn on verbose output. Automatically set if stderr is a tty.
     -V, --version                Show version number
-    --cache-uri string           URL to caching cluster. Only redis://... currently supported.
+    --cache-uri string           URL to caching cluster: redis://, rediss://, redis-cluster:// or rediss-cluster://.
     --cache-prefix string        Prefix for all keys in cache. [default: qdone:]
     --cache-ttl-seconds number   Number of seconds to cache GetQueueAttributes calls. [default: 10]
     --help                       Print full help message.
@@ -520,7 +520,7 @@ Options
     -q, --quiet                         Turn on production logging. Automatically set if stderr is not a tty.
     -v, --verbose                       Turn on verbose output. Automatically set if stderr is a tty.
     -V, --version                       Show version number
-    --cache-uri string                  URL to caching cluster. Only redis://... currently supported.
+    --cache-uri string                  URL to caching cluster: redis://, rediss://, redis-cluster:// or rediss-cluster://.
     --cache-prefix string               Prefix for all keys in cache. [default: qdone:]
     --cache-ttl-seconds number          Number of seconds to cache GetQueueAttributes calls. [default: 10]
     --help                              Print full help message.

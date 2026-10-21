@@ -1,5 +1,12 @@
 # Changelog
 
+v2.2.8 (October 2026)
+-----------------------
+
+### Features
+
+- **TLS cache URIs: `rediss://` and `rediss-cluster://`** — The `--cache-uri` option (and `QDONE_CACHE_URI`) now accepts TLS schemes alongside `redis://` and `redis-cluster://`. A cluster URI hands its seed node, URI password and TLS flag to the ioredis Cluster client and connects to the node names the cluster announces instead of resolving them first, so ElastiCache certificates verify. Every caller of the global `qdone` binary (`idle-queues`, `monitor`, workers with `--external-dedup`) works against a cache cluster that requires in-transit encryption.
+
 v2.2.7 (July 2026)
 -----------------------
 

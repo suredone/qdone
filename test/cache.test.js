@@ -1,7 +1,9 @@
 /* eslint-env jest */
 
 import Redis from 'ioredis-mock'
+import { URL } from 'url'
 import {
+  clusterOptionsFromUri,
   getCacheClient,
   shutdownCache,
   setCache,
@@ -22,7 +24,7 @@ afterAll(shutdownCache)
 describe('getCacheClient', () => {
   test('throws an error for invalid cache uri', () => {
     const badOpt = Object.assign({}, opt, { cacheUri: 'bob://foo' })
-    expect(() => getCacheClient(badOpt)).toThrow('currently supported')
+    expect(() => getCacheClient(badOpt)).toThrow(/rediss-cluster:\/\/ URLs are supported\. Got: bob:/)
   })
   test('throws an error when --cache-uri is missing', () => {
     const badOpt = Object.assign({}, opt)
@@ -32,15 +34,61 @@ describe('getCacheClient', () => {
   test('supports redis:// URIs', () => {
     expect(() => getCacheClient(opt)).not.toThrow()
   })
-  test('supports redis-cache:// URIs', () => {
+  test('supports rediss:// URIs', () => {
     expect(() => getCacheClient(
-      Object.assign({}, opt, { cacheUri: 'redis-cluster://' })
+      Object.assign({}, opt, { cacheUri: 'rediss://localhost:6379' })
     )).not.toThrow()
+  })
+  test('supports redis-cluster:// URIs', () => {
+    expect(() => getCacheClient(
+      Object.assign({}, opt, { cacheUri: 'redis-cluster://localhost:6379' })
+    )).not.toThrow()
+  })
+  test('supports rediss-cluster:// URIs', () => {
+    expect(() => getCacheClient(
+      Object.assign({}, opt, { cacheUri: 'rediss-cluster://localhost:6379' })
+    )).not.toThrow()
+  })
+  test('hands the seed node, TLS and password to the cluster client', () => {
+    const calls = []
+    class RedisStub {
+      static Cluster = class {
+        constructor (nodes, options) { calls.push({ nodes, options }) }
+        quit () {}
+        flushall () {}
+      }
+    }
+    getCacheClient(Object.assign({}, opt, {
+      Redis: RedisStub,
+      cacheUri: 'rediss-cluster://:s3cret%40pass@clustercfg.example.cache.amazonaws.com:6380'
+    }))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].nodes).toEqual([{ host: 'clustercfg.example.cache.amazonaws.com', port: 6380 }])
+    expect(calls[0].options.redisOptions.tls).toEqual({})
+    expect(calls[0].options.redisOptions.password).toBe('s3cret@pass')
+    expect(calls[0].options.slotsRefreshInterval).toBe(60 * 1000)
+    shutdownCache()
   })
   test('returns an identical client on subsequent calls', () => {
     const client1 = getCacheClient(opt)
     const client2 = getCacheClient(opt)
     expect(client1).toEqual(client2)
+  })
+})
+
+describe('clusterOptionsFromUri', () => {
+  test('connects to announced node names unchanged under TLS, so certificates verify', () => {
+    const { nodes, clusterOptions } = clusterOptionsFromUri(new URL('rediss-cluster://cache.example:6379'))
+    expect(nodes).toEqual([{ host: 'cache.example', port: 6379 }])
+    const resolved = []
+    clusterOptions.dnsLookup('node-0001.cache.example', (error, address) => resolved.push([error, address]))
+    expect(resolved).toEqual([[null, 'node-0001.cache.example']])
+  })
+  test('leaves a plaintext cluster without TLS, lookup override or password', () => {
+    const { nodes, clusterOptions } = clusterOptionsFromUri(new URL('redis-cluster://cache.example'))
+    expect(nodes).toEqual([{ host: 'cache.example', port: 6379 }])
+    expect(clusterOptions.dnsLookup).toBeUndefined()
+    expect(clusterOptions.redisOptions).toEqual({})
   })
 })
 
