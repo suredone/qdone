@@ -8,6 +8,13 @@ import { init, withScope, captureException } from '@sentry/node'
 const debug = Debug('qdone:sentry')
 
 let sentryWasInit = false
+
+// The cache URI may carry the Redis AUTH password; nothing sent to Sentry may include it.
+export function redactCacheUri (opt) {
+  if (!opt || typeof opt !== 'object' || typeof opt.cacheUri !== 'string') return opt
+  return { ...opt, cacheUri: opt.cacheUri.replace(/\/\/[^@/]*@/, '//***@') }
+}
+
 export async function withSentry (callback, opt, contexts) {
   debug({ withSentry: { callback, opt, contexts } })
   // Bail if sentry isn't enabled
@@ -25,7 +32,7 @@ export async function withSentry (callback, opt, contexts) {
   } catch (err) {
     debug({ err })
     await withScope(async function (scope) {
-      scope.setContext('opt', opt)
+      scope.setContext('opt', redactCacheUri(opt))
       if (contexts instanceof Object) {
         for (const key in contexts) scope.setContext(key, contexts[key])
         if (err.stdout && err.stderr) {
