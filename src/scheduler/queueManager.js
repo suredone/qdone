@@ -24,7 +24,8 @@ export class QueueManager {
 
   // Sends a queue to the icehouse, where it waits for a while before being
   // checked again
-  updateIcehouse (qrl, emptyReceive) {
+  /** @param {string} qrl @param {boolean} emptyReceive @param {boolean} receiveError @returns {void} */
+  updateIcehouse (qrl, emptyReceive, receiveError = false) {
     const foundEntry = !!this.icehouse[qrl]
     const { lastCheck, secondsToWait, numEmptyReceives } = this.icehouse[qrl] || {
       lastCheck: new Date(),
@@ -39,10 +40,14 @@ export class QueueManager {
       const baseSeconds = numEmptyReceives ** 2 * 20
       const jitterSeconds = Math.round((Math.random() - 0.5) * baseSeconds)
       const newSecondsToWait = Math.max(minWait, Math.min(maxWait, baseSeconds + jitterSeconds))
-      const newEntry = { lastCheck: now, secondsToWait: newSecondsToWait, numEmptyReceives: numEmptyReceives + 1 }
+      // Successful empty polls may retry sooner; errors retain the original backoff.
+      const waitSeconds = !receiveError && this.opt.emptyReceiveBackoffSeconds !== undefined
+        ? Math.min(newSecondsToWait, this.opt.emptyReceiveBackoffSeconds)
+        : newSecondsToWait
+      const newEntry = { lastCheck: now, secondsToWait: waitSeconds, numEmptyReceives: numEmptyReceives + 1 }
       this.icehouse[qrl] = newEntry
       if (this.opt.verbose) {
-        console.error(chalk.blue('Sending queue to icehouse'), qrl, chalk.blue('for'), newSecondsToWait, chalk.blue('seconds'))
+        console.error(chalk.blue('Sending queue to icehouse'), qrl, chalk.blue('for'), waitSeconds, chalk.blue('seconds'))
       }
       debug({ foundEntry, newEntry, lastCheck, secondsToWait, now, secondsElapsed, maxWait, minWait, baseSeconds, jitterSeconds })
     } else {
