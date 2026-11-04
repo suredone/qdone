@@ -266,6 +266,25 @@ The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The timeout
 doubles every subsequent call but never exceeds `--kill-after`.
 
+### Concurrent consumer receipt loss
+
+The concurrent `processMessages()` consumer skips a callback which has not entered
+when SQS affirmatively returns `ReceiptHandleIsInvalid` or `MessageNotInflight`
+for that delivery's visibility request. This includes an outstanding visibility
+clamp before callback entry. A skipped delivery is removed from local admission
+and counted in `jobsSkipped`, without an ACK or external dedup-key release.
+`RECEIPT_LOST_BEFORE_CALLBACK` respects the existing logging options and excludes
+the receipt handle and payload. A scheduler `MESSAGE_PROCESSING_START` can precede
+the visibility reply; it does not establish callback entry.
+
+Already-entered callbacks retain PID, inline execution and shutdown custody.
+Transient or ambiguous failures do not trigger this fence. Valid FIFO siblings
+continue in the existing order within their received batch; a new receipt for a
+skipped message is independently admissible. SQS retention/redrive and application
+reconciliation still govern recovery, without a durable cross-receipt effect-order
+or exactly-once guarantee. This fence does not establish a confirmed lease when
+no error is returned. The legacy `worker` implementation is unchanged.
+
 ### Dynamically removing queues
 
 If you have workers listening on a dynamic number of queues, then any idle queues will negatively impact how quickly jobs can be dequeued and/or increase the number of unecessary API calls. You can discover which queues are idle using the `idle-queues` command:

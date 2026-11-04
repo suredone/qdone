@@ -39,7 +39,8 @@ export class JobExecutor {
       jobsSucceeded: 0,
       jobsFailed: 0,
       jobsDeleted: 0,
-      jobsKilled: 0
+      jobsKilled: 0,
+      jobsSkipped: 0
     }
     this.executionPromises = new Set()
     this.killEscalationPromises = new Set()
@@ -338,6 +339,39 @@ export class JobExecutor {
     }
   }
 
+  /** @param {object} job @param {string} receiptHandle @param {string} code @returns {boolean} */
+  abandonUnenteredReceipt (job, receiptHandle, code) {
+    if (code !== 'ReceiptHandleIsInvalid' && code !== 'MessageNotInflight') return false
+    if (this.jobsByMessageId[job.message.MessageId] !== job ||
+      job.message.ReceiptHandle !== receiptHandle || job.callbackEntered ||
+      (job.status !== 'waiting' && job.status !== 'running')) return false
+
+    this.stats.activeJobs--
+    if (job.status === 'waiting') this.stats.waitingJobs--
+    else this.stats.runningJobs--
+    job.status = 'abandoned'
+    job.extendAtSecond = Infinity
+    this.clearJobTimers(job)
+    this.jobs = this.jobs.filter(tracked => tracked !== job)
+    this.jobsByQueue.get(job.qname).delete(job)
+    if (this.jobsByMessageId[job.message.MessageId] === job) {
+      delete this.jobsByMessageId[job.message.MessageId]
+    }
+    this.stats.jobsSkipped++
+    if (this.opt.verbose) {
+      console.error(chalk.yellow('RECEIPT_LOST_BEFORE_CALLBACK'), job.qname, job.message.MessageId, code)
+    } else if (!this.opt.disableLog) {
+      console.log(JSON.stringify({
+        event: 'RECEIPT_LOST_BEFORE_CALLBACK',
+        timestamp: new Date(),
+        queue: job.qname,
+        messageId: job.message.MessageId,
+        code
+      }))
+    }
+    return true
+  }
+
   async setJobVisibilityTimeout (job, visibilityTimeout, start = new Date()) {
     if (job.extendAtSecond === Infinity) return
 
@@ -358,6 +392,7 @@ export class JobExecutor {
       this.stats.sqsCalls++
       this.stats.timeoutsExtended++
     } catch (err) {
+      this.abandonUnenteredReceipt(job, input.ReceiptHandle, err?.name)
       debug('ChangeMessageVisibility error', err)
       if (this.opt.verbose) {
         console.error(chalk.red('FAILED_TO_SET_VISIBILITY_TIMEOUT'), { err, input })
@@ -499,6 +534,7 @@ export class JobExecutor {
           job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
           jobsToExtend.push({
             job,
+            receiptHandle: job.message.ReceiptHandle,
             previousVisibilityTimeout,
             visibilityTimeout: job.visibilityTimeout,
             extendAtSecond: job.extendAtSecond
@@ -537,12 +573,12 @@ export class JobExecutor {
           const attempt = jobsToExtend.shift()
           const { job } = attempt
           // Another queue's request may have awaited a newer lease update for this job.
-          if (job.visibilityTimeout !== attempt.visibilityTimeout ||
+          if (job.status === 'abandoned' || job.visibilityTimeout !== attempt.visibilityTimeout ||
             job.extendAtSecond !== attempt.extendAtSecond) continue
           batchJobs[job.message.MessageId] = attempt
           const entry = {
             Id: job.message.MessageId,
-            ReceiptHandle: job.message.ReceiptHandle,
+            ReceiptHandle: attempt.receiptHandle,
             VisibilityTimeout: attempt.visibilityTimeout
           }
           entries.push(entry)
@@ -583,8 +619,11 @@ export class JobExecutor {
             const attempt = batchJobs[failed.Id]
             const job = attempt?.job
             console.error('FAILED_TO_EXTEND_JOB', { failedEntry: failed, job })
+            // A permanent response names the captured receipt even if an optimistic timer moved.
+            if (job && this.abandonUnenteredReceipt(job, attempt.receiptHandle, failed.Code)) continue
             // A late failure must not overwrite a newer visibility update for this delivery.
-            if (!job || job.visibilityTimeout !== attempt.visibilityTimeout ||
+            if (!job || this.jobsByMessageId[job.message.MessageId] !== job ||
+              job.message.ReceiptHandle !== attempt.receiptHandle || job.visibilityTimeout !== attempt.visibilityTimeout ||
               job.extendAtSecond !== attempt.extendAtSecond) continue
 
             // Keep execution custody, but do not treat a rejected lease as granted.
@@ -692,7 +731,9 @@ export class JobExecutor {
       if (job.status === 'deleting' || job.status === 'failed') {
         debug('removed', job.message.MessageId)
         // Accounting
-        delete this.jobsByMessageId[job.message.MessageId]
+        if (this.jobsByMessageId[job.message.MessageId] === job) {
+          delete this.jobsByMessageId[job.message.MessageId]
+        }
         this.jobsByQueue.get(job.qname).delete(job)
         return false
       } else {
@@ -754,6 +795,7 @@ export class JobExecutor {
   }
 
   async runJob (job) {
+    if (job.status === 'abandoned') return
     try {
       if (this.opt.verbose) {
         console.error(chalk.blue('Running:'), job.prettyQname, chalk.blue('-->'), job.payload, job.message.MessageId)
@@ -772,6 +814,7 @@ export class JobExecutor {
       this.stats.waitingJobs--
       this.scheduleKillAfter(job)
       await this.setRunningVisibilityTimeout(job)
+      if (job.status === 'abandoned') return
       const queue = job.qname.slice(this.opt.prefix.length)
       const attributes = {
         queueName: job.qname,
@@ -800,6 +843,7 @@ export class JobExecutor {
           await this.registerInlineExecution(job)
         }
       }
+      job.callbackEntered = true
       const result = await job.callback(queue, job.payload, attributes)
       if (job.killed) throw new Error('Job callback resolved after process termination was requested')
       debug('executeJob callback finished', { payload: job.payload, result })
@@ -849,8 +893,10 @@ export class JobExecutor {
       }
     } finally {
       this.clearJobTimers(job)
-      this.stats.activeJobs--
-      this.stats.runningJobs--
+      if (job.status !== 'abandoned') {
+        this.stats.activeJobs--
+        this.stats.runningJobs--
+      }
     }
   }
 
@@ -875,7 +921,9 @@ export class JobExecutor {
       jobs = messages.map(message => this.addJob(message, callback, qname, qrl))
     } catch (error) {
       for (const job of this.jobs.splice(previousJobCount)) {
-        delete this.jobsByMessageId[job.message.MessageId]
+        if (this.jobsByMessageId[job.message.MessageId] === job) {
+          delete this.jobsByMessageId[job.message.MessageId]
+        }
         this.jobsByQueue.get(job.qname).delete(job)
         this.stats.activeJobs--
         this.stats.waitingJobs--
