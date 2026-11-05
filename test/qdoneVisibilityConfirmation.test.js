@@ -279,6 +279,33 @@ describe('confirmed visibility renewal', () => {
     expect(calls('ChangeMessageVisibilityCommand').map(input => input.VisibilityTimeout)).toEqual([30, 120])
   })
 
+  it.each([false, true])('enters inline work during a held long renewal (queued clamp=%s)', async queueClamp => {
+    executor.opt.killAfter = 0
+    const beginInline = hold()
+    const response = hold()
+    const execution = execute([message('A')], async (_queue, _id, attributes) => {
+      await beginInline.promise
+      await attributes.registerInlineExecution()
+      effects.push('inline')
+      await response.promise
+    })
+    renew = async input => { await response.promise; return success(input) }
+    await jest.advanceTimersByTimeAsync(60000)
+    expect(renewals()[0].Entries[0].VisibilityTimeout).toBe(240)
+    let queued
+    if (queueClamp) {
+      executor.opt.killAfter = 30
+      queued = executor.setRunningVisibilityTimeout(executor.jobsByMessageId.A)
+    }
+    beginInline.resolve()
+    await jest.advanceTimersByTimeAsync(0)
+    expect(effects).toEqual(['inline'])
+    expect(calls('ChangeMessageVisibilityCommand')).toEqual([])
+    response.resolve()
+    await Promise.all([execution, queued])
+    expect(calls('ChangeMessageVisibilityCommand')).toEqual([])
+  })
+
   it.each([[30, false], [1, false], [1, true]])('restores a short %is clamp (confirmed=%s) after an ambiguous inline reply', async (killAfter, confirmed) => {
     executor.opt.killAfter = killAfter
     const ready = gate()

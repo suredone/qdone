@@ -504,6 +504,10 @@ export class JobExecutor {
     job.killDue = false
     this.clearJobTimers(job)
 
+    const pending = job.visibilityRequest
+    if (!this.needsInlineVisibilityRestore(job) &&
+      (!pending || pending.visibilityTimeout >= defaultVisibilityTimeout)) return
+
     await this.setJobVisibilityTimeout(job, () => {
       if (job.status === 'running' && this.needsInlineVisibilityRestore(job)) return defaultVisibilityTimeout
     })
