@@ -42,6 +42,7 @@ describe('qdone visibility-error custody', () => {
         if (!command.input.Entries) return {}
         if (command.constructor.name === 'ChangeMessageVisibilityBatchCommand') {
           if (extensionGate) await extensionGate.promise
+          if (extensionCode === 'success') return { Successful: command.input.Entries.map(({ Id }) => ({ Id })) }
           return {
             Failed: command.input.Entries.map(({ Id }) => ({
               Id, Code: extensionCode, SenderFault: true
@@ -204,26 +205,29 @@ describe('qdone visibility-error custody', () => {
     await executor.shutdown()
   })
 
-  it('does not replace a newer lease update when an older extension fails', async () => {
+  it('sends an explicit change after the held renewal settles', async () => {
     const job = startJob()
     await job.started
     extensionGate = gate()
     const maintenance = failExtension()
-    await Promise.resolve()
-    await executor.setJobVisibilityTimeout(executor.jobsByMessageId.a, 60)
-    const newer = {
-      visibilityTimeout: executor.jobsByMessageId.a.visibilityTimeout,
-      extendAtSecond: executor.jobsByMessageId.a.extendAtSecond
-    }
+    const tracked = executor.jobsByMessageId.a
+    const update = executor.setJobVisibilityTimeout(tracked, 60)
+    expect(sqs.send.mock.calls.map(([command]) => command.constructor.name)).toEqual(['ChangeMessageVisibilityBatchCommand'])
+    expect(tracked.visibilityTimeout).toBe(120)
     extensionGate.resolve()
-    await maintenance
-    expect(executor.jobsByMessageId.a).toMatchObject(newer)
+    await Promise.all([maintenance, update])
+    expect(sqs.send.mock.calls.map(([command]) => command.constructor.name)).toEqual([
+      'ChangeMessageVisibilityBatchCommand', 'ChangeMessageVisibilityCommand'
+    ])
+    expect(tracked.visibilityTimeout).toBe(60)
+    expect(tracked.visibilityRequest).toBeUndefined()
+    expect(tracked.visibilityRetryAt).toBeUndefined()
     job.finish()
     await job.execution
     await executor.shutdown()
   })
 
-  it('skips a queued extension superseded by inline registration while another queue awaits SQS', async () => {
+  it('restores inline visibility while a renewal for another queue is held', async () => {
     const first = startJob()
     await first.started
     executor.opt.killAfter = 30
@@ -290,8 +294,8 @@ describe('qdone visibility-error custody', () => {
     expect(deletedIds()).toEqual([])
   })
 
-  it('does not apply a late permanent error to a new delivery of the same message', async () => {
-    extensionCode = 'ReceiptHandleIsInvalid'
+  it.each(['ReceiptHandleIsInvalid', 'success'])('does not apply a late %s response to a new delivery of the same message', async reply => {
+    extensionCode = reply
     const old = startJob()
     await old.started
     extensionGate = gate()
@@ -308,7 +312,10 @@ describe('qdone visibility-error custody', () => {
     extensionGate.resolve()
     await maintenance
     expect(executor.jobsByMessageId.a.extendAtSecond).toBe(nextExtension)
+    expect(executor.jobsByMessageId.a.visibilityTimeout).toBe(120)
+    expect(executor.jobsByMessageId.a.confirmedVisibilitySentAt).toBeNull()
     expect(executor.jobsByMessageId.a.status).toBe('running')
+    expect(executor.stats.timeoutsExtended).toBe(0)
     fresh.finish()
     await fresh.execution
     await executor.shutdown()

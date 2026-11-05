@@ -266,6 +266,21 @@ The SQS API call to extend this timeout (`ChangeMessageVisibility`) is called
 at the halfway point before the message becomes visible again. The timeout
 doubles every subsequent call but never exceeds `--kill-after`.
 
+### Concurrent visibility renewals
+
+The concurrent `processMessages()` consumer starts with the 120-second receive
+visibility policy. A successful visibility change schedules the next renewal
+halfway through its acknowledged duration, measured from request submission.
+Failed or ambiguous replies leave the last confirmation in place and make the
+receipt eligible for background retry after ten seconds. Unsent entries remain
+eligible.
+
+Background renewals use up to four concurrent requests with ten entries each.
+A receipt has one pending visibility request across background renewal, callback
+clamping and inline restoration. A held renewal still allows the executor to
+acknowledge completed jobs. SQS expiry and redelivery remain possible while
+requests are stalled or their outcomes are uncertain.
+
 ### Concurrent consumer receipt loss
 
 The concurrent `processMessages()` consumer skips a callback which has not entered
