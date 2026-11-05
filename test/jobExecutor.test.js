@@ -490,6 +490,8 @@ describe('JobExecutor kill-after', () => {
   })
 
   test('maintainVisibility logs stats and handles extension batch success and failure', async () => {
+    const responseTime = Date.UTC(2026, 0, 1)
+    jest.useFakeTimers({ now: responseTime })
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const executor = makeExecutor({ verbose: true })
     const failedJob = executor.addJob(makeMessage('extend-failed'), async () => {}, 'sdqd_testqueue', 'https://sqs/sdqd_testqueue')
@@ -519,7 +521,7 @@ describe('JobExecutor kill-after', () => {
     expect(executor.jobsByMessageId[failedJob.message.MessageId]).toBe(failedJob)
     expect(failedJob.status).toBe('running')
     expect(failedJob.extendAtSecond).toBe(0)
-    expect(failedJob.visibilityRetryAt).toBe(Date.now() + 10000)
+    expect(failedJob.visibilityRetryAt).toBe(responseTime + 10000)
     expect(executor.jobsByMessageId[successfulJob.message.MessageId]).toBeDefined()
     expect(executor.jobsByMessageId[staleFailedJob.message.MessageId]).toBeUndefined()
     expect(errorSpy.mock.calls.flat().join(' ')).toContain('FAILED_TO_EXTEND_JOB')
