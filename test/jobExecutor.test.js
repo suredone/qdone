@@ -70,7 +70,7 @@ describe('JobExecutor kill-after', () => {
     sqsMock = mockClient(client)
     setSQSClient(sqsMock)
     sqsMock.on(ChangeMessageVisibilityCommand).resolves({})
-    sqsMock.on(ChangeMessageVisibilityBatchCommand).resolves({ Successful: [], Failed: [] })
+    sqsMock.on(ChangeMessageVisibilityBatchCommand).callsFake(({ Entries }) => ({ Successful: Entries.map(({ Id }) => ({ Id })) }))
     sqsMock.on(DeleteMessageBatchCommand).resolves({ Successful: [], Failed: [] })
   })
 
@@ -482,7 +482,7 @@ describe('JobExecutor kill-after', () => {
 
     job.visibilityTimeout = 120
 
-    await executor.setRunningVisibilityTimeout(job)
+    await executor.runJob(job)
 
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED_TO_SET_VISIBILITY_TIMEOUT'), expect.any(Object))
 
@@ -518,8 +518,8 @@ describe('JobExecutor kill-after', () => {
     // granted, and the next extension attempt is bounded rather than dropped.
     expect(executor.jobsByMessageId[failedJob.message.MessageId]).toBe(failedJob)
     expect(failedJob.status).toBe('running')
-    expect(failedJob.extendAtSecond).toBeGreaterThan(0)
-    expect(Number.isFinite(failedJob.extendAtSecond)).toBe(true)
+    expect(failedJob.extendAtSecond).toBe(0)
+    expect(failedJob.visibilityRetryAt).toBe(Date.now() + 10000)
     expect(executor.jobsByMessageId[successfulJob.message.MessageId]).toBeDefined()
     expect(executor.jobsByMessageId[staleFailedJob.message.MessageId]).toBeUndefined()
     expect(errorSpy.mock.calls.flat().join(' ')).toContain('FAILED_TO_EXTEND_JOB')

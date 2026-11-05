@@ -23,6 +23,17 @@ const defaultVisibilityTimeout = 120
 const SIGKILL_DELAY_MS = 5000
 // Completions stop starting early passes while this many are in flight; the 10s timer still runs.
 const maxPromptMaintenancePasses = 3
+const maxBackgroundVisibilityRequests = 4
+const visibilityRetryDelayMs = 10000
+
+/**
+ * @typedef {object} VisibilityRequest
+ * @property {string} receiptHandle
+ * @property {number} visibilityTimeout
+ * @property {number} sentAt
+ * @property {Promise<void>} settled
+ * @property {() => void} release
+ */
 
 export class JobExecutor {
   constructor (opt) {
@@ -45,6 +56,7 @@ export class JobExecutor {
     this.executionPromises = new Set()
     this.killEscalationPromises = new Set()
     this.maintainPromises = new Set()
+    this.backgroundVisibilityWorkers = 0
     this.maintainVisibility()
     debug({ this: this })
   }
@@ -350,7 +362,6 @@ export class JobExecutor {
     if (job.status === 'waiting') this.stats.waitingJobs--
     else this.stats.runningJobs--
     job.status = 'abandoned'
-    job.extendAtSecond = Infinity
     this.clearJobTimers(job)
     this.jobs = this.jobs.filter(tracked => tracked !== job)
     this.jobsByQueue.get(job.qname).delete(job)
@@ -372,43 +383,116 @@ export class JobExecutor {
     return true
   }
 
-  async setJobVisibilityTimeout (job, visibilityTimeout, start = new Date()) {
-    if (job.extendAtSecond === Infinity) return
+  /** @param {object} job @param {string} receiptHandle @returns {boolean} */
+  isCurrentVisibilityReceipt (job, receiptHandle) {
+    return this.jobsByMessageId[job.message.MessageId] === job &&
+      job.message.ReceiptHandle === receiptHandle && !job.visibilityLost &&
+      (job.status === 'waiting' || job.status === 'running')
+  }
 
-    job.visibilityTimeout = visibilityTimeout
-    const jobRunTime = Math.round((start - job.start) / 1000)
-    job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2)
+  /** @param {object} job @param {number} now @returns {boolean} */
+  isVisibilityDue (job, now) {
+    if (job.visibilityRequest || !this.isCurrentVisibilityReceipt(job, job.message.ReceiptHandle)) return false
+    if (job.visibilityRetryAt !== undefined) return now >= job.visibilityRetryAt
+    return Math.round((now - job.start) / 1000) >= job.extendAtSecond
+  }
 
-    const input = {
-      QueueUrl: job.qrl,
-      ReceiptHandle: job.message.ReceiptHandle,
-      VisibilityTimeout: job.visibilityTimeout
+  /** @param {object} job @param {number} now @returns {number} */
+  visibilityKillBudget (job, now) {
+    if (!this.shouldEnforceKillAfter(job) || !job.executionStart) return Infinity
+    const elapsed = this.getExecutionTimeMs(job, now)
+    return Math.max(1, Math.ceil((this.opt.killAfter * 1000 - elapsed) / 1000))
+  }
+
+  /** @param {object} job @returns {boolean} */
+  needsInlineVisibilityRestore (job) {
+    return job.executionMode === 'inline' &&
+      (job.visibilityTimeout < defaultVisibilityTimeout || !!job.possiblyShortVisibility)
+  }
+
+  /** @param {object} job @param {string} receiptHandle @param {number} visibilityTimeout @param {number} sentAt @returns {VisibilityRequest} */
+  beginVisibilityRequest (job, receiptHandle, visibilityTimeout, sentAt) {
+    let release
+    const settled = new Promise(resolve => { release = resolve })
+    const request = { receiptHandle, visibilityTimeout, sentAt, settled, release }
+    job.visibilityRequest = request
+    return request
+  }
+
+  /** @param {object} job @param {VisibilityRequest} request @returns {void} */
+  releaseVisibilityRequest (job, request) {
+    if (job.visibilityRequest === request) delete job.visibilityRequest
+    request.release()
+  }
+
+  /** @param {object} job @param {VisibilityRequest} request @param {boolean} confirmed @param {string | undefined} code @returns {boolean} */
+  applyVisibilityReply (job, request, confirmed, code) {
+    if (job.visibilityRequest !== request || !this.isCurrentVisibilityReceipt(job, request.receiptHandle)) return false
+    if (confirmed) {
+      job.visibilityTimeout = request.visibilityTimeout
+      job.confirmedVisibilitySentAt = request.sentAt
+      job.extendAtSecond = Math.round((request.sentAt - job.start) / 1000 + request.visibilityTimeout / 2)
+      delete job.visibilityRetryAt
+      if (request.visibilityTimeout >= defaultVisibilityTimeout) delete job.possiblyShortVisibility
+      this.stats.timeoutsExtended++
+      return true
     }
+
+    if (code === 'ReceiptHandleIsInvalid' || code === 'MessageNotInflight') {
+      job.visibilityLost = true
+      delete job.possiblyShortVisibility
+      this.abandonUnenteredReceipt(job, request.receiptHandle, code)
+    } else {
+      job.visibilityRetryAt = Date.now() + visibilityRetryDelayMs
+      if (request.visibilityTimeout < defaultVisibilityTimeout) job.possiblyShortVisibility = true
+    }
+    return false
+  }
+
+  /** @param {object} job @param {number | ((now: number) => (number | undefined))} timeout @returns {Promise<void>} */
+  async setJobVisibilityTimeout (job, timeout) {
+    const receiptHandle = job.message.ReceiptHandle
+    while (job.visibilityRequest) await job.visibilityRequest.settled
+    if (!this.isCurrentVisibilityReceipt(job, receiptHandle)) return
+
+    // Compute a clamp or restore only after the preceding operation settles.
+    const sentAt = Date.now()
+    const visibilityTimeout = typeof timeout === 'function' ? timeout(sentAt) : timeout
+    if (visibilityTimeout === undefined) return
+    const request = this.beginVisibilityRequest(job, receiptHandle, visibilityTimeout, sentAt)
+    const input = { QueueUrl: job.qrl, ReceiptHandle: receiptHandle, VisibilityTimeout: visibilityTimeout }
     debug({ ChangeMessageVisibility: input })
 
     try {
-      const result = await getSQSMaintenanceClient().send(new ChangeMessageVisibilityCommand(input))
+      let result
+      try {
+        result = await getSQSMaintenanceClient().send(new ChangeMessageVisibilityCommand(input))
+      } catch (err) {
+        this.applyVisibilityReply(job, request, false, err?.name)
+        debug('ChangeMessageVisibility error', err)
+        if (this.opt.verbose) {
+          console.error(chalk.red('FAILED_TO_SET_VISIBILITY_TIMEOUT'), { err, input })
+        }
+        return
+      }
       debug('ChangeMessageVisibility returned', result)
       this.stats.sqsCalls++
-      this.stats.timeoutsExtended++
-    } catch (err) {
-      this.abandonUnenteredReceipt(job, input.ReceiptHandle, err?.name)
-      debug('ChangeMessageVisibility error', err)
-      if (this.opt.verbose) {
-        console.error(chalk.red('FAILED_TO_SET_VISIBILITY_TIMEOUT'), { err, input })
-      }
+      this.applyVisibilityReply(job, request, true, undefined)
+    } finally {
+      this.releaseVisibilityRequest(job, request)
     }
   }
 
-  async setRunningVisibilityTimeout (job) {
-    if (!this.shouldEnforceKillAfter(job)) return
-
-    const visibilityTimeout = Math.max(1, Math.min(job.visibilityTimeout, this.opt.killAfter))
-    if (visibilityTimeout >= job.visibilityTimeout) return
-
-    await this.setJobVisibilityTimeout(job, visibilityTimeout)
+  /** @param {object} job @returns {Promise<void>} */
+  setRunningVisibilityTimeout (job) {
+    if (!this.shouldEnforceKillAfter(job)) return Promise.resolve()
+    return this.setJobVisibilityTimeout(job, now => {
+      const remaining = this.visibilityKillBudget(job, now)
+      return remaining < job.visibilityTimeout ? remaining : undefined
+    })
   }
 
+  /** @param {object} job @returns {Promise<void>} */
   async registerInlineExecution (job) {
     if (job.executionMode === 'inline') return
     if (job.executionMode === 'child_process') {
@@ -420,9 +504,9 @@ export class JobExecutor {
     job.killDue = false
     this.clearJobTimers(job)
 
-    if (job.status === 'running' && job.visibilityTimeout < defaultVisibilityTimeout) {
-      await this.setJobVisibilityTimeout(job, defaultVisibilityTimeout)
-    }
+    await this.setJobVisibilityTimeout(job, () => {
+      if (job.status === 'running' && this.needsInlineVisibilityRestore(job)) return defaultVisibilityTimeout
+    })
   }
 
   logInlineKillAfterOverrun (job, start = new Date()) {
@@ -483,7 +567,6 @@ export class JobExecutor {
     const start = new Date()
     const jobsToExtendByQrl = {}
     const jobsToDeleteByQrl = {}
-    const jobsToCleanup = new Set()
 
     // Build list of jobs we need to deal with
     const jobStatuses = {}
@@ -496,10 +579,7 @@ export class JobExecutor {
         job.status = 'deleting'
         jobsToDelete.push(job)
         jobsToDeleteByQrl[job.qrl] = jobsToDelete
-      } else if (job.status === 'failed') {
-        jobsToCleanup.add(job)
-      } else if (job.status !== 'deleting') {
-        // Any other job state gets visibility accounting
+      } else if (job.status === 'waiting' || job.status === 'running') {
         debug('processing', { job, jobRunTime })
 
         // Kill-after enforcement: terminate child process if it exceeds the deadline.
@@ -515,31 +595,10 @@ export class JobExecutor {
           this.logInlineKillAfterOverrun(job, start)
         }
 
-        if (jobRunTime >= job.extendAtSecond) {
-          // Add it to our organized list of jobs
+        if (this.isVisibilityDue(job, +start)) {
           const jobsToExtend = jobsToExtendByQrl[job.qrl] || []
+          jobsToExtend.push(job)
           jobsToExtendByQrl[job.qrl] = jobsToExtend
-
-          // Update the visibility timeout, double every time, up to max.
-          // Only cap at killAfter once execution has started — waiting FIFO
-          // jobs should not have their visibility reduced prematurely.
-          const previousVisibilityTimeout = job.visibilityTimeout
-          const doubled = previousVisibilityTimeout * 2
-          const secondsUntilMax = Math.max(1, maxJobSeconds - jobRunTime)
-          const executionTimeMs = job.executionStart ? this.getExecutionTimeMs(job, start) : 0
-          const secondsUntilKill = (this.shouldEnforceKillAfter(job) && job.executionStart)
-            ? Math.max(1, Math.ceil((this.opt.killAfter * 1000 - executionTimeMs) / 1000))
-            : Infinity
-          job.visibilityTimeout = Math.min(doubled, secondsUntilMax, secondsUntilKill)
-          job.extendAtSecond = Math.round(jobRunTime + job.visibilityTimeout / 2) // this is what we use next time
-          jobsToExtend.push({
-            job,
-            receiptHandle: job.message.ReceiptHandle,
-            previousVisibilityTimeout,
-            visibilityTimeout: job.visibilityTimeout,
-            extendAtSecond: job.extendAtSecond
-          })
-          debug({ doubled, secondsUntilMax, secondsUntilKill, job })
         }
       }
     }
@@ -560,95 +619,117 @@ export class JobExecutor {
       }
     }
 
-    // Extend in batches for each queue
-    for (const qrl in jobsToExtendByQrl) {
-      const jobsToExtend = jobsToExtendByQrl[qrl]
-      debug({ qrl, jobsToExtend })
-      while (jobsToExtend.length) {
-        // Build list of messages to go in this batch
-        const entries = []
-        const batchJobs = {}
-        let messageId = 0
-        while (messageId++ < 10 && jobsToExtend.length) {
-          const attempt = jobsToExtend.shift()
-          const { job } = attempt
-          // Another queue's request may have awaited a newer lease update for this job.
-          if (job.status === 'abandoned' || job.visibilityTimeout !== attempt.visibilityTimeout ||
-            job.extendAtSecond !== attempt.extendAtSecond) continue
-          batchJobs[job.message.MessageId] = attempt
-          const entry = {
-            Id: job.message.MessageId,
-            ReceiptHandle: attempt.receiptHandle,
-            VisibilityTimeout: attempt.visibilityTimeout
-          }
-          entries.push(entry)
-        }
-        debug({ entries })
-        if (!entries.length) continue
+    const results = await Promise.allSettled([
+      this.extendVisibilityBatches(jobsToExtendByQrl),
+      this.deleteCompletedJobs(jobsToDeleteByQrl, start)
+    ])
+    // Keep the existing pass boundary for untracking pending deletes.
+    if (results[1].status === 'fulfilled') this.cleanupFinishedJobs()
+    const failures = results.filter(result => result.status === 'rejected').map(result => result.reason)
+    if (failures.length === 1) throw failures[0]
+    if (failures.length) throw new AggregateError(failures, 'QDone visibility and deletion maintenance failed')
+  }
 
-        // Change batch
-        const input = { QueueUrl: qrl, Entries: entries }
-        debug({ ChangeMessageVisibilityBatch: input })
-        let result
-        try {
-          result = await getSQSMaintenanceClient().send(new ChangeMessageVisibilityBatchCommand(input))
-        } catch (err) {
-          // A single batch failure must not abort the whole maintenance run and
-          // strand the remaining queues (or the end-of-pass cleanup). Log and
-          // move on; jobs we couldn't extend get re-evaluated next cycle.
-          debug('ChangeMessageVisibilityBatch error', err)
-          if (this.opt.verbose) {
-            console.error(chalk.red('FAILED_TO_EXTEND_BATCH'), { qrl, error: err?.message })
-          } else if (!this.opt.disableLog) {
-            console.log(JSON.stringify({
-              event: 'EXTEND_VISIBILITY_ERROR',
-              timestamp: start,
-              qrl,
-              count: entries.length,
-              errorName: err?.name,
-              errorMessage: err?.message
-            }))
-          }
-          continue
-        }
-        debug('ChangeMessageVisibilityBatch returned', result)
-        this.stats.sqsCalls++
-        if (result.Failed?.length) {
-          console.error('FAILED_MESSAGES', result.Failed)
-          for (const failed of result.Failed) {
-            const attempt = batchJobs[failed.Id]
-            const job = attempt?.job
-            console.error('FAILED_TO_EXTEND_JOB', { failedEntry: failed, job })
-            // A permanent response names the captured receipt even if an optimistic timer moved.
-            if (job && this.abandonUnenteredReceipt(job, attempt.receiptHandle, failed.Code)) continue
-            // A late failure must not overwrite a newer visibility update for this delivery.
-            if (!job || this.jobsByMessageId[job.message.MessageId] !== job ||
-              job.message.ReceiptHandle !== attempt.receiptHandle || job.visibilityTimeout !== attempt.visibilityTimeout ||
-              job.extendAtSecond !== attempt.extendAtSecond) continue
-
-            // Keep execution custody, but do not treat a rejected lease as granted.
-            job.visibilityTimeout = attempt.previousVisibilityTimeout
-            if (failed.Code === 'ReceiptHandleIsInvalid' || failed.Code === 'MessageNotInflight') {
-              job.extendAtSecond = Infinity
-            } else {
-              // FIFO completions can trigger early passes; bound retries independently of those passes.
-              job.extendAtSecond = Math.ceil((Date.now() - job.start) / 1000) + 10
-            }
-          }
-        }
-        if (result.Successful?.length) {
-          const count = result.Successful.length || 0
-          this.stats.timeoutsExtended += count
-          if (this.opt.verbose) {
-            console.error(chalk.blue('Extended'), count, chalk.blue('jobs'))
-          } else if (!this.opt.disableLog) {
-            console.log(JSON.stringify({ event: 'EXTEND_VISIBILITY_TIMEOUTS', timestamp: start, count, qrl }))
-          }
-        }
-        // TODO Sentry
+  /** @param {Record<string, object[]>} jobsToExtendByQrl @returns {Promise<void>} */
+  async extendVisibilityBatches (jobsToExtendByQrl) {
+    const queues = Object.entries(jobsToExtendByQrl).map(([qrl, jobs]) => ({ qrl, jobs, offset: 0 }))
+    let nextQueue = 0
+    const extend = async () => {
+      while (queues.length) {
+        const queue = queues[nextQueue]
+        const jobs = queue.jobs.slice(queue.offset, queue.offset + 10)
+        queue.offset += jobs.length
+        if (queue.offset === queue.jobs.length) queues.splice(nextQueue, 1)
+        else nextQueue++
+        if (nextQueue >= queues.length) nextQueue = 0
+        await this.extendVisibilityBatch(queue.qrl, jobs)
       }
     }
+    const workers = []
+    // Interleave queues within a pass and share the limit with other passes.
+    while (queues.length && this.backgroundVisibilityWorkers < maxBackgroundVisibilityRequests) {
+      this.backgroundVisibilityWorkers++
+      workers.push(extend().finally(() => { this.backgroundVisibilityWorkers-- }))
+    }
+    const results = await Promise.allSettled(workers)
+    const failures = results.filter(result => result.status === 'rejected').map(result => result.reason)
+    if (failures.length === 1) throw failures[0]
+    if (failures.length) throw new AggregateError(failures, 'QDone visibility batches failed')
+  }
 
+  /** @param {string} qrl @param {object[]} jobs @returns {Promise<void>} */
+  async extendVisibilityBatch (qrl, jobs) {
+    const sentAt = Date.now()
+    const entries = []
+    const requests = new Map()
+    for (const job of jobs) {
+      if (!this.isVisibilityDue(job, sentAt)) continue
+      const jobRunTime = Math.round((sentAt - job.start) / 1000)
+      const desired = this.needsInlineVisibilityRestore(job) ? defaultVisibilityTimeout : job.visibilityTimeout * 2
+      const visibilityTimeout = Math.min(desired, Math.max(1, maxJobSeconds - jobRunTime), this.visibilityKillBudget(job, sentAt))
+      const receiptHandle = job.message.ReceiptHandle
+      const request = this.beginVisibilityRequest(job, receiptHandle, visibilityTimeout, sentAt)
+      requests.set(job.message.MessageId, { job, request })
+      entries.push({ Id: job.message.MessageId, ReceiptHandle: receiptHandle, VisibilityTimeout: visibilityTimeout })
+    }
+    if (!entries.length) return
+
+    const input = { QueueUrl: qrl, Entries: entries }
+    debug({ ChangeMessageVisibilityBatch: input })
+    try {
+      let result
+      try {
+        result = await getSQSMaintenanceClient().send(new ChangeMessageVisibilityBatchCommand(input))
+      } catch (err) {
+        for (const { job, request } of requests.values()) this.applyVisibilityReply(job, request, false, undefined)
+        debug('ChangeMessageVisibilityBatch error', err)
+        if (this.opt.verbose) {
+          console.error(chalk.red('FAILED_TO_EXTEND_BATCH'), { qrl, error: err?.message })
+        } else if (!this.opt.disableLog) {
+          console.log(JSON.stringify({
+            event: 'EXTEND_VISIBILITY_ERROR',
+            timestamp: new Date(sentAt),
+            qrl,
+            count: entries.length,
+            errorName: err?.name,
+            errorMessage: err?.message
+          }))
+        }
+        return
+      }
+
+      debug('ChangeMessageVisibilityBatch returned', result)
+      this.stats.sqsCalls++
+      const successful = result?.Successful === undefined ? [] : result.Successful
+      const failed = result?.Failed === undefined ? [] : result.Failed
+      const replies = new Map()
+      if (Array.isArray(successful) && Array.isArray(failed)) {
+        for (const [group, confirmed] of [[successful, true], [failed, false]]) {
+          for (const entry of group) {
+            if (!requests.has(entry?.Id)) continue
+            // A duplicate or conflicting ID is ambiguous even when its code is terminal.
+            replies.set(entry.Id, replies.has(entry.Id) ? undefined : { confirmed, code: entry.Code })
+          }
+        }
+      }
+      let count = 0
+      for (const [id, { job, request }] of requests) {
+        const reply = replies.get(id)
+        if (reply && !reply.confirmed) console.error('FAILED_TO_EXTEND_JOB', { messageId: id, qrl, code: reply.code })
+        if (this.applyVisibilityReply(job, request, reply?.confirmed === true, reply?.code)) count++
+      }
+      if (count && this.opt.verbose) {
+        console.error(chalk.blue('Extended'), count, chalk.blue('jobs'))
+      } else if (count && !this.opt.disableLog) {
+        console.log(JSON.stringify({ event: 'EXTEND_VISIBILITY_TIMEOUTS', timestamp: new Date(sentAt), count, qrl }))
+      }
+    } finally {
+      for (const { job, request } of requests.values()) this.releaseVisibilityRequest(job, request)
+    }
+  }
+
+  /** @param {Record<string, object[]>} jobsToDeleteByQrl @param {Date} start @returns {Promise<void>} */
+  async deleteCompletedJobs (jobsToDeleteByQrl, start) {
     // Delete in batches for each queue
     for (const qrl in jobsToDeleteByQrl) {
       const jobsToDelete = jobsToDeleteByQrl[qrl]
@@ -725,8 +806,10 @@ export class JobExecutor {
         // TODO Sentry
       }
     }
+  }
 
-    // Get rid of deleted and failed jobs
+  /** @returns {void} */
+  cleanupFinishedJobs () {
     this.jobs = this.jobs.filter(job => {
       if (job.status === 'deleting' || job.status === 'failed') {
         debug('removed', job.message.MessageId)
@@ -748,6 +831,7 @@ export class JobExecutor {
       status: 'waiting',
       start: new Date(),
       visibilityTimeout: defaultVisibilityTimeout,
+      confirmedVisibilitySentAt: null,
       extendAtSecond: defaultVisibilityTimeout / 2,
       payload: this.opt.json ? JSON.parse(message.Body) : message.Body,
       message,

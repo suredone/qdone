@@ -161,24 +161,39 @@ describe('positively lost receipts before callback entry', () => {
     expect(executor.stats).toMatchObject({ jobsSkipped: 1, jobsSucceeded: 0, jobsFailed: 0, activeJobs: 0, runningJobs: 0, waitingJobs: 0 })
   })
 
-  it.each(terminalCodes)('skips after a batch %s arrives during a held clamp and newer optimistic timer', async code => {
-    executor.opt.killAfter = 30
-    const clamp = hold()
+  it.each(terminalCodes)('waits for a held batch %s before deciding a callback clamp', async code => {
+    const first = hold()
+    const started = gate()
+    const callback = jest.fn(async (_queue, id) => {
+      if (id === 'A') { started.resolve(); await first.promise }
+    })
+    const execution = execute([message('A'), message('B'), message('C')], callback)
+    await started.promise
+    const response = hold()
     const sent = gate()
     sqs.send.mockImplementation(async command => {
-      if (command.constructor.name === 'ChangeMessageVisibilityCommand') { sent.resolve(); await clamp.promise; return {} }
-      return { Failed: [{ Id: 'B', Code: code }] }
+      if (command.constructor.name === 'ChangeMessageVisibilityBatchCommand') {
+        sent.resolve()
+        await response.promise
+        return { Failed: [{ Id: 'B', Code: code }] }
+      }
+      return { Successful: command.input.Entries?.map(({ Id }) => ({ Id })) }
     })
-    const callback = jest.fn()
-    const execution = execute([message('B')], callback)
+    executor.jobsByMessageId.B.extendAtSecond = 0
+    const maintenance = executor.maintainVisibility()
     await sent.promise
-    await extend()
-    clamp.resolve()
-    await execution
+    executor.opt.killAfter = 30
+    first.resolve()
+    await jest.advanceTimersByTimeAsync(0)
+    expect(callback.mock.calls.map(([, id]) => id)).toEqual(['A'])
+    expect(sqs.send.mock.calls.some(([command]) => command.input.ReceiptHandle === 'receipt-B')).toBe(false)
+    response.resolve()
+    await Promise.all([maintenance, execution])
     await executor.shutdown()
-    expect(callback).not.toHaveBeenCalled()
+    expect(callback.mock.calls.map(([, id]) => id)).toEqual(['A', 'C'])
+    expect(deletes().map(entry => entry.ReceiptHandle).sort()).toEqual(['receipt-A', 'receipt-C'])
+    expect(redis.del.mock.calls.map(([key]) => key).sort()).toEqual(['test:dedup:dedup-A', 'test:dedup:dedup-C'])
     expect(executor.stats).toMatchObject({ jobsSkipped: 1, activeJobs: 0, runningJobs: 0, waitingJobs: 0 })
-    expect(deletes()).toEqual([])
   })
 
   it.each(['RequestThrottled', 'Error'])('preserves pre-clamp dispatch on %s even with terminal words in message', async name => {
@@ -209,10 +224,10 @@ describe('positively lost receipts before callback entry', () => {
     const oldB = executor.jobsByMessageId.B
     const late = hold()
     const sent = gate()
-    let batches = 0
     sqs.send.mockImplementation(async command => {
       if (command.constructor.name === 'ChangeMessageVisibilityBatchCommand') {
-        if (++batches === 1) { sent.resolve(); await late.promise }
+        sent.resolve()
+        await late.promise
         return { Failed: [{ Id: 'B', Code: 'ReceiptHandleIsInvalid' }] }
       }
       return { Successful: command.input.Entries?.map(({ Id }) => ({ Id })) }
@@ -220,8 +235,9 @@ describe('positively lost receipts before callback entry', () => {
     oldB.extendAtSecond = 0
     const latePass = executor.maintainVisibility()
     await sent.promise
-    oldB.extendAtSecond = 0
-    await executor.maintainVisibility()
+    late.resolve()
+    await latePass
+    expect(oldB.status).toBe('abandoned')
     const freshHeld = hold()
     const freshStarted = gate()
     const freshExecution = execute([message('B', 'serial', 'receipt-B-fresh')], async () => {
@@ -229,8 +245,6 @@ describe('positively lost receipts before callback entry', () => {
     })
     await freshStarted.promise
     const freshB = executor.jobsByMessageId.B
-    late.resolve()
-    await latePass
     first.resolve()
     await oldExecution
     await executor.maintainVisibility()
@@ -244,7 +258,7 @@ describe('positively lost receipts before callback entry', () => {
     expect(executor.stats).toMatchObject({ jobsSkipped: 1, jobsSucceeded: 3, activeJobs: 0, waitingJobs: 0, runningJobs: 0 })
   })
 
-  it('uses a permanent old response despite a newer optimistic timer on the same waiting receipt', async () => {
+  it('does not submit an explicit change after a pending batch confirms receipt loss', async () => {
     const first = hold()
     const started = gate()
     const callback = jest.fn(async (_queue, id) => {
@@ -264,9 +278,11 @@ describe('positively lost receipts before callback entry', () => {
     executor.jobsByMessageId.B.extendAtSecond = 0
     const maintenance = executor.maintainVisibility()
     await sent.promise
-    await executor.setJobVisibilityTimeout(executor.jobsByMessageId.B, 360)
+    const update = executor.setJobVisibilityTimeout(executor.jobsByMessageId.B, 360)
+    expect(sqs.send.mock.calls.some(([command]) => command.input.ReceiptHandle === 'receipt-B')).toBe(false)
     response.resolve()
-    await maintenance
+    await Promise.all([maintenance, update])
+    expect(sqs.send.mock.calls.some(([command]) => command.input.ReceiptHandle === 'receipt-B')).toBe(false)
     first.resolve()
     await execution
     await executor.shutdown()
