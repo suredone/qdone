@@ -315,7 +315,7 @@ describe('qdone visibility-error custody', () => {
     expect(deletedIds()).toEqual(['a', 'a'])
   })
 
-  it('does not resume invalid-receipt extensions when a waiting FIFO callback starts', async () => {
+  it('skips a waiting FIFO callback after its receipt is invalidated', async () => {
     extensionCode = 'ReceiptHandleIsInvalid'
     const firstStarted = gate()
     const releaseFirst = gate()
@@ -327,13 +327,14 @@ describe('qdone visibility-error custody', () => {
     }, QUEUE, QRL)
     await firstStarted.promise
     await failExtension()
-    executor.jobsByMessageId.second.visibilityTimeout = 7200
+    expect(executor.jobsByMessageId.second).toBeUndefined()
     releaseFirst.resolve()
     await execution
     await executor.shutdown()
     expect(sqs.send.mock.calls.some(([command]) => command.constructor.name === 'ChangeMessageVisibilityCommand'))
       .toBe(false)
-    expect(deletedIds().sort()).toEqual(['first', 'second'])
+    expect(deletedIds()).toEqual(['first'])
+    expect(executor.stats).toMatchObject({ jobsSkipped: 1, jobsSucceeded: 1, activeJobs: 0, runningJobs: 0, waitingJobs: 0 })
   })
 
   it('does not overwrite completion when a failed extension returns late', async () => {
