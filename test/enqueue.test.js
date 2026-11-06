@@ -1651,7 +1651,7 @@ describe('enqueueBatch', () => {
                     MessageId: messageId,
                     SequenceNumber: '110101010101' + Id
                   }
-                : {}
+                : { MessageId: messageId }
             })),
           Failed: entries
             .filter(({ MessageGroupId, MessageDeduplicationId }) =>
@@ -1667,21 +1667,21 @@ describe('enqueueBatch', () => {
     await expect(first).resolves.toEqual({
       numFlushed: 15,
       results: [
-        { Id: '0' },
-        { Id: '1' },
-        { Id: '2' },
-        { Id: '3' },
-        { Id: '4' },
-        { Id: '5' },
-        { Id: '6' },
-        { Id: '7' },
-        { Id: '8' },
-        { Id: '9' },
-        { Id: '10' },
-        { Id: '11' },
-        { Id: '12' },
-        { Id: '13' },
-        { Id: '14' }
+        { Id: '0', MessageId: messageId },
+        { Id: '1', MessageId: messageId },
+        { Id: '2', MessageId: messageId },
+        { Id: '3', MessageId: messageId },
+        { Id: '4', MessageId: messageId },
+        { Id: '5', MessageId: messageId },
+        { Id: '6', MessageId: messageId },
+        { Id: '7', MessageId: messageId },
+        { Id: '8', MessageId: messageId },
+        { Id: '9', MessageId: messageId },
+        { Id: '10', MessageId: messageId },
+        { Id: '11', MessageId: messageId },
+        { Id: '12', MessageId: messageId },
+        { Id: '13', MessageId: messageId },
+        { Id: '14', MessageId: messageId }
       ]
     })
     await expect(second).resolves.toEqual({

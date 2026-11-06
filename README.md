@@ -380,6 +380,18 @@ Worker limitations:
 - There is NO support right now for only-once processing using the Receive Request Attempt ID
 
 
+### External deduplication and batch acceptance
+
+`enqueueBatch()` returns `{ numFlushed, results }` only when the whole input was accepted or suppressed by deduplication. An incomplete or malformed broker response rejects with `EnqueueAcceptanceError`. Its `outcomes` identify original input indexes as string `Id` values. Statuses are `accepted`, `deduplicated`, `rejected`, `unknown`, `notAttempted` and `legacyDeduplicated`. Its `numFlushed` and `results` retain only positively confirmed results, including confirmed duplicates. A `protocolFailure` means the response could not be reconciled with the submitted IDs. The producer never retries individual failed entries automatically. A caller retry can still duplicate work when external deduplication is off or a reservation has expired.
+
+With `externalDedup`, `dedupProtocol` (CLI `--dedup-protocol`, environment `QDONE_DEDUP_PROTOCOL`) defaults to `legacy`. A legacy numeric duplicate retains the historical suppression behavior and is identified by `Deduplicated: 'legacy'`. Numeric entries cannot establish that a broker accepted a message. The `owner-v1` protocol reserves an expiring generation in the same Redis namespace and returns the actual original `MessageId` for a confirmed duplicate. A pending, malformed or legacy numeric owner is an unknown outcome. An uncertain send retains the reservation until expiry. A positive SQS response remains accepted if Redis confirmation is unavailable or the ownership has already ended. Such results can include `DeduplicationConfirmation` with `unavailable` or `not-current`.
+
+Adopt the compatibility release with the default before enabling `owner-v1`. Inventory every producer and consumer that shares the Redis namespace and verify that older, incompatible processes have drained. This includes scheduled and CLI producers, API processes and workers. Only then enable the owner protocol through reviewed producer configuration. Pre-existing numeric keys remain unknown to owner-mode producers until expiry or separate authorized recovery. Once owner-tagged messages exist, roll back by disabling new owner creation and retaining the compatible package. Those messages can outlive a Redis key and can return from failed or dead queues.
+
+The producer reuses a prepared FIFO deduplication ID within its bounded whole-request retries. SQS deduplication has a five-minute window and standard queues do not provide that protection. Redis ownership controls admission and cleanup. Application side effects still require their own retry and idempotency policy.
+
+To exercise the producer and cleanup against a disposable local Redis Unix socket, install the worktree dependencies and run `node test/fixtures/nativeProducerOwnership.mjs` with `redis-server` on PATH. Pass a package root and `cjs` to exercise the installed CommonJS build. The fixture uses synthetic SQS acknowledgements and starts and removes its own Redis server.
+
 ## Production Logging
 
 The output examples in this readme assume you are running qdone from an interactive shell. However, if the shell is non-interactive (technically if stderr is not a tty) then qdone will automatically use the `--quiet` option and will log failures to stdout as one JSON object per line the following format:

@@ -62,7 +62,7 @@ describe('confirmed visibility renewal', () => {
       })
     }
     setSQSClient(sqs)
-    redis = { del: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
+    redis = { eval: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
     executor = new JobExecutor({
       prefix: 'lease_',
       killAfter: 3600,
@@ -176,7 +176,7 @@ describe('confirmed visibility renewal', () => {
     await executor.shutdown()
     expect(effects.sort()).toEqual(messages.map(item => item.MessageId).sort())
     expect(deletes().map(entry => entry.Id).sort()).toEqual(effects)
-    expect(redis.del).toHaveBeenCalledTimes(11)
+    expect(redis.eval).toHaveBeenCalledTimes(11)
   })
 
   it('correlates partial replies and refuses unknown, duplicate and conflicting IDs', async () => {
@@ -381,7 +381,7 @@ describe('confirmed visibility renewal', () => {
     await jest.advanceTimersByTimeAsync(0)
     expect(renewals()).toHaveLength(1)
     expect(deletes().map(entry => entry.Id)).toEqual(['done'])
-    expect(redis.del).toHaveBeenCalledWith('test:dedup:dedup-done')
+    expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, 'test:dedup:dedup-done', '', '0')
     let settled = false
     const shutdown = executor.shutdown().then(() => { settled = true })
     finish.resolve()
@@ -408,7 +408,7 @@ describe('confirmed visibility renewal', () => {
     const laterPass = executor.maintainVisibility()
     await jest.advanceTimersByTimeAsync(0)
     await expect(execute([message('A', 'A', 'fresh-A')], async () => {})).rejects.toThrow('Saw job A twice')
-    expect(redis.del).not.toHaveBeenCalled()
+    expect(redis.eval).not.toHaveBeenCalled()
     pending.resolve()
     await laterPass
     expect(executor.jobsByMessageId.A).toBeUndefined()
@@ -417,7 +417,7 @@ describe('confirmed visibility renewal', () => {
     oldAck.resolve()
     await oldPass
     expect(executor.jobsByMessageId.A).toBe(fresh)
-    expect(redis.del.mock.calls.map(([key]) => key)).toEqual(['test:dedup:dedup-A'])
+    expect(redis.eval.mock.calls.map(([, , key]) => key)).toEqual(['test:dedup:dedup-A'])
     finish.resolve()
     await executor.shutdown()
     expect(deletes().map(entry => entry.ReceiptHandle).sort()).toEqual(['fresh-A', 'receipt-A', 'receipt-long'])
@@ -443,7 +443,7 @@ describe('confirmed visibility renewal', () => {
     expect(effects).toHaveLength(1000)
     expect(new Set(effects).size).toBe(1000)
     expect(deletes().map(entry => entry.Id).sort()).toEqual(effects.sort())
-    expect(redis.del).toHaveBeenCalledTimes(1000)
+    expect(redis.eval).toHaveBeenCalledTimes(1000)
     expect(executor.stats).toMatchObject({ activeJobs: 0, waitingJobs: 0, runningJobs: 0, jobsSucceeded: 1000, jobsDeleted: 1000 })
   })
 })

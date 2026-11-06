@@ -57,7 +57,24 @@ class Redis extends RedisMock {
   }
 
   multi (...args) { return patchPipelineZadd(this, super.multi(...args)) }
-  pipeline (...args) { return patchPipelineZadd(this, super.pipeline(...args)) }
+  pipeline (...args) {
+    const pipeline = patchPipelineZadd(this, super.pipeline(...args))
+    // ioredis-mock exposes Lua on the connection but not on its pipeline.
+    const scripts = []
+    const exec = pipeline.exec.bind(pipeline)
+    pipeline.eval = (...args) => { scripts.push(args); return pipeline }
+    pipeline.exec = async () => {
+      if (!scripts.length) return exec()
+      return Promise.all(scripts.map(async args => {
+        try {
+          return [null, await this.eval(...args)]
+        } catch (error) {
+          return [error, null]
+        }
+      }))
+    }
+    return pipeline
+  }
 }
 
 const options = {
@@ -280,17 +297,16 @@ describe('dedupShouldEnqueue', () => {
       [null, [expectedKey, expireAt + '']]
     ])
   })
-  test('sets expireat to a unix timestamp in seconds, not milliseconds', async () => {
-    const opt = getOptionsWithDefaults(Object.assign({}, options, { externalDedup: true }))
-    const client = getCacheClient(opt)
-    const spy = jest.spyOn(client, 'expireat')
+  test('creates a numeric record with the configured expiry', async () => {
+    const opt = getOptionsWithDefaults({ ...options, externalDedup: true })
     const message = addDedupParamsToMessage({ MessageBody: 'ls -al' }, opt)
     await dedupShouldEnqueue(message, opt)
-    expect(spy).toHaveBeenCalledTimes(1)
-    const timestamp = spy.mock.calls[0][1]
-    const nowSeconds = Math.floor(Date.now() / 1000)
-    expect(timestamp).toBeGreaterThanOrEqual(nowSeconds)
-    expect(timestamp).toBeLessThanOrEqual(nowSeconds + opt.dedupPeriod + 1)
+    const key = getCacheKey(message.MessageAttributes.QdoneDeduplicationId.StringValue, opt)
+    const client = getCacheClient(opt)
+    await expect(client.get(key)).resolves.toBe('1')
+    const ttl = await client.ttl(key)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(opt.dedupPeriod)
   })
 })
 

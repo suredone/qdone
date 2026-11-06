@@ -22,6 +22,7 @@ export const defaults = Object.freeze({
   externalDedup: false,
   dedupPeriod: 60 * 5,
   dedupStats: false,
+  dedupProtocol: 'legacy',
 
   // Enqueue
   groupId: uuidv1(),
@@ -124,6 +125,7 @@ export function getOptionsWithDefaults (options) {
     includeDead: options.includeDead || options['include-dead'] || process.env.QDONE_INCLUDE_DEAD === 'true' || defaults.includeDead,
     externalDedup: options.externalDedup ?? options['external-dedup'] ?? (process.env.QDONE_EXTERNAL_DEDUP === 'true' || defaults.externalDedup),
     dedupPeriod: options.dedupPeriod || options['dedup-period'] || process.env.QDONE_DEDUP_PERIOD || defaults.dedupPeriod,
+    dedupProtocol: firstGiven(options.dedupProtocol, options['dedup-protocol'], process.env.QDONE_DEDUP_PROTOCOL, defaults.dedupProtocol),
     dedupStats: options.dedupStats || options['dedup-stats'] || process.env.QDONE_DEDUP_STATS === 'true' || defaults.dedupStats,
 
     // Cache
@@ -205,6 +207,7 @@ export function getOptionsWithDefaults (options) {
   validateQueueName(opt, 'dlqSuffix')
 
   // Validate dedup args
+  if (!['legacy', 'owner-v1'].includes(opt.dedupProtocol)) throw new Error('dedupProtocol must be legacy or owner-v1.')
   if (opt.externalDedup && !opt.cacheUri) throw new Error('--external-dedup requires the --cache-uri argument')
   if (opt.externalDedup && (opt.dedupPeriod < 1)) throw new Error('--external-dedup of redis requires a --dedup-period > 1 second')
   if (opt.dedupIdPerMessage && opt.deduplicationId) throw new Error('Use either --deduplication-id or --dedup-id-per-message but not both')

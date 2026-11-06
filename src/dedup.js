@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { v1 as uuidV1 } from 'uuid'
 import { getCacheClient } from './cache.js'
+import { claimOwner, confirmOwner, releaseOwner } from './dedupOwnership.js'
 import Debug from 'debug'
 const debug = Debug('qdone:dedup')
 
@@ -66,6 +67,7 @@ export function addDedupParamsToMessage (message, opt, messageOptions) {
     // Track our own dedup id so we can look it up upon ReceiveMessage
     if (opt.externalDedup) {
       message.MessageAttributes = {
+        ...message.MessageAttributes,
         QdoneDeduplicationId: {
           StringValue: message.MessageDeduplicationId,
           DataType: 'String'
@@ -129,128 +131,104 @@ export async function statMaintenance (opt) {
   }
 }
 
-/**
- * Determines whether we should enqueue this message or whether it is a duplicate.
- * Returns true if enqueuing the message would not result in a duplicate.
- * @param {Object} message - Parameters to SendMessageCommand
- * @param {Object} opt - Opt object from getOptionsWithDefaults()
- * @returns {Boolean} true if the message can be enqueued without duplicate, else false
- */
+export function messageDedupId (message) {
+  return message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
+}
+
+function messageOwner (message) {
+  const attributes = message?.MessageAttributes
+  if (!attributes || !Object.prototype.hasOwnProperty.call(attributes, 'QdoneDeduplicationOwner')) return ''
+  const { DataType, StringValue } = attributes.QdoneDeduplicationOwner ?? {}
+  return DataType === 'String' && typeof StringValue === 'string' && /^[0-9a-f]{32}$/.test(StringValue)
+    ? StringValue
+    : 'invalid'
+}
+
+export async function claimDedup (message, opt) {
+  const cacheKey = getCacheKey(messageDedupId(message), opt)
+  const { reply, token } = await claimOwner(getCacheClient(opt), cacheKey, opt)
+  const [status, value, count, ttl] = reply
+  switch (status) {
+    case 'claimed':
+      if (token) {
+        message.MessageAttributes.QdoneDeduplicationOwner = { DataType: 'String', StringValue: token }
+      }
+      return { status }
+    case 'legacyDeduplicated':
+    case 'deduplicated':
+      if (status === 'deduplicated' && (typeof value !== 'string' || !value.trim())) {
+        return { status: 'unknown', reason: 'cache-response' }
+      }
+      if (opt.dedupStats) {
+        const legacy = status === 'legacyDeduplicated'
+        const expiry = Math.floor(Date.now() / 1000) + (legacy ? opt.dedupPeriod : Math.floor(ttl / 1000))
+        try {
+          await updateStats(cacheKey, legacy ? value : count, expiry, opt)
+        } catch {
+          debug('Duplicate statistics update failed')
+        }
+      }
+      return status === 'deduplicated' ? { status, MessageId: value } : { status }
+    case 'unknown':
+      return { status, reason: value }
+    default:
+      throw new Error('Unexpected deduplication claim response')
+  }
+}
+
 export async function dedupShouldEnqueue (message, opt) {
-  const client = getCacheClient(opt)
-  const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-  const cacheKey = getCacheKey(dedupId, opt)
-  const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
-  const copies = await client.incr(cacheKey)
-  debug({ action: 'shouldEnqueue', cacheKey, copies })
-  if (copies === 1) {
-    await client.expireat(cacheKey, expireAt)
-    return true
-  }
-  if (opt.dedupStats) {
-    const duplicates = copies - 1
-    await updateStats(cacheKey, duplicates, expireAt, opt)
-  }
-  return false
+  const outcome = await claimDedup(message, opt)
+  if (outcome.status === 'unknown') throw new Error('Deduplication acceptance is unknown')
+  return outcome.status === 'claimed'
 }
 
-/**
- * Determines which messages we should enqueue, returning only those that
- * would not be duplicates.
- * @param {Array[Object]} messages - Entries array for the SendMessageBatchCommand
- * @param {Object} opt - Opt object from getOptionsWithDefaults()
- * @returns {Array[Object]} an array of messages that can be safely enqueued. Could be empty.
- */
 export async function dedupShouldEnqueueMulti (messages, opt) {
-  debug({ dedupShouldEnqueueMulti: { messages, opt } })
-  const expireAt = Math.floor(Date.now() / 1000) + opt.dedupPeriod
-  // Increment all
-  const incrPipeline = getCacheClient(opt).pipeline()
-  for (const message of messages) {
-    const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-    const cacheKey = getCacheKey(dedupId, opt)
-    incrPipeline.incr(cacheKey)
-  }
-  const responses = await incrPipeline.exec()
-  debug({ dedupShouldEnqueueMulti: { messages, responses } })
-
-  // Interpret responses and expire keys for races we won
-  const expirePipeline = getCacheClient(opt).pipeline()
-  const statsPipeline = opt.dedupStats ? getCacheClient(opt).pipeline() : undefined
-  const messagesToEnqueue = []
-  for (let i = 0; i < messages.length; i++) {
-    const message = messages[i]
-    const [, copies] = responses[i]
-    const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-    const cacheKey = getCacheKey(dedupId, opt)
-    if (copies === 1) {
-      messagesToEnqueue.push(message)
-      expirePipeline.expireat(cacheKey, expireAt)
-    } else if (opt.dedupStats) {
-      const duplicates = copies - 1
-      updateStats(cacheKey, duplicates, expireAt, opt, statsPipeline)
-    }
-  }
-  await expirePipeline.exec()
-  if (opt.dedupStats) await statsPipeline.exec()
-  return messagesToEnqueue
+  const admitted = await Promise.all(messages.map(message => dedupShouldEnqueue(message, opt)))
+  return messages.filter((message, index) => admitted[index])
 }
 
-/**
- * Marks a message as processed so that subsequent calls to dedupShouldEnqueue
- * and dedupShouldEnqueueMulti will allow a message to be enqueued again
- * without waiting for dedupPeriod to expire.
- * @param {Object} message - Return value from RecieveMessageCommand
- * @param {Object} opt - Opt object from getOptionsWithDefaults()
- * @returns {Number} 1 if a cache key was deleted, otherwise 0
- */
+export async function confirmDedup (message, messageId, opt) {
+  const owner = messageOwner(message)
+  if (owner) {
+    return confirmOwner(getCacheClient(opt), getCacheKey(messageDedupId(message), opt), owner, messageId)
+  }
+}
+
+export async function releasePendingDedup (message, opt) {
+  const owner = messageOwner(message)
+  if (owner) {
+    return releaseOwner(getCacheClient(opt), getCacheKey(messageDedupId(message), opt), owner, true)
+  }
+}
+
 export async function dedupSuccessfullyProcessed (message, opt) {
-  debug({ dedupSuccessfullyProcessed: { message, opt } })
-  const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-  if (dedupId) {
-    const client = getCacheClient(opt)
-    const cacheKey = getCacheKey(dedupId, opt)
-    const count = await client.del(cacheKey)
-    // Probabalistic stat maintenance
-    if (opt.dedupStats) {
-      const chance = 1 / 100.0
-      if (Math.random() < chance) await statMaintenance(opt)
-    }
-    return count
-  }
-  return 0
+  const dedupId = messageDedupId(message)
+  if (!dedupId) return 0
+  const count = await releaseOwner(getCacheClient(opt), getCacheKey(dedupId, opt), messageOwner(message), false)
+  if (opt.dedupStats && Math.random() < 1 / 100) await statMaintenance(opt)
+  return count
 }
 
-/**
- * Marks an array of messages as processed so that subsequent calls to
- * dedupShouldEnqueue and dedupShouldEnqueueMulti will allow a message to be
- * enqueued again without waiting for dedupPeriod to expire.
- * @param {Array[Object]} messages - Return values from RecieveMessageCommand
- * @param {Object} opt - Opt object from getOptionsWithDefaults()
- * @returns {Number} number of deleted keys
- */
 export async function dedupSuccessfullyProcessedMulti (messages, opt) {
-  debug({ messages, dedupSuccessfullyProcessedMulti: { messages, opt } })
-  const cacheKeys = []
-  for (const message of messages) {
-    const dedupId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-    if (dedupId) {
-      const cacheKey = getCacheKey(dedupId, opt)
-      cacheKeys.push(cacheKey)
-    }
+  const items = messages.filter(message => messageDedupId(message))
+  if (!items.length) return 0
+  const client = getCacheClient(opt)
+  const release = (target, message) => releaseOwner(
+    target, getCacheKey(messageDedupId(message), opt), messageOwner(message), false
+  )
+  let counts
+  if (client.isCluster) {
+    // ioredis requires all commands in an explicit pipeline to route to one node.
+    counts = await Promise.all(items.map(message => release(client, message)))
+  } else {
+    const pipeline = client.pipeline()
+    for (const message of items) release(pipeline, message)
+    counts = (await pipeline.exec()).map(([error, deleted]) => {
+      if (error) throw error
+      return deleted
+    })
   }
-  debug({ dedupSuccessfullyProcessedMulti: { cacheKeys } })
-  if (cacheKeys.length) {
-    const numDeleted = await getCacheClient(opt).del(cacheKeys)
-    // const numDeleted = results.map(([, val]) => val).reduce((a, b) => a + b, 0)
-    debug({ dedupSuccessfullyProcessedMulti: { cacheKeys, numDeleted } })
-
-    // Probabalistic stat maintenance
-    if (opt.dedupStats) {
-      const chance = numDeleted / 100.0
-      if (Math.random() < chance) await statMaintenance(opt)
-    }
-    return numDeleted
-  }
-  return 0
+  const count = counts.reduce((sum, deleted) => sum + deleted, 0)
+  if (opt.dedupStats && Math.random() < count / 100) await statMaintenance(opt)
+  return count
 }

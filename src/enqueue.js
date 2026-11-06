@@ -1,4 +1,4 @@
-import { addBreadcrumb, setExtra } from '@sentry/node'
+import { setExtra } from '@sentry/node'
 import { v1 as uuidV1 } from 'uuid'
 import chalk from 'chalk'
 import Debug from 'debug'
@@ -23,8 +23,10 @@ import {
 import { getSQSClient } from './sqs.js'
 import {
   addDedupParamsToMessage,
-  dedupShouldEnqueue,
-  dedupSuccessfullyProcessed
+  claimDedup,
+  confirmDedup,
+  messageDedupId,
+  releasePendingDedup
 } from './dedup.js'
 import { getOptionsWithDefaults, validateMessageOptions } from './defaults.js'
 import { ExponentialBackoff } from './exponentialBackoff.js'
@@ -223,308 +225,329 @@ const retryableExceptions = [
   QueueDoesNotExist // Queue could temporarily not exist due to eventual consistency, let it retry
 ]
 
-export async function sendMessage (qrl, queue, command, opt, messageOptions) {
-  debug('sendMessage(', qrl, command, ')')
-  const uuidFunction = opt.uuidFunction || uuidV1
-  const params = {
-    QueueUrl: qrl,
-    ...formatMessage(command, null, opt, messageOptions)
-  }
-
-  // See if we even have to send it
-  if (opt.externalDedup) {
-    const shouldEnqueue = await dedupShouldEnqueue(params, opt)
-    if (!shouldEnqueue) return { MessageId: uuidFunction() }
-  }
-
-  // Send it
-  const client = getSQSClient()
-  let cmd = new SendMessageCommand(params)
-  debug({ cmd })
-  const backoff = new ExponentialBackoff(opt.sendRetries)
-  const send = async (attemptNumber) => {
-    cmd.input.attemptNumber = attemptNumber
-    const data = await client.send(cmd)
-    debug('sendMessage returned', data)
-    return data
-  }
-  const shouldRetry = async (result, error) => {
-    if (!error) return false
-
-    if (error instanceof QueueDoesNotExist) {
-      const qname = normalizeQueueName(queue, opt)
-      qrlCacheInvalidate(qname)
-      // clear cache in case cache does not reflect reality, then try recreating the queue before sending message again
-      const newQrl = await getOrCreateQueue(queue, opt)
-      params.QueueUrl = newQrl
-      cmd = new SendMessageCommand(params)
-    }
-
-    for (const exceptionClass of retryableExceptions) {
-      if (error instanceof exceptionClass) {
-        debug({ sendMessageRetryingBecause: { error, result } })
-        return true
-      }
-    }
-    // If we could not send it, we also need to remove our dedup flag
-    await dedupSuccessfullyProcessed(params, opt)
-    return false
-  }
-  const result = await backoff.run(send, shouldRetry)
-  debug({ sendMessageResult: result })
-  return result
+function definitiveRequestError (error) {
+  return retryableExceptions.some(Exception => error instanceof Exception) &&
+    error.$metadata?.attempts === 1 &&
+    Number.isInteger(error.$metadata.httpStatusCode) &&
+    error.$metadata.httpStatusCode >= 400 && error.$metadata.httpStatusCode < 500 &&
+    error.$metadata.httpStatusCode !== 408
 }
 
-export async function sendMessageBatch (qrl, queue, messages, opt) {
-  debug('sendMessageBatch(', qrl, messages.map(e => Object.assign(Object.assign({}, e), { MessageBody: e.MessageBody.slice(0, 10) + '...' })), ')')
-  const params = { Entries: messages, QueueUrl: qrl }
-  if (opt.sentryDsn) {
-    addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ params }), level: 'debug' })
-  }
-  debug({ params })
-
-  // See which messages we even have to send
-  if (opt.externalDedup) {
-    const promises = params.Entries.map(async m => ({ m, shouldEnqueue: await dedupShouldEnqueue(m, opt) }))
-    const results = await Promise.all(promises)
-    params.Entries = results.filter(({ shouldEnqueue }) => shouldEnqueue).map(({ m }) => m)
-    if (!params.Entries.length) {
-      const result = {
-        Failed: [],
-        Successful: results.map(
-          ({ m: { Id: id, MessageAttributes: ma } }) => ({
-            Id: id,
-            MessageId: 'duplicate',
-            QdoneDeduplicationId: ma?.QdoneDeduplicationId?.StringValue
-          }))
-      }
-      return result
-    }
-  }
-
-  // Send them
+async function sendPrepared (queue, params, opt, Command, custody) {
   const client = getSQSClient()
-  let cmd = new SendMessageBatchCommand(params)
-  debug({ cmd })
+  let cmd = new Command(params)
   const backoff = new ExponentialBackoff(opt.sendRetries)
-  const send = async (attemptNumber) => {
-    debug({ sendMessageBatchSend: { attemptNumber, params } })
-    const data = await client.send(cmd)
-    return data
+  const send = async attemptNumber => {
+    if (Command === SendMessageCommand) cmd.input.attemptNumber = attemptNumber
+    custody.started = true
+    try {
+      return await client.send(cmd)
+    } catch (error) {
+      if (!definitiveRequestError(error)) custody.uncertain = true
+      throw error
+    }
   }
   const shouldRetry = async (result, error) => {
-    debug({ shouldRetry: { error, result } })
-    if (result) {
-      // Handle failed result of one or more messages in the batch
-      if (result.Failed && result.Failed.length) {
-        for (const failed of result.Failed) {
-          // Find corresponding messages
-          const original = params.Entries.find((e) => e.Id === failed.Id)
-          const info = { failed, original, opt }
-          if (opt.sentryDsn) {
-            addBreadcrumb({ category: 'sendMessageBatch', message: 'Failed message: ' + JSON.stringify(info), level: 'error' })
-          } else {
-            console.error(info)
-          }
-        }
-        throw new Error('One or more message failures: ' + JSON.stringify(result.Failed))
-      }
+    if (error instanceof QueueDoesNotExist) {
+      qrlCacheInvalidate(normalizeQueueName(queue, opt))
+      params.QueueUrl = await getOrCreateQueue(queue, opt)
+      cmd = new Command(params)
     }
-    if (error) {
-      // Handle a failed result from an overall error on request
-      if (opt.sentryDsn) {
-        addBreadcrumb({ category: 'sendMessageBatch', message: JSON.stringify({ error }), level: 'error' })
-      }
-
-      if (error instanceof QueueDoesNotExist) {
-        const qname = normalizeQueueName(queue, opt)
-        qrlCacheInvalidate(qname)
-        // Clear stale cache entry and recreate queue before retrying
-        const newQrl = await getOrCreateQueue(queue, opt)
-        params.QueueUrl = newQrl
-        cmd = new SendMessageBatchCommand(params)
-      }
-
-      for (const exceptionClass of retryableExceptions) {
-        debug({ exceptionClass, retryableExceptions })
-        if (error instanceof exceptionClass) {
-          debug({ sendMessageRetryingBecause: { error, result } })
-          return true
-        }
-      }
-    }
+    return retryableExceptions.some(Exception => error instanceof Exception)
   }
   return backoff.run(send, shouldRetry)
 }
 
-let requestCount = 0
-
-//
-// Flushes the internal message buffer for qrl.
-// If the message is too large, batch is retried with half the messages.
-// Returns number of messages flushed.
-//
-export async function flushMessages (qrl, queue, opt, sendBuffer) {
-  debug('flushMessages', { qrl, queue, sendBuffer })
-  // Track our outgoing messages to map with Failed / Successful returns
-  const messagesById = new Map()
-  const resultsById = new Map()
-  const results = []
-  if (sendBuffer[qrl] && sendBuffer[qrl].length) {
-    for (const message of sendBuffer[qrl]) {
-      const Id = message.Id
-      messagesById.set(Id, message)
-      // Pre-prepare results
-      const result = { Id }
-      resultsById.set(Id, result)
-      results.push(result)
-    }
-  }
-  // Flush until empty
-  let numFlushed = 0
-  async function whileNotEmpty () {
-    if (!(sendBuffer[qrl] && sendBuffer[qrl].length)) {
-      return { numFlushed, results }
-    }
-    // Construct batch until full
-    const batch = []
-    let nextSize = JSON.stringify(sendBuffer[qrl][0]).length
-    let totalSize = 0
-    while ((totalSize + nextSize) < 262144 && sendBuffer[qrl].length && batch.length < 10) {
-      batch.push(sendBuffer[qrl].shift())
-      totalSize += nextSize
-      if (sendBuffer[qrl].length) nextSize = JSON.stringify(sendBuffer[qrl][0]).length
-      else nextSize = 0
-    }
-
-    // Send batch
-    const data = await sendMessageBatch(qrl, queue, batch, opt)
-
-    // Fail if there are any individual message failures
-    if (data?.Failed && data?.Failed.length) {
-      const err = new Error('One or more message failures: ' + JSON.stringify(data.Failed))
-      err.Failed = data.Failed
-      throw err
-    }
-
-    // If we actually managed to flush any of them
-    if (batch.length) {
-      requestCount += 1
-      if (data?.Successful) {
-        for (const { Id, MessageId } of data.Successful) {
-          const result = resultsById.get(Id)
-          const message = messagesById.get(Id)
-          result.MessageId = MessageId
-          result.Id = Id
-          if (message?.MessageAttributes?.QdoneDeduplicationId?.StringValue) {
-            result.QdoneDeduplicationId = message?.MessageAttributes?.QdoneDeduplicationId?.StringValue
-          }
-          if (opt.verbose) console.error(chalk.blue('Enqueued job ') + MessageId + chalk.blue(' request ' + requestCount))
-        }
-      }
-      numFlushed += batch.length
-    }
-    return whileNotEmpty()
-  }
-  return whileNotEmpty()
+function hasMessageId (value) {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
-//
-// Adds a message to the inernal message buffer for the given qrl.
-// Automaticaly flushes if queue has >= 10 messages.
-// Returns number of messages flushed.
-//
-const debugAddMessage = Debug('qdone:enqueue:addMessage')
-export async function addMessage (qrl, queue, command, messageIndex, opt, sendBuffer, messageOptions) {
+function knownAcceptance (outcome) {
+  return outcome.status === 'accepted' || outcome.status === 'deduplicated'
+}
+
+export class EnqueueAcceptanceError extends Error {
+  constructor (outcomes, results, protocolFailure = false) {
+    super('One or more message failures or unknown enqueue outcomes')
+    this.name = 'EnqueueAcceptanceError'
+    this.outcomes = outcomes
+    this.results = results
+    this.numFlushed = results.length
+    this.protocolFailure = protocolFailure
+  }
+}
+
+async function accepted (message, MessageId, opt) {
+  try {
+    const confirmed = await confirmDedup(message, MessageId, opt)
+    return confirmed === 0
+      ? { status: 'accepted', MessageId, DeduplicationConfirmation: 'not-current' }
+      : { status: 'accepted', MessageId }
+  } catch {
+    return { status: 'accepted', MessageId, DeduplicationConfirmation: 'unavailable' }
+  }
+}
+
+async function rejected (message, reason, opt) {
+  try {
+    await releasePendingDedup(message, opt)
+    return { status: 'rejected', reason }
+  } catch {
+    return { status: 'rejected', reason, DeduplicationRelease: 'unavailable' }
+  }
+}
+
+async function claim (message, opt) {
+  if (!opt.externalDedup) return { status: 'claimed' }
+  try {
+    return await claimDedup(message, opt)
+  } catch {
+    return { status: 'unknown', reason: 'cache-claim' }
+  }
+}
+
+export async function sendMessage (qrl, queue, command, opt, messageOptions) {
+  const params = { QueueUrl: qrl, ...formatMessage(command, null, opt, messageOptions) }
+  const admission = await claim(params, opt)
+  const fail = outcome => new EnqueueAcceptanceError([{ Id: '0', ...outcome }], [])
+  if (admission.status === 'legacyDeduplicated') {
+    return { MessageId: (opt.uuidFunction || uuidV1)(), Deduplicated: 'legacy' }
+  }
+  if (admission.status === 'deduplicated') return { MessageId: admission.MessageId, Deduplicated: 'confirmed' }
+  if (admission.status !== 'claimed') throw fail(admission)
+
+  const custody = { started: false, uncertain: false }
+  let data
+  try {
+    data = await sendPrepared(queue, params, opt, SendMessageCommand, custody)
+  } catch (error) {
+    if (!opt.externalDedup) throw error
+    const outcome = custody.uncertain
+      ? { status: 'unknown', reason: 'send' }
+      : await rejected(params, custody.started ? 'broker-request' : 'not-sent', opt)
+    throw fail(outcome)
+  }
+  if (!hasMessageId(data?.MessageId)) throw fail({ status: 'unknown', reason: 'response' })
+  const outcome = await accepted(params, data.MessageId, opt)
+  if (outcome.DeduplicationConfirmation) return { ...data, DeduplicationConfirmation: outcome.DeduplicationConfirmation }
+  return data
+}
+
+// Transport retries use exactly the prepared entries, including through queue recreation.
+export async function sendMessageBatch (qrl, queue, messages, opt, custody = { started: false, uncertain: false }) {
+  return sendPrepared(queue, { Entries: messages, QueueUrl: qrl }, opt, SendMessageBatchCommand, custody)
+}
+
+function correlate (messages, data) {
+  const expected = new Set(messages.map(message => message.Id))
+  const rows = new Map()
+  let invalid = !data || typeof data !== 'object'
+  for (const [name, success] of [['Successful', true], ['Failed', false]]) {
+    const values = data?.[name]
+    if (values === undefined) continue
+    if (!Array.isArray(values)) {
+      invalid = true
+      continue
+    }
+    for (const row of values) {
+      if (!expected.has(row?.Id)) {
+        invalid = true
+        continue
+      }
+      const wellFormed = success
+        ? hasMessageId(row.MessageId)
+        : typeof row.Code === 'string' && row.Code.length > 0 && typeof row.SenderFault === 'boolean'
+      if (!wellFormed || rows.has(row.Id)) {
+        rows.set(row.Id, null)
+        invalid = true
+        continue
+      }
+      rows.set(row.Id, { success, MessageId: row.MessageId })
+    }
+  }
+  return { rows, invalid: invalid || rows.size !== expected.size }
+}
+
+function createLedger (ids) {
+  return {
+    outcomes: new Map(ids.map(Id => [Id, { Id, status: 'notAttempted' }])),
+    owners: new Map(),
+    aliases: new Map(),
+    resultOrder: [],
+    failed: false,
+    protocolFailure: false,
+    requestCount: 0
+  }
+}
+
+function complete (ledger, message, outcome) {
+  const Id = message.Id
+  const dedupId = messageDedupId(message)
+  ledger.outcomes.set(Id, { Id, ...outcome, ...(dedupId ? { QdoneDeduplicationId: dedupId } : {}) })
+  if (outcome.status === 'rejected' || outcome.status === 'unknown') ledger.failed = true
+}
+
+async function prepareBatch (batch, opt, ledger) {
+  const ready = await Promise.all(batch.map(async message => {
+    if (opt.externalDedup && opt.dedupProtocol === 'owner-v1') {
+      const dedupId = messageDedupId(message)
+      const owner = ledger.owners.get(dedupId)
+      if (owner !== undefined) {
+        ledger.aliases.set(message.Id, { owner, message })
+        return false
+      }
+      ledger.owners.set(dedupId, message.Id)
+    }
+    const admission = await claim(message, opt)
+    if (admission.status === 'claimed') return true
+    complete(ledger, message, admission)
+    return false
+  }))
+  return batch.filter((message, index) => ready[index])
+}
+
+async function flushBatch (qrl, queue, batch, opt, ledger) {
+  const messages = await prepareBatch(batch, opt, ledger)
+  if (!messages.length) return
+  if (ledger.failed) {
+    // This command has not started. Release only owned claims and leave its inputs unattempted.
+    await Promise.allSettled(messages.map(message => releasePendingDedup(message, opt)))
+    return
+  }
+
+  const custody = { started: false, uncertain: false }
+  let data
+  try {
+    data = await sendMessageBatch(qrl, queue, messages, opt, custody)
+  } catch {
+    ledger.failed = true
+    await Promise.all(messages.map(async message => {
+      const outcome = custody.uncertain
+        ? { status: 'unknown', reason: 'send' }
+        : await rejected(message, custody.started ? 'broker-request' : 'not-sent', opt)
+      complete(ledger, message, outcome)
+    }))
+    return
+  }
+
+  const { rows, invalid } = correlate(messages, data)
+  if (invalid) ledger.protocolFailure = true
+  if (invalid || [...rows.values()].some(row => !row?.success)) ledger.failed = true
+  const definite = !invalid && !custody.uncertain && data.$metadata?.attempts === 1
+  const request = ++ledger.requestCount
+  await Promise.all(messages.map(async message => {
+    const row = rows.get(message.Id)
+    if (row?.success) {
+      const outcome = await accepted(message, row.MessageId, opt)
+      complete(ledger, message, outcome)
+      if (opt.verbose) console.error(chalk.blue('Enqueued job ') + row.MessageId + chalk.blue(' request ' + request))
+    } else {
+      const outcome = row && definite
+        ? await rejected(message, 'broker-entry', opt)
+        : { status: 'unknown', reason: invalid ? 'response' : 'send-attempts' }
+      complete(ledger, message, outcome)
+    }
+  }))
+}
+
+function finalize (ledger) {
+  for (const { owner, message } of ledger.aliases.values()) {
+    const { status, MessageId, reason } = ledger.outcomes.get(owner)
+    complete(ledger, message, knownAcceptance({ status })
+      ? { status: 'deduplicated', MessageId }
+      : { status, ...(reason ? { reason } : {}) })
+  }
+
+  const outcomes = [...ledger.outcomes.values()]
+  const results = ledger.resultOrder.flatMap(Id => {
+    const outcome = ledger.outcomes.get(Id)
+    if (!knownAcceptance(outcome) && (ledger.failed || outcome.status !== 'legacyDeduplicated')) return []
+    const { MessageId, QdoneDeduplicationId, DeduplicationConfirmation } = outcome
+    const result = { Id, MessageId: outcome.status === 'legacyDeduplicated' ? 'duplicate' : MessageId }
+    if (QdoneDeduplicationId) result.QdoneDeduplicationId = QdoneDeduplicationId
+    if (outcome.status === 'deduplicated') result.Deduplicated = 'confirmed'
+    if (outcome.status === 'legacyDeduplicated') result.Deduplicated = 'legacy'
+    if (DeduplicationConfirmation) result.DeduplicationConfirmation = DeduplicationConfirmation
+    return [result]
+  })
+  if (ledger.failed) throw new EnqueueAcceptanceError(outcomes, results, ledger.protocolFailure)
+  return { numFlushed: results.length, results }
+}
+
+export async function flushMessages (qrl, queue, opt, sendBuffer, invocation) {
+  const buffer = sendBuffer[qrl] ?? []
+  const ids = buffer.map(message => message.Id)
+  const ledger = invocation ?? createLedger(ids)
+  ledger.resultOrder.push(...ids)
+  while (buffer.length && !ledger.failed) {
+    const batch = []
+    let totalSize = 0
+    while (buffer.length && batch.length < 10) {
+      const nextSize = JSON.stringify(buffer[0]).length
+      if (totalSize + nextSize >= 262144) break
+      batch.push(buffer.shift())
+      totalSize += nextSize
+    }
+    if (!batch.length) {
+      complete(ledger, buffer[0], { status: 'rejected', reason: 'batch-size' })
+      break
+    }
+    await flushBatch(qrl, queue, batch, opt, ledger)
+  }
+  if (!invocation) return finalize(ledger)
+}
+
+export async function addMessage (qrl, queue, command, messageIndex, opt, sendBuffer, messageOptions, ledger) {
   const message = formatMessage(command, messageIndex, opt, messageOptions)
   sendBuffer[qrl] = sendBuffer[qrl] || []
   sendBuffer[qrl].push(message)
-  debugAddMessage({ location: 'addMessage', messageIndex, sendBuffer })
   if (sendBuffer[qrl].length >= 10) {
-    return flushMessages(qrl, queue, opt, sendBuffer)
+    return flushMessages(qrl, queue, opt, sendBuffer, ledger)
   }
   return { numFlushed: 0, results: [] }
 }
 
-//
-// Enqueue a single command
-// Returns a promise for the SQS API response.
-//
 export async function enqueue (queue, command, options) {
   debug('enqueue(', { queue, command }, ')')
   const opt = getOptionsWithDefaults(options)
   if (opt.sentryDsn) {
     setExtra({ qdoneOperation: 'enqueue', args: { queue, command, opt: redactCacheUri(opt) } })
   }
-  try {
-    const qrl = await getOrCreateQueue(queue, opt)
-    return sendMessage(qrl, queue, command, opt)
-  } catch (e) {
-    console.log(e)
-    throw e
-  }
+  const qrl = await getOrCreateQueue(queue, opt)
+  return sendMessage(qrl, queue, command, opt)
 }
 
-//
-// Enqueue many commands formatted as an array of {queue: ..., command: ...} pairs.
-// Returns a promise for the total number of messages enqueued.
-//
 export async function enqueueBatch (pairs, options) {
-  debug('enqueueBatch(', pairs, ')')
   const opt = getOptionsWithDefaults(options)
   if (opt.sentryDsn) {
     setExtra({ qdoneOperation: 'enqueueBatch', args: { pairs, opt: redactCacheUri(opt) } })
   }
+  const ledger = createLedger(pairs.map((pair, index) => String(index)))
+  const sendBuffer = {}
   try {
-    const allResults = []
-    // Find unique queues so we can pre-fetch qrls. We do this so that all
-    // queues are created prior to going through our flush logic
     const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
       qname: normalizeQueueName(queue, opt),
       command,
       messageOptions: validateMessageOptions(messageOptions)
     }))
-    const uniqueQnames = new Set(normalizedPairs.map(p => p.qname))
-
-    // Prefetch qrls / create queues in parallel, building a reverse map for cache invalidation
-    const createPromises = []
-    const qrlToQname = new Map()
-    for (const qname of uniqueQnames) {
-      createPromises.push(
-        getOrCreateQueue(qname, opt).then(qrl => qrlToQname.set(qrl, qname))
-      )
-    }
-    await Promise.all(createPromises)
-    // After we've prefetched, all qrls are in cache
-    // so go back through the list of pairs and fire off messages
-    requestCount = 0
-    const sendBuffer = {}
-    let messageIndex = 0
-    let initialFlushTotal = 0
-    for (const { qname, command, messageOptions } of normalizedPairs) {
-      const qrl = await getOrCreateQueue(qname, opt)
-      const { numFlushed, results } = await addMessage(qrl, qname, command, messageIndex++, opt, sendBuffer, messageOptions)
-      initialFlushTotal += numFlushed
-      allResults.push(...results)
+    const qnames = [...new Set(normalizedPairs.map(pair => pair.qname))]
+    const queueUrls = new Map(await Promise.all(qnames.map(async qname => [qname, await getOrCreateQueue(qname, opt)])))
+    const qrlToQname = new Map([...queueUrls].map(([qname, qrl]) => [qrl, qname]))
+    for (const [index, { qname, command, messageOptions }] of normalizedPairs.entries()) {
+      await addMessage(queueUrls.get(qname), qname, command, index, opt, sendBuffer, messageOptions, ledger)
+      if (ledger.failed) break
     }
 
-    // And flush any remaining messages
-    const extraFlushPromises = []
-    for (const qrl in sendBuffer) {
-      extraFlushPromises.push(flushMessages(qrl, qrlToQname.get(qrl), opt, sendBuffer))
+    if (!ledger.failed) {
+      const tail = await Promise.allSettled(Object.keys(sendBuffer).map(
+        qrl => flushMessages(qrl, qrlToQname.get(qrl), opt, sendBuffer, ledger)
+      ))
+      if (tail.some(result => result.status === 'rejected')) ledger.failed = true
     }
-    let extraFlushTotal = 0
-    for (const { numFlushed, results } of await Promise.all(extraFlushPromises)) {
-      allResults.push(...results)
-      extraFlushTotal += numFlushed
-    }
-    const totalFlushed = initialFlushTotal + extraFlushTotal
-    debug({ initialFlushTotal, extraFlushTotal, totalFlushed })
-    return { numFlushed: totalFlushed, results: allResults }
-  } catch (e) {
-    console.log(e)
-    throw e
+  } catch {
+    ledger.failed = true
   }
+  return finalize(ledger)
 }
 
 debug('loaded')
