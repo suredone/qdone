@@ -266,14 +266,33 @@ function knownAcceptance (outcome) {
   return outcome.status === 'accepted' || outcome.status === 'deduplicated'
 }
 
+const diagnosticCodes = new Set([
+  'AccessDenied', 'AccessDeniedException', 'CredentialsProviderError', 'ECONNREFUSED', 'ECONNRESET',
+  'EHOSTUNREACH', 'ENOTFOUND', 'ETIMEDOUT', 'InvalidSecurity', 'KmsThrottled', 'MaxRetriesPerRequestError',
+  'QueueDoesNotExist', 'RangeError', 'ReplyError', 'RequestThrottled', 'TimeoutError', 'TypeError'
+])
+
+function failureContext (phase, error) {
+  // An SDK or cache exception can contain request data in its message or nested fields.
+  let code = 'Error'
+  try {
+    code = [error?.code, error?.name].find(value => diagnosticCodes.has(value)) ?? code
+  } catch {
+    // Diagnostic accessors cannot replace the acceptance error.
+  }
+  return { phase, code }
+}
+
 export class EnqueueAcceptanceError extends Error {
-  constructor (outcomes, results, protocolFailure = false) {
-    super('One or more message failures or unknown enqueue outcomes')
+  constructor (outcomes, results, protocolFailure = false, failure) {
+    const suffix = failure ? ` during ${failure.phase} (${failure.code})` : ''
+    super('One or more message failures or unknown enqueue outcomes' + suffix)
     this.name = 'EnqueueAcceptanceError'
     this.outcomes = outcomes
     this.results = results
     this.numFlushed = results.length
     this.protocolFailure = protocolFailure
+    if (failure) this.failure = failure
   }
 }
 
@@ -301,15 +320,16 @@ async function claim (message, opt) {
   if (!opt.externalDedup) return { status: 'claimed' }
   try {
     return await claimDedup(message, opt)
-  } catch {
-    return { status: 'unknown', reason: 'cache-claim' }
+  } catch (error) {
+    return { status: 'unknown', reason: 'cache-claim', failure: failureContext('cache-claim', error) }
   }
 }
 
 export async function sendMessage (qrl, queue, command, opt, messageOptions) {
   const params = { QueueUrl: qrl, ...formatMessage(command, null, opt, messageOptions) }
   const admission = await claim(params, opt)
-  const fail = outcome => new EnqueueAcceptanceError([{ Id: '0', ...outcome }], [])
+  const fail = ({ failure, ...outcome }, context = failure) =>
+    new EnqueueAcceptanceError([{ Id: '0', ...outcome }], [], false, context)
   if (admission.status === 'legacyDeduplicated') {
     return { MessageId: (opt.uuidFunction || uuidV1)(), Deduplicated: 'legacy' }
   }
@@ -325,7 +345,7 @@ export async function sendMessage (qrl, queue, command, opt, messageOptions) {
     const outcome = custody.uncertain
       ? { status: 'unknown', reason: 'send' }
       : await rejected(params, custody.started ? 'broker-request' : 'not-sent', opt)
-    throw fail(outcome)
+    throw fail(outcome, failureContext('sqs-send', error))
   }
   if (!hasMessageId(data?.MessageId)) throw fail({ status: 'unknown', reason: 'response' })
   const outcome = await accepted(params, data.MessageId, opt)
@@ -379,20 +399,37 @@ function createLedger (ids) {
     aliases: new Map(),
     resultOrder: [],
     failed: false,
+    failure: undefined,
     protocolFailure: false,
     requestCount: 0
   }
 }
 
-function complete (ledger, message, outcome) {
+function complete (ledger, message, { failure, ...outcome }) {
+  if (failure) ledger.failure ??= failure
   const Id = message.Id
   const dedupId = messageDedupId(message)
   ledger.outcomes.set(Id, { Id, ...outcome, ...(dedupId ? { QdoneDeduplicationId: dedupId } : {}) })
   if (outcome.status === 'rejected' || outcome.status === 'unknown') ledger.failed = true
 }
 
+function recordFailure (ledger, phase, error) {
+  ledger.failed = true
+  ledger.failure ??= failureContext(phase, error)
+}
+
+async function awaitStarted (promises, ledger, phase) {
+  const settled = await Promise.allSettled(promises.map(promise => promise.catch(error => {
+    recordFailure(ledger, phase, error)
+    throw error
+  })))
+  const rejected = settled.find(result => result.status === 'rejected')
+  if (rejected) throw rejected.reason
+  return settled.map(result => result.value)
+}
+
 async function prepareBatch (batch, opt, ledger) {
-  const ready = await Promise.all(batch.map(async message => {
+  const ready = await awaitStarted(batch.map(async message => {
     if (opt.externalDedup && opt.dedupProtocol === 'owner-v1') {
       const dedupId = messageDedupId(message)
       const owner = ledger.owners.get(dedupId)
@@ -406,7 +443,7 @@ async function prepareBatch (batch, opt, ledger) {
     if (admission.status === 'claimed') return true
     complete(ledger, message, admission)
     return false
-  }))
+  }), ledger, 'entry-prepare')
   return batch.filter((message, index) => ready[index])
 }
 
@@ -423,14 +460,14 @@ async function flushBatch (qrl, queue, batch, opt, ledger) {
   let data
   try {
     data = await sendMessageBatch(qrl, queue, messages, opt, custody)
-  } catch {
-    ledger.failed = true
-    await Promise.all(messages.map(async message => {
+  } catch (error) {
+    recordFailure(ledger, 'sqs-send', error)
+    await awaitStarted(messages.map(async message => {
       const outcome = custody.uncertain
         ? { status: 'unknown', reason: 'send' }
         : await rejected(message, custody.started ? 'broker-request' : 'not-sent', opt)
       complete(ledger, message, outcome)
-    }))
+    }), ledger, 'entry-settle')
     return
   }
 
@@ -439,7 +476,7 @@ async function flushBatch (qrl, queue, batch, opt, ledger) {
   if (invalid || [...rows.values()].some(row => !row?.success)) ledger.failed = true
   const definite = !invalid && !custody.uncertain && data.$metadata?.attempts === 1
   const request = ++ledger.requestCount
-  await Promise.all(messages.map(async message => {
+  await awaitStarted(messages.map(async message => {
     const row = rows.get(message.Id)
     if (row?.success) {
       const outcome = await accepted(message, row.MessageId, opt)
@@ -451,7 +488,7 @@ async function flushBatch (qrl, queue, batch, opt, ledger) {
         : { status: 'unknown', reason: invalid ? 'response' : 'send-attempts' }
       complete(ledger, message, outcome)
     }
-  }))
+  }), ledger, 'entry-settle')
 }
 
 function finalize (ledger) {
@@ -474,7 +511,7 @@ function finalize (ledger) {
     if (DeduplicationConfirmation) result.DeduplicationConfirmation = DeduplicationConfirmation
     return [result]
   })
-  if (ledger.failed) throw new EnqueueAcceptanceError(outcomes, results, ledger.protocolFailure)
+  if (ledger.failed) throw new EnqueueAcceptanceError(outcomes, results, ledger.protocolFailure, ledger.failure)
   return { numFlushed: results.length, results }
 }
 
@@ -529,6 +566,7 @@ export async function enqueueBatch (pairs, options) {
   }
   const ledger = createLedger(pairs.map((pair, index) => String(index)))
   const sendBuffer = {}
+  let phase = 'validate-input'
   try {
     const normalizedPairs = pairs.map(({ queue, command, messageOptions }) => ({
       qname: normalizeQueueName(queue, opt),
@@ -536,23 +574,26 @@ export async function enqueueBatch (pairs, options) {
       messageOptions: validateMessageOptions(messageOptions)
     }))
     const qnames = [...new Set(normalizedPairs.map(pair => pair.qname))]
+    phase = 'queue-prepare'
     await Promise.all(qnames.map(qname => getOrCreateQueue(qname, opt)))
     const qrlToQname = new Map()
     for (const [index, { qname, command, messageOptions }] of normalizedPairs.entries()) {
+      phase = 'queue-prepare'
       const qrl = await getOrCreateQueue(qname, opt)
       qrlToQname.set(qrl, qname)
+      phase = 'batch-prepare'
       await addMessage(qrl, qname, command, index, opt, sendBuffer, messageOptions, ledger)
       if (ledger.failed) break
     }
 
     if (!ledger.failed) {
-      const tail = await Promise.allSettled(Object.keys(sendBuffer).map(
+      phase = 'tail-flush'
+      await awaitStarted(Object.keys(sendBuffer).map(
         qrl => flushMessages(qrl, qrlToQname.get(qrl), opt, sendBuffer, ledger)
-      ))
-      if (tail.some(result => result.status === 'rejected')) ledger.failed = true
+      ), ledger, phase)
     }
-  } catch {
-    ledger.failed = true
+  } catch (error) {
+    recordFailure(ledger, phase, error)
   }
   return finalize(ledger)
 }

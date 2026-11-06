@@ -22,11 +22,13 @@ import {
   addMessage,
   flushMessages,
   enqueue,
-  enqueueBatch
+  enqueueBatch,
+  EnqueueAcceptanceError
 } from '../src/enqueue.js'
 import { getSQSClient, setSQSClient } from '../src/sqs.js'
 import { qrlCacheSet, qrlCacheClear } from '../src/qrlCache.js'
 import { getOptionsWithDefaults } from '../src/defaults.js'
+import { resetCache } from '../src/cache.js'
 import { loadBatchFiles } from '../src/cli.js'
 
 getSQSClient()
@@ -1246,6 +1248,164 @@ describe('enqueue', () => {
 })
 
 describe('enqueueBatch', () => {
+  test.each([
+    ['CredentialsProviderError', undefined, 'CredentialsProviderError'],
+    ['SecretConnectionName', 'redis://user:password@private.invalid', 'Error']
+  ])('retains every unattempted input and safe setup diagnostics for %s', async (name, code, expectedCode) => {
+    const secret = 'private request redis://user:password@private.invalid'
+    const original = Object.assign(new Error(secret), { name, code })
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock.on(GetQueueUrlCommand).rejects(original)
+
+    const err = await enqueueBatch([
+      { queue: 'queue-one', command: 'private-first-command' },
+      { queue: 'queue-two', command: 'private-second-command' }
+    ], { prefix: '', sendRetries: 1 }).catch(error => error)
+
+    expect(err).toBeInstanceOf(EnqueueAcceptanceError)
+    expect(err).toMatchObject({
+      failure: { phase: 'queue-prepare', code: expectedCode },
+      numFlushed: 0,
+      results: [],
+      outcomes: [{ Id: '0', status: 'notAttempted' }, { Id: '1', status: 'notAttempted' }]
+    })
+    expect(err.cause).toBeUndefined()
+    expect(err.message).toContain(expectedCode)
+    expect(err.stack + JSON.stringify(err)).not.toMatch(/private\.invalid|password|private-(first|second)-command|SecretConnectionName/)
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 0)
+  })
+
+  test('stops later tail chunks but waits for a peer send already in progress', async () => {
+    let enter
+    const started = new Promise(resolve => { enter = resolve })
+    let release
+    const broker = new Promise(resolve => { release = resolve })
+    let recordThrow
+    const threw = new Promise(resolve => { recordThrow = resolve })
+    const command = 'x'.repeat(140000)
+    let sizeChecks = 0
+    const malformed = {
+      toJSON () {
+        if (++sizeChecks === 1) return command
+        recordThrow()
+        throw new TypeError('private unexpected preparation detail')
+      }
+    }
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock.on(GetQueueUrlCommand).callsFake(({ QueueName }) => ({ QueueUrl: 'https://sqs.example.invalid/' + QueueName }))
+    sqsMock.on(SendMessageBatchCommand).callsFake(async ({ QueueUrl, Entries }) => {
+      if (QueueUrl.endsWith('/held')) {
+        enter()
+        await broker
+      } else {
+        await started
+      }
+      return { Successful: Entries.map(({ Id }) => ({ Id, MessageId: 'ack-' + Id })) }
+    })
+
+    let settled = false
+    const result = enqueueBatch([
+      { queue: 'malformed', command },
+      { queue: 'malformed', command: malformed },
+      { queue: 'held', command },
+      { queue: 'held', command }
+    ], { prefix: '', sendRetries: 1 }).then(
+      value => { settled = true; return value },
+      error => { settled = true; return error }
+    )
+    try {
+      await threw
+      await jest.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+    } finally {
+      release()
+    }
+    const err = await result
+    expect(sqsMock).toHaveReceivedCommandTimes(SendMessageBatchCommand, 2)
+    expect(err).toBeInstanceOf(EnqueueAcceptanceError)
+    expect(err).toMatchObject({
+      failure: { phase: 'tail-flush', code: 'TypeError' },
+      outcomes: [
+        { Id: '0', status: 'accepted', MessageId: 'ack-0' },
+        { Id: '1', status: 'notAttempted' },
+        { Id: '2', status: 'accepted', MessageId: 'ack-2' },
+        { Id: '3', status: 'notAttempted' }
+      ],
+      numFlushed: 2,
+      results: [{ Id: '0', MessageId: 'ack-0' }, { Id: '2', MessageId: 'ack-2' }]
+    })
+    expect(err.cause).toBeUndefined()
+    expect(err.stack + JSON.stringify(err)).not.toContain('private unexpected preparation detail')
+  })
+
+  test('waits for every started entry confirmation if another entry settlement throws', async () => {
+    let markHeld
+    const confirmHeld = new Promise(resolve => { markHeld = resolve })
+    let release
+    const confirm = new Promise(resolve => { release = resolve })
+    const redis = {
+      async eval (script, _keyCount, _key, _token, value) {
+        if (!script.includes('local key, token, messageId')) return ['claimed']
+        if (value === 'held-peer') {
+          markHeld()
+          await confirm
+        }
+        return 1
+      },
+      async quit () {}
+    }
+    let markThrown
+    const loggerThrew = new Promise(resolve => { markThrown = resolve })
+    const log = jest.spyOn(console, 'error').mockImplementation(message => {
+      if (message.includes('broken-log')) {
+        markThrown()
+        throw new Error('private exception detail from logging sink')
+      }
+    })
+    const sqsMock = mockClient(client)
+    setSQSClient(sqsMock)
+    sqsMock.on(GetQueueUrlCommand).resolves({ QueueUrl: 'https://sqs.example.invalid/one' })
+    sqsMock.on(SendMessageBatchCommand).resolves({
+      Successful: [{ Id: '0', MessageId: 'broken-log' }, { Id: '1', MessageId: 'held-peer' }]
+    })
+
+    let settled = false
+    const result = enqueueBatch([
+      { queue: 'one', command: 'first synthetic entry' },
+      { queue: 'one', command: 'second synthetic entry' }
+    ], {
+      prefix: '',
+      sendRetries: 1,
+      verbose: true,
+      externalDedup: true,
+      dedupProtocol: 'owner-v1',
+      cacheUri: 'redis://fixture.invalid',
+      Redis: function FixtureRedis () { return redis }
+    }).then(
+      value => { settled = true; return value },
+      error => { settled = true; return error }
+    )
+    try {
+      await Promise.all([confirmHeld, loggerThrew])
+      await jest.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(false)
+      release()
+      const error = await result
+      expect(error).toBeInstanceOf(EnqueueAcceptanceError)
+      expect(error.failure).toEqual({ phase: 'entry-settle', code: 'Error' })
+      expect(error.outcomes.map(({ Id, status }) => [Id, status])).toEqual([['0', 'accepted'], ['1', 'accepted']])
+      expect(error.results.map(({ MessageId }) => MessageId)).toEqual(['broken-log', 'held-peer'])
+      expect(error.stack).not.toContain('private exception detail')
+    } finally {
+      release()
+      await result
+      log.mockRestore()
+      await resetCache()
+    }
+  })
+
   test('basic enqueueBatch works', async () => {
     const messageId = '1e0632f4-b9e8-4f5c-a8e2-3529af1a56d6'
     const opt = getOptionsWithDefaults({ prefix: '', uuidFunction: () => messageId })
