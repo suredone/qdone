@@ -66,7 +66,7 @@ describe('qdone prompt FIFO delete', () => {
     sqsModule = (await import('../src/sqs.js'))
     sqs = sqsMock()
     sqsModule.setSQSClient(sqs)
-    redis = { del: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
+    redis = { eval: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
   })
 
   afterEach(async () => {
@@ -196,7 +196,7 @@ describe('qdone prompt FIFO delete', () => {
     heldDelete.resolve()
     await jest.advanceTimersByTimeAsync(0)
 
-    expect(redis.del.mock.calls.map(([key]) => key).sort()).toEqual(['test:dedup:dedup-x1', 'test:dedup:dedup-y1'])
+    expect(redis.eval.mock.calls.map(([, , key]) => key).sort()).toEqual(['test:dedup:dedup-x1', 'test:dedup:dedup-y1'])
     await executor.shutdown()
   })
 
@@ -226,12 +226,12 @@ describe('qdone prompt FIFO delete', () => {
   it('keeps extending running jobs while an earlier pass is stuck on a dedup delete', async () => {
     createExecutor()
     const stuck = gate()
-    redis.del.mockImplementationOnce(() => stuck.promise)
+    redis.eval.mockImplementationOnce(() => stuck.promise)
     const longJob = startJob(message('long'))
     const done = startJob(message('x1', { dedupId: 'dedup-x1' }))
     await done.finish()
     await jest.advanceTimersByTimeAsync(10 * 1000)
-    expect(redis.del).toHaveBeenCalledTimes(1)
+    expect(redis.eval).toHaveBeenCalledTimes(1)
 
     // The long job's first extension is due at half its 120s receive visibility.
     await jest.advanceTimersByTimeAsync(60 * 1000)
@@ -279,7 +279,7 @@ describe('qdone prompt FIFO delete', () => {
     const passes = jest.spyOn(executor, 'maintainVisibilityPass')
     const redisError = new Error('synthetic redis failure')
     const failingDel = gate()
-    redis.del.mockImplementationOnce(() => failingDel.promise)
+    redis.eval.mockImplementationOnce(() => failingDel.promise)
     await startJob(message('x1', { dedupId: 'dedup-x1' })).finish()
     await jest.advanceTimersByTimeAsync(10 * 1000)
 
@@ -309,7 +309,7 @@ describe('qdone prompt FIFO delete', () => {
   it('reports why the final pass failed alongside the shutdown invariant failure', async () => {
     createExecutor()
     const redisError = new Error('synthetic redis failure')
-    redis.del.mockImplementationOnce(async () => { throw redisError })
+    redis.eval.mockImplementationOnce(async () => { throw redisError })
     const job = startJob(message('b1', { dedupId: 'dedup-b1' }))
     await jest.advanceTimersByTimeAsync(0)
 

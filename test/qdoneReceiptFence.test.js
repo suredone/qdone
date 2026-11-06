@@ -43,7 +43,7 @@ describe('positively lost receipts before callback entry', () => {
     ;({ shutdownCache } = await import('../src/cache.js'))
     sqs = { send: jest.fn(async command => ({ Successful: command.input.Entries?.map(({ Id }) => ({ Id })) })) }
     setSQSClient(sqs)
-    redis = { del: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
+    redis = { eval: jest.fn(async () => 1), quit: jest.fn(async () => 'OK') }
     executor = new JobExecutor({
       prefix: 'fence_',
       disableLog: true,
@@ -127,7 +127,7 @@ describe('positively lost receipts before callback entry', () => {
     expect(oldB.status).toBe('abandoned')
     expect(groupedAfterLoss).toBe(false)
     expect(deletes().map(entry => entry.ReceiptHandle).sort()).toEqual(['receipt-A', 'receipt-C', 'receipt-D'])
-    expect(redis.del.mock.calls.map(([key]) => key).sort()).toEqual(['test:dedup:dedup-A', 'test:dedup:dedup-C', 'test:dedup:dedup-D'])
+    expect(redis.eval.mock.calls.map(([, , key]) => key).sort()).toEqual(['test:dedup:dedup-A', 'test:dedup:dedup-C', 'test:dedup:dedup-D'])
     expect(sqs.send.mock.calls.every(([command]) => command.constructor.name !== 'SendMessageCommand')).toBe(true)
     expect(sqs.send.mock.calls.every(([command]) => command.input.VisibilityTimeout !== 0 &&
       !command.input.Entries?.some(entry => entry.VisibilityTimeout === 0))).toBe(true)
@@ -157,7 +157,7 @@ describe('positively lost receipts before callback entry', () => {
     await executor.shutdown()
     expect(callback).not.toHaveBeenCalled()
     expect(deletes()).toEqual([])
-    expect(redis.del).not.toHaveBeenCalled()
+    expect(redis.eval).not.toHaveBeenCalled()
     expect(executor.stats).toMatchObject({ jobsSkipped: 1, jobsSucceeded: 0, jobsFailed: 0, activeJobs: 0, runningJobs: 0, waitingJobs: 0 })
   })
 
@@ -192,7 +192,7 @@ describe('positively lost receipts before callback entry', () => {
     await executor.shutdown()
     expect(callback.mock.calls.map(([, id]) => id)).toEqual(['A', 'C'])
     expect(deletes().map(entry => entry.ReceiptHandle).sort()).toEqual(['receipt-A', 'receipt-C'])
-    expect(redis.del.mock.calls.map(([key]) => key).sort()).toEqual(['test:dedup:dedup-A', 'test:dedup:dedup-C'])
+    expect(redis.eval.mock.calls.map(([, , key]) => key).sort()).toEqual(['test:dedup:dedup-A', 'test:dedup:dedup-C'])
     expect(executor.stats).toMatchObject({ jobsSkipped: 1, activeJobs: 0, runningJobs: 0, waitingJobs: 0 })
   })
 
