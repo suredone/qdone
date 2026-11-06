@@ -368,6 +368,10 @@ function correlate (messages, data) {
   return { rows, invalid: invalid || rows.size !== expected.size }
 }
 
+const ownerAttributeSize = JSON.stringify({
+  QdoneDeduplicationOwner: { DataType: 'String', StringValue: '0'.repeat(32) }
+}).length - 1 // The attribute adds a comma inside the existing attributes object.
+
 function createLedger (ids) {
   return {
     outcomes: new Map(ids.map(Id => [Id, { Id, status: 'notAttempted' }])),
@@ -479,11 +483,12 @@ export async function flushMessages (qrl, queue, opt, sendBuffer, invocation) {
   const ids = buffer.map(message => message.Id)
   const ledger = invocation ?? createLedger(ids)
   ledger.resultOrder.push(...ids)
+  const extraSize = opt.externalDedup && opt.dedupProtocol === 'owner-v1' ? ownerAttributeSize : 0
   while (buffer.length && !ledger.failed) {
     const batch = []
     let totalSize = 0
     while (buffer.length && batch.length < 10) {
-      const nextSize = JSON.stringify(buffer[0]).length
+      const nextSize = JSON.stringify(buffer[0]).length + extraSize
       if (totalSize + nextSize >= 262144) break
       batch.push(buffer.shift())
       totalSize += nextSize
@@ -531,10 +536,12 @@ export async function enqueueBatch (pairs, options) {
       messageOptions: validateMessageOptions(messageOptions)
     }))
     const qnames = [...new Set(normalizedPairs.map(pair => pair.qname))]
-    const queueUrls = new Map(await Promise.all(qnames.map(async qname => [qname, await getOrCreateQueue(qname, opt)])))
-    const qrlToQname = new Map([...queueUrls].map(([qname, qrl]) => [qrl, qname]))
+    await Promise.all(qnames.map(qname => getOrCreateQueue(qname, opt)))
+    const qrlToQname = new Map()
     for (const [index, { qname, command, messageOptions }] of normalizedPairs.entries()) {
-      await addMessage(queueUrls.get(qname), qname, command, index, opt, sendBuffer, messageOptions, ledger)
+      const qrl = await getOrCreateQueue(qname, opt)
+      qrlToQname.set(qrl, qname)
+      await addMessage(qrl, qname, command, index, opt, sendBuffer, messageOptions, ledger)
       if (ledger.failed) break
     }
 

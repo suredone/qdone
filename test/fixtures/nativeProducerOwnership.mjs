@@ -18,6 +18,7 @@ const load = async name => {
   return module.default ?? module
 }
 const { enqueue, enqueueBatch, EnqueueAcceptanceError } = await load('index.js')
+const { formatMessage } = await load('src/enqueue.js')
 const { setSQSClient } = await load('src/sqs.js')
 const { getOptionsWithDefaults } = await load('src/defaults.js')
 const { resetCache } = await load('src/cache.js')
@@ -339,6 +340,44 @@ try {
       assert.notEqual(sendCalls[0].QueueUrl, sendCalls[1].QueueUrl)
       assert.deepEqual(sendCalls[0].Entries, sendCalls[1].Entries)
       assert.ok(await redis.pttl(key('reroute', opt)) > 0)
+    })
+
+    await test('later chunks reuse the newly recreated queue URL', async () => {
+      const opt = opts('later-chunk', { sendRetries: 2, fifo: true })
+      let lookups = 0
+      getQueue = async ({ QueueName }) => ({ QueueUrl: 'https://sqs.example.invalid/' + ++lookups + '/' + QueueName })
+      sendBatch = async ({ Entries }) => {
+        if (sendCalls.length === 1) {
+          throw new QueueDoesNotExist({ message: 'not found', $metadata: { attempts: 1, httpStatusCode: 400 } })
+        }
+        return batch(Entries)
+      }
+      const result = await enqueueBatch(jobs(...Array.from({ length: 11 }, (_, i) => 'refreshed-' + i)), opt)
+      assert.equal(result.numFlushed, 11)
+      assert.equal(sendCalls.length, 3)
+      assert.equal(lookups, 2)
+      assert.notEqual(sendCalls[0].QueueUrl, sendCalls[1].QueueUrl)
+      assert.deepEqual(sendCalls[0].Entries, sendCalls[1].Entries)
+      assert.equal(sendCalls[2].QueueUrl, sendCalls[1].QueueUrl)
+      assert.deepEqual(sendCalls[2].Entries.map(({ Id }) => Id), ['10'])
+    })
+
+    await test('owner attributes fit in the existing per-batch size budget', async () => {
+      const opt = getOptionsWithDefaults(opts('size'))
+      const firstOptions = { deduplicationId: 'x' }
+      const secondOptions = { deduplicationId: 'y' }
+      const overhead = JSON.stringify(formatMessage('', '0', opt, firstOptions)).length
+      const command = 'x'.repeat(131072 - 20 - overhead)
+      const result = await enqueueBatch([
+        { queue: 'jobs', command, messageOptions: firstOptions },
+        { queue: 'jobs', command, messageOptions: secondOptions }
+      ], opt)
+      assert.equal(result.numFlushed, 2)
+      assert.deepEqual(sendCalls.map(({ Entries }) => Entries.length), [1, 1])
+      for (const { Entries } of sendCalls) {
+        assert.ok(Entries[0].MessageAttributes.QdoneDeduplicationOwner)
+        assert.ok(JSON.stringify(Entries[0]).length < 262144)
+      }
     })
 
     await test('claim response loss sends nothing and confirmation failure retains acceptance', async () => {
